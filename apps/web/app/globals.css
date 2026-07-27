@@ -1,0 +1,166 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * Dark-mode-only design system.
+ * See context/feature-specs/00-design-system.md and context/ui-context.md.
+ *
+ * Platform color tokens are declared once (from ui-context.md) and shadcn/ui
+ * semantic tokens are mapped onto those same values so every generated
+ * component inherits the platform theme. No custom colors are introduced.
+ */
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Both :root and .dark carry the identical dark palette. The application is
+ * dark-only, so no light theme can ever render regardless of the `dark`
+ * class applied by the theme provider.
+ */
+:root,
+.dark {
+  /* --- Platform tokens (source of truth: ui-context.md) --- */
+  --bg-base: #0f172a;
+  --bg-surface: #1e293b;
+  --bg-card: #1e293b;
+  --bg-sidebar: #111827;
+
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+
+  --accent-primary: #3b82f6;
+  --accent-secondary: #2563eb;
+
+  --border-default: #334155;
+
+  --state-success: #22c55e;
+  --state-warning: #f59e0b;
+  --state-error: #ef4444;
+  --state-info: #38bdf8;
+
+  /* Base corner radius (buttons/inputs use rounded-md; cards/panels/dialogs
+     opt into larger radii per ui-context.md). */
+  --radius: 0.5rem;
+
+  /* --- shadcn/ui semantic tokens mapped onto the platform palette --- */
+  --background: var(--bg-base);
+  --foreground: var(--text-primary);
+
+  --card: var(--bg-card);
+  --card-foreground: var(--text-primary);
+
+  --popover: var(--bg-surface);
+  --popover-foreground: var(--text-primary);
+
+  --primary: var(--accent-primary);
+  --primary-foreground: var(--text-primary);
+
+  --secondary: var(--border-default);
+  --secondary-foreground: var(--text-primary);
+
+  --muted: var(--bg-surface);
+  --muted-foreground: var(--text-muted);
+
+  --accent: var(--border-default);
+  --accent-foreground: var(--text-primary);
+
+  --destructive: var(--state-error);
+  --destructive-foreground: var(--text-primary);
+
+  --border: var(--border-default);
+  --input: var(--border-default);
+  --ring: var(--accent-primary);
+
+  /* Chart palette drawn from platform accent + state colors. */
+  --chart-1: var(--accent-primary);
+  --chart-2: var(--state-info);
+  --chart-3: var(--state-success);
+  --chart-4: var(--state-warning);
+  --chart-5: var(--state-error);
+
+  /* Sidebar surface (ui-context.md main layout). */
+  --sidebar: var(--bg-sidebar);
+  --sidebar-foreground: var(--text-secondary);
+  --sidebar-primary: var(--accent-primary);
+  --sidebar-primary-foreground: var(--text-primary);
+  --sidebar-accent: var(--bg-surface);
+  --sidebar-accent-foreground: var(--text-primary);
+  --sidebar-border: var(--border-default);
+  --sidebar-ring: var(--accent-primary);
+}
+
+/*
+ * Expose the tokens to Tailwind's utility layer. `inline` resolves the
+ * var() references so utilities like `bg-background`, `text-muted-foreground`,
+ * `border-border`, `ring-ring`, and `font-sans` are generated.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Platform state colors as first-class utilities (bg-success, text-warning …). */
+  --color-success: var(--state-success);
+  --color-warning: var(--state-warning);
+  --color-error: var(--state-error);
+  --color-info: var(--state-info);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-geist-sans);
+  --font-heading: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}

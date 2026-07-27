@@ -1,0 +1,45 @@
+# Legal Case Management Platform — Backend (apps/api)
+# Python dependencies. Pinned to the versions validated in the project venv.
+# Regenerate transitive locks with `pip freeze` if a fully pinned lock is needed.
+
+# --- Web framework & server ---
+fastapi==0.139.2
+uvicorn==0.51.0
+python-multipart==0.0.20
+
+# --- Configuration ---
+pydantic==2.13.4
+pydantic-settings==2.14.2
+python-dotenv==1.2.2
+email-validator==2.3.0
+
+# --- Database (PostgreSQL) & migrations ---
+SQLAlchemy==2.0.51
+alembic==1.18.5
+psycopg[binary]==3.3.4
+
+# --- Infrastructure clients ---
+redis==8.0.1
+minio==7.2.20
+qdrant-client==1.18.0
+
+# --- Logging ---
+structlog==26.1.0
+
+# --- Authentication ---
+# JWT signing/verification (cryptography extra provides the crypto backend).
+python-jose[cryptography]==3.5.0
+# Password hashing. Used directly rather than through passlib: passlib 1.7.4
+# (unmaintained since 2020) is incompatible with bcrypt 5.x — its backend
+# probe raises "password cannot be longer than 72 bytes". See the deviation
+# note in context/progress-tracker.md.
+bcrypt==5.0.0
+
+# --- Development & testing ---
+pytest==9.1.1
+pytest-asyncio==1.4.0
+httpx==0.28.1
+ruff==0.16.0
+mypy==2.3.0
+# Type stubs (mypy runs in strict mode).
+types-python-jose==3.5.0.20260408

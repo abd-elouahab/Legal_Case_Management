@@ -1,0 +1,48 @@
+# Python tooling configuration for the Legal Case Management Platform backend.
+# The backend package lives in apps/api; tests live in tests/.
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["apps/api", "tests"]
+# Paths are resolved from this file's directory, so migration versions must be
+# named from the repo root (a bare "db/migrations/versions" never matched).
+extend-exclude = [".venv", "apps/web", "apps/api/db/migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "C4", "SIM", "RUF"]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = [
+  "core",
+  "db",
+  "api",
+  "schemas",
+  "models",
+  "repositories",
+  "services",
+  "scripts",
+  "tests",
+]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "apps/api"
+plugins = ["pydantic.mypy"]
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = true
+exclude = ["\\.venv", "apps/web", "db/migrations"]
+
+[[tool.mypy.overrides]]
+# Third-party packages without bundled type stubs.
+module = ["minio.*", "qdrant_client.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+pythonpath = ["apps/api"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra -q"

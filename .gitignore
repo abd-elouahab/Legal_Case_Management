@@ -1,0 +1,26 @@
+# --- Environment / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Node / frontend ---
+node_modules/
+apps/web/.next/
+apps/web/out/
+*.tsbuildinfo
+
+# --- Test artifacts ---
+coverage/
+apps/web/coverage/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
