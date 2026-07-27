@@ -21,6 +21,7 @@ import type {
   ChangePasswordResult,
   LoginCredentials,
 } from "@/types/auth";
+import type { Permission } from "@/types/authorization";
 import type { SessionUser } from "@/types/user";
 
 /** Map the API's user payload onto the app's {@link SessionUser}. */
@@ -29,12 +30,16 @@ function toSessionUser(payload: {
   email: string;
   full_name: string;
   role: SessionUser["role"];
+  permissions: readonly Permission[];
 }): SessionUser {
   return {
     id: payload.id,
     email: payload.email,
     name: payload.full_name,
     role: payload.role,
+    // Carried straight through: the API computes the role's permissions, so the
+    // client never derives them and cannot disagree with the server.
+    permissions: payload.permissions,
   };
 }
 

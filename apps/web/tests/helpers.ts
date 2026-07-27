@@ -7,22 +7,72 @@
 
 import { vi } from "vitest";
 
+import { PERMISSIONS, type Permission } from "@/types/authorization";
+import type { SessionUser, UserRole } from "@/types/user";
+
+/**
+ * Permissions per role, mirroring the API's policy (`apps/api/core/roles.py`).
+ *
+ * Only tests carry this table: the application always takes permissions from the
+ * session the API delivered. Duplicating it here is what lets the fixtures
+ * describe a realistic lawyer or court representative without a running backend.
+ */
+export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
+  administrator: PERMISSIONS,
+  lawyer: [
+    "cases:view",
+    "documents:view",
+    "documents:upload",
+    "timeline:view",
+    "timeline:create",
+    "reports:view",
+    "reports:generate",
+    "ai:chat",
+    "ai:generate-report",
+    "notifications:view",
+    "settings:view",
+  ],
+  court: [
+    "cases:view",
+    "cases:update",
+    "documents:view",
+    "documents:upload",
+    "timeline:view",
+    "timeline:create",
+    "notifications:view",
+    "settings:view",
+  ],
+};
+
 export const TEST_USER = {
   id: "8f14e45f-ceea-467a-9f3a-1b2c3d4e5f60",
   email: "amina.benali@example.com",
   full_name: "Amina Benali",
   role: "administrator" as const,
   is_active: true,
+  permissions: ROLE_PERMISSIONS.administrator,
   last_login_at: null,
   created_at: "2026-07-01T09:00:00Z",
 };
 
-export const TEST_SESSION_USER = {
+export const TEST_SESSION_USER: SessionUser = {
   id: TEST_USER.id,
   email: TEST_USER.email,
   name: TEST_USER.full_name,
   role: TEST_USER.role,
+  permissions: TEST_USER.permissions,
 };
+
+/** A signed-in user with the grants their role actually carries. */
+export function sessionUserWithRole(role: UserRole): SessionUser {
+  return {
+    ...TEST_SESSION_USER,
+    id: `user-${role}`,
+    email: `${role}@example.com`,
+    role,
+    permissions: ROLE_PERMISSIONS[role],
+  };
+}
 
 export function tokenResponse(overrides: Record<string, unknown> = {}) {
   return {

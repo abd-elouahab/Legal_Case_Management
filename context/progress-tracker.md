@@ -9,13 +9,90 @@ change.
 
 ## Current Goal
 
-- **Next:** Role-Based Access Control (RBAC) — role gating on top of the identity
-  established by Authentication. The seams are in place: `User.role` is persisted
-  and returned by `GET /auth/me`, `api/deps.py` exposes `CurrentUser` for
-  role-checking dependencies to build on, and the `access-denied` route exists
-  and is already covered by the proxy's protected-route list.
+- **Next:** User Management — administrator-managed creation, editing, enabling,
+  and disabling of users. RBAC has already reserved the `users:*` permissions and
+  the administrator-only `/lawyers` route, so the endpoints and UI can be gated
+  with the existing dependencies and `<ProtectedRoute>` without new plumbing.
 
 ## Completed
+
+- **Authorization / RBAC (spec `04-authorization-rbac.md`)** — a centralized,
+  reusable permission system layered on the identity established by
+  Authentication. No business features were implemented (all explicitly out of
+  scope), and no dependencies were added — backend and frontend both.
+  - **Permissions** (`core/permissions.py`): all 23 identifiers from the spec as a
+    `Permission` `StrEnum` with `group:action` values, plus `PermissionGroup`,
+    `ALL_PERMISSIONS`, and utilities (`permission_from_value`,
+    `permissions_in_group`, `sort_permissions`). A permission's group is *derived*
+    from its identifier, so the two can never disagree. Extending the system is
+    one enum member plus a grant.
+  - **Roles** (`core/roles.py`): `UserRole` stays the single role definition;
+    `ROLE_PERMISSIONS` is the only place that decides what a role may do. Held as
+    a `MappingProxyType` of `frozenset`s, so the policy cannot be widened by
+    mutation at runtime. Administrators are granted `ALL_PERMISSIONS` **by
+    reference** — a newly defined permission reaches them with no edit.
+    `permissions_for_role` fails closed (500) for a role with no policy entry.
+  - **Authorization service** (`services/authorization.py`): stateless and pure.
+    Four checks — role, permission, any, all — each in a boolean (`has_*`) and a
+    raising (`require_*`) form. An empty requirement list raises rather than
+    silently granting (`require_all_permissions([])`) or denying everyone
+    (`require_any_permission([])`).
+  - **Dependencies** (`api/authorization.py`): `require_role`,
+    `require_permission`, `require_any_permission`, `require_all_permissions`
+    factories usable per-route, per-router, or app-wide; plus
+    `CurrentPermissions`. Each yields the authorized `User`, so an endpoint need
+    not also depend on `CurrentUser`. FastAPI dependencies *are* the permission
+    decorator here — they compose with the dependency graph and appear in OpenAPI.
+  - **Status codes follow from dependency order:** `CurrentUser` resolves first
+    and raises **401**, so an anonymous caller never reaches the permission check.
+    Authenticated-but-unauthorized is the only path to **403**.
+  - **Errors** (`core/exceptions.py`): `AuthorizationError` (403, `forbidden`,
+    generic message) and `AuthorizationConfigurationError` (500, generic
+    `internal_error` body with the specifics carried in `detail`). The exception
+    handler now logs `detail` and escalates 5xx to error level.
+  - **Logging:** `authorization_denied` records user id, role, the rule kind, and
+    what was required — correlatable with the response's `request_id`. Never an
+    email, name, password, or token.
+  - **Endpoints** (`api/v1/authorization/router.py`): `GET /authorization/me`
+    (any authenticated caller — describes only their own grants) and
+    `GET /authorization/roles` (the role + permission catalog, gated on
+    `users:view`). Deliberately the only two: they exercise the 401/403/200
+    contract without touching an out-of-scope business domain.
+  - **Auth integration:** `UserRead` gained a **computed** `permissions` field, so
+    every payload carrying a user — login, refresh, `/auth/me`, change-password —
+    exposes the current role *and* its permissions. Computed rather than stored,
+    so no row can hold a stale grant and a policy change takes effect at once.
+  - **Frontend:** `types/authorization.ts` (permission identifiers mirroring the
+    API, the `PERMISSION` constant map, and the shared `AccessRule` shape);
+    `lib/authorization/access.ts` (the single rule evaluator);
+    `lib/authorization/routes.ts` (path → rule, longest-prefix match, so nested
+    routes inherit their section's requirement); `usePermissions` and `useRole`
+    hooks; `<Protected>` (page fragments) and `<ProtectedRoute>` (whole pages,
+    renders the Unauthorized state in place — it never redirects); `RouteGuard`
+    wired into the protected layout so every page is authorized by construction.
+    The `access-denied` route and `AccessDenied` component were promoted from
+    placeholders into the real Unauthorized page.
+  - **Role-aware sidebar:** each nav item declares its `access` rule in
+    `config/navigation.ts`; `routeAccessRules` is *derived* from that list and
+    feeds both the sidebar filter and the route guard, so "the sidebar never
+    offers what the guard would block" holds by construction (and is asserted as
+    such in the tests). Sections whose items are all hidden disappear with them.
+    No permission is named inside a component.
+  - **Validation (live Postgres + Redis, real HTTP):** 377 backend tests
+    (`ruff`, `mypy` strict clean) and 153 frontend tests pass; `tsc` and ESLint
+    clean; production build succeeds and prerenders all 13 routes. Verified
+    against a freshly started API with one user per role: unauthenticated and
+    malformed-token requests return **401** with a `WWW-Authenticate: Bearer`
+    challenge (never 403); `/authorization/me` reports 23 / 11 / 8 permissions for
+    administrator / lawyer / court; `/authorization/roles` returns **200** for the
+    administrator and **403** for both restricted roles; the 403 body is
+    `{"error":"forbidden"}` with no mention of `users:view` or `administrator`;
+    `/auth/me` and the login response both carry `permissions`; the served catalog
+    matches `ROLE_PERMISSIONS` exactly. The log shows three `authorization_denied`
+    events with user id, role, and `required=['users:view']` — and no email,
+    password, hash, or JWT anywhere. Frontend route sweep: all protected routes
+    307 to `/login` anonymously, 200 with a session cookie, `/login` 307s a
+    signed-in user away; no errors or warnings in the dev-server log.
 
 - **Auth hardening: login throttling + session revocation on password change**
   (follow-up to spec `03`, requested after it shipped). Closes the two gaps that
@@ -277,10 +354,6 @@ change.
 
 ## Next Up
 
-- **Role-Based Access Control (RBAC)** — role gating on top of the identity
-  established by Authentication, wiring the `access-denied` route. Add
-  role-checking dependencies beside `api/deps.py::get_current_user` and a
-  client-side role guard alongside `RequireAuth`.
 - **User Management** — administrator-managed creation, editing, enabling, and
   disabling of users. This is why registration is deliberately absent from
   Authentication; `scripts/create_user.py` is the interim provisioning path and
@@ -291,6 +364,32 @@ change.
   the user that other devices were signed out, using the `sessions_revoked` flag.
 
 ## Open Questions
+
+- **Per-resource authorization is not implemented (deferred by design).** RBAC
+  answers "may this user use this capability?"; it cannot yet answer "may this
+  lawyer see *this* case", because case assignments do not exist. The spec's
+  "assigned cases only" wording is therefore only half-satisfied, and **Case
+  Management must add the ownership/assignment check on top of `cases:view`** —
+  `code-standards.md` ("verify case ownership or assignment before exposing
+  resources") makes this a requirement, not an option. Flagged here so it is not
+  mistaken for finished work.
+
+- **`hearings:*` permissions are missing from the catalog.** Court
+  representatives' hearing management currently rides on `cases:update`. The
+  spec's suggested permission list has none, so none were invented. Case
+  Management should introduce them and narrow the court role accordingly.
+
+- **Baseline permissions were a judgement call.** `notifications:view` and
+  `settings:view` are granted to every role even though the spec's per-role lists
+  do not mention them, because invariant 3 and `ui-context.md` both assume every
+  user sees their own notifications and settings. If the intent was genuinely
+  "lawyers cannot open the Notifications page", removing them from
+  `BASE_PERMISSIONS` in `core/roles.py` is a one-line change — the sidebar and
+  route guard follow automatically. **Product confirmation would settle it.**
+
+- **No UI assigns roles to users** — deliberately out of scope for this spec.
+  `scripts/create_user.py` remains the only way to set a role until User
+  Management ships.
 
 - **Login rate limiting — RESOLVED:** implemented as a Redis-backed throttle
   (5 consecutive failures / 15-minute window → 429 for 15 minutes, per account and
@@ -323,6 +422,87 @@ change.
   reconcile `ui-context.md` down to dark-only or plan a future light theme.
 
 ## Architecture Decisions
+
+### Authorization / RBAC (spec `04`)
+
+- **Permissions, not roles, are the unit of enforcement.** Every guard names a
+  capability (`cases:view`); nothing outside `core/roles.py` branches on a role.
+  Role checks *are* supported (`require_role`) because the spec asks for them, but
+  they are documented as the fallback: a role check hard-codes policy at the call
+  site and must be revisited whenever the role model changes, whereas a
+  capability outlives it. This is what makes "these permissions will be refined by
+  future features" a policy edit rather than a code migration.
+- **`UserRole` stays in `models/user.py`; only the policy is new.** The role enum
+  is persisted, so the storage definition is the canonical one. Duplicating or
+  moving it to satisfy the "centralized role definitions" bullet would have
+  created two sources of truth — the constraint "do not rename existing files"
+  points the same way. `core/roles.py` re-exports it so authorization code has one
+  import site.
+- **Administrators are granted `ALL_PERMISSIONS` by reference, not by copy.** A
+  new permission is theirs the moment it is defined. Copying the set would make
+  "administrator has full access" quietly false for every permission added later —
+  the exact failure mode that produces an admin who cannot use a new feature.
+- **Permissions are computed from the role, never stored on the user.** A
+  `permissions` column would need backfilling on every policy change and could
+  hold a grant the policy no longer allows. `UserRead.permissions` is a Pydantic
+  computed field, so the wire payload is always the live policy. (Per-user
+  overrides, if ever needed, would be an *addition* to the role's set — the shape
+  supports it without changing this decision.)
+- **A permission grants a capability, not a row.** `cases:view` means "may use the
+  case-viewing feature", not "may view every case". The spec's "assigned cases
+  only" rule is per-resource and needs data that does not exist yet (assignments);
+  it belongs to Case Management, which will check assignment *on top of*
+  `cases:view`. Implementing it now would mean inventing the assignment model.
+- **Two permissions are granted to every role as a baseline**
+  (`notifications:view`, `settings:view`). The spec's per-role lists describe
+  business-resource access and omit them, but invariant 3 says every user receives
+  notifications and `ui-context.md` shows both in the sidebar for all roles;
+  withholding them would hide a user's own alerts and preferences from them.
+  Managing *others'* notification configuration remains a separate permission.
+- **Hearing management has no dedicated permission yet.** The spec's suggested
+  list has none, and it also says not to invent business behaviour, so court
+  representatives get `cases:update` — which is exactly what "trigger case status
+  updates" requires. Case Management should introduce `hearings:*` and narrow this.
+- **403 responses are deliberately uninformative.** Every denial returns the same
+  `forbidden` code and message, whichever rule refused it — a test asserts all four
+  rule kinds are byte-identical. Naming the missing permission would let a caller
+  map the platform's capability model by probing. The specifics go to the log with
+  the same `request_id` the client received, so an operator can still diagnose it.
+- **An unknown role or permission is a 500, not a 403.** Both are impossible for a
+  client to provoke (no endpoint accepts an identifier), so they are bugs.
+  Answering 403 would hide a missing policy entry behind a plausible-looking
+  authorization failure; answering 500 with a generic body surfaces it without
+  telling the caller anything.
+- **An empty requirement list raises.** `require_all_permissions([])` would admit
+  everyone and `require_any_permission([])` would deny everyone — both are almost
+  always a requirement built dynamically that came out empty. The frontend
+  evaluator makes the same call in the opposite direction (an empty `anyOf`/`allOf`
+  denies) because a UI cannot usefully throw; an *absent* clause still means "no
+  requirement".
+- **401 before 403, by dependency order.** `CurrentUser` resolves first, so an
+  anonymous caller is asked to authenticate rather than told they lack permission
+  — they may well be entitled once signed in. The same reasoning puts `RequireAuth`
+  outside `RouteGuard` on the client.
+- **`ProtectedRoute` renders in place; it does not redirect.** Redirecting to
+  `/access-denied` would lose the URL the user asked for, so a reload would retry
+  the error page rather than the real one, and a mistyped link would look like a
+  broken app. The `/access-denied` route still exists for direct links.
+- **The shell wraps the guard, not the reverse.** A denied user keeps the sidebar
+  and can navigate somewhere they *can* reach, instead of landing on a bare error
+  page with no way out.
+- **Route rules are derived from the navigation config, not written twice.** Each
+  nav item declares its `access`; `routeAccessRules` is computed from that list and
+  feeds both the sidebar filter and `RouteGuard`. That makes "the sidebar never
+  offers a destination the guard would block" true by construction — and a test
+  asserts it for all three roles rather than trusting the convention.
+- **The client holds permission *identifiers*, never the policy.** The role →
+  permission mapping exists only on the server; the browser receives its effective
+  list with the session. The one client-side copy of the mapping lives in the test
+  helpers, where its purpose is to describe a realistic fixture without a backend.
+- **Unknown permission identifiers in an API response are dropped, not fatal.** A
+  backend that has added a permission this build does not know about must not be
+  able to break sign-in — and a name the client cannot express is a name it cannot
+  gate on anyway, so ignoring it is also the safe outcome.
 
 ### Authentication (spec `03`)
 
@@ -560,6 +740,21 @@ blocking its validation):
   Redis is unavailable. Frontend tests run under Vitest + Testing Library
   (`npm test` in `apps/web`) against a scripted `fetch` double in
   `tests/helpers.ts`.
+- **Adding a permission (the whole checklist):** add the member to
+  `Permission` in `apps/api/core/permissions.py`, grant it to the roles that
+  should hold it in `apps/api/core/roles.py` (administrators get it for free),
+  mirror the identifier in `apps/web/types/authorization.ts` (`PERMISSIONS` and
+  `PERMISSION`), and guard the endpoint with
+  `Depends(require_permission(Permission.X))`. If it gates a *page*, declare
+  `access` on its item in `apps/web/config/navigation.ts` and both the sidebar and
+  the route guard pick it up — nothing else to wire.
+- **RBAC test strategy:** the authorization service is pure, so its unit tests
+  build `User` objects in memory and never touch a database.
+  `tests/integration/test_authorization.py` additionally mounts a throwaway
+  `FastAPI` app with four guarded routes, because the dependencies should be
+  testable independently of whatever they happen to guard (and no business
+  endpoints exist yet). Tokens are signed rather than session-bound, so one issued
+  through the main app authenticates against that throwaway app unchanged.
 - **Careful when importing from `conftest.py`:** pytest loads it as top-level
   `conftest`, so a runtime `from tests.conftest import X` creates a *second*
   distinct class object and breaks `isinstance`. Import such helpers under

@@ -13,6 +13,7 @@
 
 import { z } from "zod";
 
+import { PERMISSIONS } from "@/types/authorization";
 import { USER_ROLES } from "@/types/user";
 
 /** Must match `MIN_PASSWORD_LENGTH` in `apps/api/schemas/auth.py`. */
@@ -81,6 +82,22 @@ export const userResponseSchema = z.object({
   full_name: z.string(),
   role: z.enum(USER_ROLES),
   is_active: z.boolean(),
+  /**
+   * Effective permissions for the user's role, computed by the API.
+   *
+   * Unknown identifiers are dropped rather than failing the whole response: a
+   * backend that has added a permission this build does not know about must not
+   * be able to break sign-in. Anything the client cannot name, it cannot gate
+   * on, so ignoring it is also the safe outcome.
+   */
+  permissions: z
+    .array(z.string())
+    .default([])
+    .transform((values) =>
+      values.filter((value): value is (typeof PERMISSIONS)[number] =>
+        (PERMISSIONS as readonly string[]).includes(value),
+      ),
+    ),
   last_login_at: z.string().nullable().optional(),
   created_at: z.string().optional(),
 });

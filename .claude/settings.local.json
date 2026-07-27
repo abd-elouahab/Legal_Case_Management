@@ -52,7 +52,14 @@
       "Bash(curl -s -X POST http://127.0.0.1:8020/api/v1/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"throttle@example.com\",\"password\":\"RealPass123!\"}' -w '\\\\n  <- HTTP %{http_code}\\\\n')",
       "Bash(\"d:/Legal Case Management Platform/.venv/Scripts/python.exe\" -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(' ', d['error']\\); print\\(' ', d['message']\\)\")",
       "Bash('d:/Legal Case Management Platform/.venv/Scripts/python.exe' -c ' *)",
-      "PowerShell($c = Get-NetTCPConnection -LocalPort 8020 -State Listen -ErrorAction SilentlyContinue; if \\($c\\) { $c | Select-Object -First 1 | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force; \"Stopped API PID $\\($_.OwningProcess\\)\" } } else { \"port 8020 free\" })"
+      "PowerShell($c = Get-NetTCPConnection -LocalPort 8020 -State Listen -ErrorAction SilentlyContinue; if \\($c\\) { $c | Select-Object -First 1 | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force; \"Stopped API PID $\\($_.OwningProcess\\)\" } } else { \"port 8020 free\" })",
+      "Bash(.venv/Scripts/python.exe -m pytest -q)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/unit/test_permissions.py tests/unit/test_roles.py tests/unit/test_authorization_service.py tests/integration/test_authorization.py -q)",
+      "Bash(npm test *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/health)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8000/api/v1/authorization/me)",
+      "Bash(PATH=__TRACKED_VAR__/.venv/Scripts:__TRACKED_VAR__ bash C:/Users/ADMINI~1/AppData/Local/Temp/claude/d--Legal-Case-Management-Platform/ff13db08-af58-4403-91c1-25e049cf7073/scratchpad/verify_rbac.sh)",
+      "Bash(.venv/Scripts/python.exe -c \"import sys,json;d=json.load\\(sys.stdin\\);print\\('permissions in /auth/me:',len\\(d['permissions']\\)\\)\")"
     ]
   }
 }

@@ -122,6 +122,46 @@ class InactiveAccountError(AppException):
     message = "This account has been disabled."
 
 
+# --------------------------------------------------------------------------- #
+# Authorization errors
+#
+# A denial says only *that* access was refused — never which role or permission
+# would have been required. Naming the missing permission would hand an attacker
+# a map of the platform's capability model, so the specifics are logged
+# server-side instead (see `services/authorization.py`).
+# --------------------------------------------------------------------------- #
+
+
+class AuthorizationError(AppException):
+    """The caller is authenticated but not permitted to perform the action.
+
+    Distinct from :class:`AuthenticationError` (401): the credentials are valid,
+    so re-authenticating would not help.
+    """
+
+    status_code = status.HTTP_403_FORBIDDEN
+    error_code = "forbidden"
+    message = "You do not have permission to perform this action."
+
+
+class AuthorizationConfigurationError(AppException):
+    """An authorization rule referenced an unknown role or permission.
+
+    This is always a bug in the application (a hand-written identifier, a role
+    with no policy entry), never something a client can provoke. It fails the
+    request as a generic 500 — the caller learns nothing — while ``detail``
+    carries the specifics into the log.
+    """
+
+    status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+    error_code = "internal_error"
+    message = "An unexpected error occurred."
+
+    def __init__(self, *, detail: str) -> None:
+        self.detail = detail
+        super().__init__()
+
+
 class InvalidPasswordError(AppException):
     """The supplied current password did not match (password change)."""
 
@@ -181,11 +221,17 @@ def _build_response(
 
 
 async def _app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
-    logger.warning(
+    # Server-fault exceptions are logged at error level; client faults stay at
+    # warning so an operator's error feed is not filled with ordinary 4xx traffic.
+    log = logger.error if exc.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR else logger.warning
+    log(
         "application_error",
         error_code=exc.error_code,
         status_code=exc.status_code,
         message=exc.message,
+        # Present on exceptions that keep internal specifics out of the response
+        # body (e.g. an unknown permission identifier) but still need them logged.
+        detail=getattr(exc, "detail", None),
     )
     return _build_response(
         status_code=exc.status_code,

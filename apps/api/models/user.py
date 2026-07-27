@@ -2,9 +2,9 @@
 
 Represents an authenticated platform identity. This model deliberately carries
 *identity* only — the role column records which kind of user this is (as
-required by the storage model in ``architecture.md``) but no permission or
-access-control logic is implemented here. Authorization (RBAC) is a separate
-feature.
+required by the storage model in ``architecture.md``), but no permission or
+access-control logic lives here. What a role may do is decided by
+:mod:`core.roles`, and enforced by :mod:`services.authorization`.
 
 Users are created by administrators (a future User Management feature); there is
 no self-registration.
@@ -25,8 +25,9 @@ from db.base import Base
 class UserRole(StrEnum):
     """The three platform roles defined in ``architecture.md``.
 
-    Stored on the user record as identity metadata. Enforcement of what each
-    role may do belongs to the RBAC feature, not to authentication.
+    The canonical role definition: it is persisted on the user record, and
+    :mod:`core.roles` maps each member onto the permissions it grants. Nothing
+    outside these two modules should spell a role name as a string.
     """
 
     ADMINISTRATOR = "administrator"

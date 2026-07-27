@@ -6,11 +6,16 @@ import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
 /**
- * Access Denied — PLACEHOLDER.
+ * Unauthorized state.
  *
- * Presentational 403 state for use once Role-Based Access Control lands. No
- * authorization logic is evaluated in this spec; the component only defines the
- * shape/appearance of a denied-access screen.
+ * The screen a signed-in user sees when they lack the permission a page
+ * requires — rendered in place of the protected content by `ProtectedRoute`, and
+ * served directly at `/access-denied`.
+ *
+ * Purely presentational: it evaluates nothing itself, so the same screen serves
+ * every denial. The copy deliberately does not say *which* permission was
+ * missing (the API's 403 responses do not either) and offers a way back to a
+ * page the user can reach.
  */
 export function AccessDenied({
   title = "Access denied",

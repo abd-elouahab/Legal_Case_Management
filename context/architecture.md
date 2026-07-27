@@ -186,13 +186,42 @@ Implemented token strategy (see `context/feature-specs/03-authentication.md`):
 
 Authorization
 
-- Role-Based Access Control (RBAC). **Not yet implemented** — spec `03`
-  establishes identity only. `User.role` is persisted and exposed by
-  `GET /api/v1/auth/me`, but no endpoint is role-gated yet.
-- Users only access resources permitted by their role.
-- Lawyers can only access assigned cases.
-- Court representatives access only authorized cases.
-- Every request is validated before accessing business resources.
+Role-Based Access Control, implemented per
+`context/feature-specs/04-authorization-rbac.md`:
+
+- **Permissions are the unit of access**, not roles. Every capability is named
+  once in `core/permissions.py` as a `group:action` identifier (`cases:view`,
+  `ai:generate-report`). Enforcement code names a permission; it never branches
+  on a role.
+- **Roles map to permission sets** in `core/roles.py`. `UserRole` (persisted on
+  the user record) is the canonical role definition; `ROLE_PERMISSIONS` is the
+  only place that decides what each role may do, so policy can be refined by
+  later features without touching a single call site. Administrators hold every
+  permission by reference, so new permissions reach them automatically.
+- **A permission grants a capability, not a row.** "Lawyers can only access
+  assigned cases" and "court representatives access only authorized cases" are
+  per-resource rules layered on top of `cases:view` by Case Management.
+- **`AuthorizationService`** (`services/authorization.py`) evaluates every
+  access decision — require role / permission / any / all — in both a boolean
+  (`has_*`) and a raising (`require_*`) form. It is stateless and pure.
+- **Endpoints are guarded by reusable dependencies** (`api/authorization.py`):
+  `require_role`, `require_permission`, `require_any_permission`,
+  `require_all_permissions`. Authentication resolves first, so an anonymous
+  caller gets **401** and only an authenticated-but-unauthorized one gets
+  **403**. A 403 body never names the required role or permission; the specifics
+  go to the log (`authorization_denied`, with user id and role only).
+- **Permissions ride on the authentication context.** Every user payload
+  (`login`, `refresh`, `GET /auth/me`, `change-password`) carries the role's
+  effective `permissions`, computed rather than stored, so the client cannot
+  drift from server policy. `GET /api/v1/authorization/me` returns the caller's
+  own grants; `GET /api/v1/authorization/roles` serves the full catalog and
+  requires `users:view`.
+- **The frontend gates presentation only.** `usePermissions` / `useRole`,
+  `<Protected>`, `<ProtectedRoute>`, and the sidebar filter all evaluate the
+  same `AccessRule` shape against the server-supplied permission list. Route
+  requirements are declared once in `config/navigation.ts`, so the sidebar can
+  never offer a destination the route guard would block. None of this is a
+  security boundary — every request is authorized independently by the API.
 
 ---
 

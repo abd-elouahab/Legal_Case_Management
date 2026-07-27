@@ -8,6 +8,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useActiveRoute } from "@/hooks/use-active-route";
+import { usePermissions } from "@/hooks/use-permissions";
 import { sidebarNavigation } from "@/config/navigation";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +18,12 @@ import { cn } from "@/lib/utils";
  * Shared by both the desktop rail and the mobile drawer. Highlights the active
  * route via {@link useActiveRoute}. When `collapsed`, items render icon-only
  * with a tooltip label. `onNavigate` lets the mobile drawer close on selection.
+ *
+ * Role-aware: an item appears only when the current user satisfies the `access`
+ * rule declared for it in `config/navigation.ts`. No permission is named here —
+ * the same rules drive the route guard, so the sidebar can never offer a
+ * destination the guard would refuse. A section whose items are all hidden
+ * disappears with them, rather than leaving an empty heading behind.
  */
 export function SidebarNav({
   collapsed = false,
@@ -26,10 +33,18 @@ export function SidebarNav({
   onNavigate?: () => void;
 }) {
   const isActive = useActiveRoute();
+  const { allows } = usePermissions();
+
+  const sections = sidebarNavigation
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => item.access === undefined || allows(item.access)),
+    }))
+    .filter((section) => section.items.length > 0);
 
   return (
     <nav aria-label="Primary" className="flex flex-col gap-4">
-      {sidebarNavigation.map((section, index) => (
+      {sections.map((section, index) => (
         <div key={section.title ?? `section-${index}`} className="flex flex-col gap-1">
           {section.title && !collapsed ? (
             <p className="px-3 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">

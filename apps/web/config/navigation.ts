@@ -11,13 +11,19 @@ import {
 } from "lucide-react";
 
 import { ROUTES } from "@/lib/routes";
+import { PERMISSION, type AccessRule } from "@/types/authorization";
 
 /**
  * Navigation configuration.
  *
- * Single, reusable source for the sidebar and the breadcrumb label map. Every
- * item points at a {@link ROUTES} constant so paths stay consistent across the
- * shell.
+ * Single, reusable source for the sidebar, the breadcrumb label map, **and the
+ * per-route access rules**. Every item points at a {@link ROUTES} constant so
+ * paths stay consistent across the shell.
+ *
+ * Declaring `access` here rather than inside components is what keeps the
+ * sidebar and the route guard in agreement: an item the user cannot open is
+ * also an item they are never shown, because both read the same rule. Adding a
+ * navigation destination therefore means declaring its permission once, here.
  *
  * `title` values are placeholder copy for now. When localization (next-intl)
  * lands they become translation keys — the structure below is designed so only
@@ -33,6 +39,11 @@ export interface NavItem {
   icon: LucideIcon;
   /** Optional short description for tooltips / collapsed states. */
   description?: string;
+  /**
+   * Permission requirement for this destination. Omitted means every
+   * authenticated user may see it.
+   */
+  access?: AccessRule;
 }
 
 export interface NavSection {
@@ -53,36 +64,44 @@ export const sidebarNavigation: NavSection[] = [
         href: ROUTES.dashboard,
         icon: LayoutDashboard,
         description: "Key case metrics at a glance",
+        // The landing page for every role; its widgets gate themselves.
       },
       {
         title: "Cases",
         href: ROUTES.cases,
         icon: Scale,
         description: "Manage legal cases",
+        access: { permission: PERMISSION.casesView },
       },
       {
         title: "Documents",
         href: ROUTES.documents,
         icon: FileText,
         description: "Legal documents and files",
+        access: { permission: PERMISSION.documentsView },
       },
       {
         title: "Lawyers",
         href: ROUTES.lawyers,
         icon: Users,
         description: "Assigned lawyers",
+        // Managing who the lawyers are is an administrative capability.
+        access: { permission: PERMISSION.usersView },
       },
       {
         title: "Court Updates",
         href: ROUTES.courtUpdates,
         icon: Gavel,
         description: "Hearings and court decisions",
+        // Court activity is part of the case record, so it follows case access.
+        access: { permission: PERMISSION.casesView },
       },
       {
         title: "Reports",
         href: ROUTES.reports,
         icon: FileText,
         description: "Generated legal reports",
+        access: { permission: PERMISSION.reportsView },
       },
     ],
   },
@@ -94,18 +113,21 @@ export const sidebarNavigation: NavSection[] = [
         href: ROUTES.notifications,
         icon: Bell,
         description: "Alerts and reminders",
+        access: { permission: PERMISSION.notificationsView },
       },
       {
         title: "AI Assistant",
         href: ROUTES.aiAssistant,
         icon: Bot,
         description: "Legal document Q&A and summaries",
+        access: { permission: PERMISSION.aiChat },
       },
       {
         title: "Settings",
         href: ROUTES.settings,
         icon: Settings,
         description: "Workspace preferences",
+        access: { permission: PERMISSION.settingsView },
       },
     ],
   },
@@ -115,6 +137,23 @@ export const sidebarNavigation: NavSection[] = [
 export const navItems: NavItem[] = sidebarNavigation.flatMap(
   (section) => section.items,
 );
+
+/**
+ * Path → access rule, derived from the navigation config above.
+ *
+ * Derived rather than written out a second time: a route's requirement is
+ * declared once, on its nav item, and both the sidebar filter and the route
+ * guard read it from here. That is what makes "the sidebar hides what the guard
+ * would block" true by construction instead of by convention.
+ *
+ * Routes absent from this map carry no permission requirement — the Dashboard
+ * and the Unauthorized page itself, which every signed-in user must be able to
+ * reach.
+ */
+export const routeAccessRules: ReadonlyArray<{ path: string; access: AccessRule }> =
+  navItems
+    .filter((item): item is NavItem & { access: AccessRule } => item.access !== undefined)
+    .map((item) => ({ path: item.href, access: item.access }));
 
 /**
  * Path → label lookup used by the breadcrumb helper. Includes every navigation
