@@ -115,7 +115,7 @@ class TestRequirePermission:
     def test_has_permission_reports_without_raising(
         self, authorization: AuthorizationService, court: User
     ) -> None:
-        assert authorization.has_permission(court, Permission.CASES_UPDATE) is True
+        assert authorization.has_permission(court, Permission.CASES_UPDATE_HEARING) is True
         assert authorization.has_permission(court, Permission.AI_CHAT) is False
 
 
@@ -156,7 +156,9 @@ class TestRequireAllPermissions:
         self, authorization: AuthorizationService, court: User
     ) -> None:
         assert (
-            authorization.has_all_permissions(court, [Permission.CASES_VIEW, Permission.CASES_UPDATE])
+            authorization.has_all_permissions(
+                court, [Permission.CASES_VIEW, Permission.CASES_UPDATE_HEARING]
+            )
             is True
         )
         assert (

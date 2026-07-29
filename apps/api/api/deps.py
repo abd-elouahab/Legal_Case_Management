@@ -17,8 +17,10 @@ from core.exceptions import MissingTokenError
 from core.security import TokenPayload
 from db.session import get_db
 from models.user import User
+from repositories.case import CaseRepository
 from repositories.user import UserRepository
 from services.auth import AuthService
+from services.case import CaseService
 from services.login_throttle import LoginThrottle
 from services.token_revocation import TokenRevocationStore
 from services.user import UserService
@@ -33,6 +35,11 @@ DbSession = Annotated[Session, Depends(get_db)]
 def get_user_repository(session: DbSession) -> UserRepository:
     """Provide a request-scoped user repository."""
     return UserRepository(session)
+
+
+def get_case_repository(session: DbSession) -> CaseRepository:
+    """Provide a request-scoped case repository."""
+    return CaseRepository(session)
 
 
 def get_token_revocation_store() -> TokenRevocationStore:
@@ -65,6 +72,23 @@ def get_user_service(
 
 
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
+
+
+def get_case_service(
+    cases: Annotated[CaseRepository, Depends(get_case_repository)],
+    users: Annotated[UserRepository, Depends(get_user_repository)],
+) -> CaseService:
+    """Provide the case management service.
+
+    The user repository is injected because assignment has to check that the
+    assignee exists and holds the right role — a rule the case repository has no
+    business knowing about, and one that must not be re-implemented against a
+    second copy of the user query.
+    """
+    return CaseService(cases, users)
+
+
+CaseServiceDep = Annotated[CaseService, Depends(get_case_service)]
 
 
 def get_client_ip(request: Request) -> str | None:

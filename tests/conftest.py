@@ -19,9 +19,10 @@ os.environ.setdefault("ENABLE_DOCS", "true")
 # would otherwise spend most of their runtime deliberately hashing slowly.
 os.environ.setdefault("BCRYPT_ROUNDS", "4")
 
+import itertools
 import uuid
 from collections.abc import Callable, Iterator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -231,6 +232,61 @@ def make_user(db_session: Session):  # type: ignore[no-untyped-def]
         db_session.add(user)
         db_session.commit()
         return user
+
+    return _make
+
+
+@pytest.fixture
+def make_case(db_session: Session):  # type: ignore[no-untyped-def]
+    """Factory creating persisted cases.
+
+    Case numbers default to a per-call counter rather than a fixed string,
+    because the column is unique — a fixed default would make the second case in
+    any test fail for a reason the test is not about.
+    """
+    from models.case import Case, CasePriority, CaseStatus
+
+    counter = itertools.count(1)
+
+    def _make(
+        *,
+        case_number: str | None = None,
+        title: str = "Benali v. Societe Atlas",
+        description: str | None = None,
+        category: str | None = None,
+        status: CaseStatus = CaseStatus.OPEN,
+        priority: CasePriority = CasePriority.MEDIUM,
+        court_name: str | None = None,
+        filing_date: date | None = None,
+        next_hearing_date: date | None = None,
+        assigned_lawyer_id: uuid.UUID | None = None,
+        assigned_court_representative_id: uuid.UUID | None = None,
+        created_by: uuid.UUID | None = None,
+        created_at: datetime | None = None,
+    ) -> Case:
+        legal_case = Case(
+            id=uuid.uuid4(),
+            case_number=case_number or f"CASE-2026-{next(counter):04d}",
+            title=title,
+            description=description,
+            category=category,
+            status=status,
+            priority=priority,
+            court_name=court_name,
+            filing_date=filing_date,
+            next_hearing_date=next_hearing_date,
+            assigned_lawyer_id=assigned_lawyer_id,
+            assigned_court_representative_id=assigned_court_representative_id,
+            created_by=created_by,
+            updated_by=created_by,
+        )
+        if created_at is not None:
+            # Set explicitly so ordering tests do not depend on wall-clock gaps
+            # between rows inserted in the same millisecond.
+            legal_case.created_at = created_at
+        db_session.add(legal_case)
+        db_session.commit()
+        return legal_case
 
     return _make
 

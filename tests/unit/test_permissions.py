@@ -66,6 +66,10 @@ class TestPermissionIdentifiers:
             "cases:update",
             "cases:delete",
             "cases:assign",
+            # Added by Case Management: the row scope of `cases:view` and the
+            # narrow, court-facing half of `cases:update`.
+            "cases:view-all",
+            "cases:update-hearing",
             "documents:upload",
             "documents:view",
             "documents:update",

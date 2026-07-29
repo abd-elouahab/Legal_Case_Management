@@ -43,6 +43,17 @@ export function userRoute(userId: string): string {
   return `${ROUTES.users}/${encodeURIComponent(userId)}`;
 }
 
+/**
+ * Path to one case's details page.
+ *
+ * A function for the same reason as {@link userRoute}: the nesting under
+ * {@link ROUTES.cases} stays in this file, which is what keeps the route guard's
+ * longest-prefix match working for `/cases/{id}`.
+ */
+export function caseRoute(caseId: string): string {
+  return `${ROUTES.cases}/${encodeURIComponent(caseId)}`;
+}
+
 /** Landing route once a session exists. */
 export const DEFAULT_AUTHENTICATED_ROUTE = ROUTES.dashboard;
 

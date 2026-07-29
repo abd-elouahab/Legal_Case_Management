@@ -46,3 +46,11 @@ export const USER_ENDPOINTS = {
   detail: (id: string) => `/users/${encodeURIComponent(id)}`,
   resetPassword: (id: string) => `/users/${encodeURIComponent(id)}/reset-password`,
 } as const;
+
+/** Case management endpoint paths, relative to the version prefix. */
+export const CASE_ENDPOINTS = {
+  list: "/cases",
+  create: "/cases",
+  detail: (id: string) => `/cases/${encodeURIComponent(id)}`,
+  assignments: (id: string) => `/cases/${encodeURIComponent(id)}/assignments`,
+} as const;

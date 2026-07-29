@@ -57,6 +57,9 @@ class TestLawyer:
         "permission",
         [
             Permission.CASES_VIEW,
+            # Case Management granted this: "update assigned cases where
+            # permitted". The *assigned* half is per-resource, not a permission.
+            Permission.CASES_UPDATE,
             Permission.DOCUMENTS_VIEW,
             Permission.DOCUMENTS_UPLOAD,
             Permission.TIMELINE_VIEW,
@@ -80,6 +83,9 @@ class TestLawyer:
             Permission.CASES_CREATE,
             Permission.CASES_DELETE,
             Permission.CASES_ASSIGN,
+            # Lawyers may update the cases they are *assigned to*; the row-level
+            # half of that rule is what withholding `cases:view-all` expresses.
+            Permission.CASES_VIEW_ALL,
             Permission.DOCUMENTS_DELETE,
             Permission.SETTINGS_UPDATE,
         ],
@@ -98,9 +104,10 @@ class TestCourtRepresentative:
         "permission",
         [
             Permission.CASES_VIEW,
-            # "Trigger case status updates" — hearings and decisions ride on this
-            # until Case Management introduces a dedicated permission.
-            Permission.CASES_UPDATE,
+            # "Trigger case status updates" — narrowed by Case Management from the
+            # full `cases:update` it provisionally rode on, so a court
+            # representative can record hearings without rewriting the case.
+            Permission.CASES_UPDATE_HEARING,
             Permission.DOCUMENTS_VIEW,
             Permission.DOCUMENTS_UPLOAD,
             Permission.TIMELINE_VIEW,
@@ -120,6 +127,12 @@ class TestCourtRepresentative:
             Permission.USERS_VIEW,
             Permission.CASES_CREATE,
             Permission.CASES_ASSIGN,
+            # The full case edit, which would let them rewrite title, description,
+            # and category — the narrow `cases:update-hearing` is what they hold.
+            Permission.CASES_UPDATE,
+            # Both restricted roles are scoped to their assigned cases, which is
+            # exactly what withholding this permission expresses.
+            Permission.CASES_VIEW_ALL,
         ],
     )
     def test_has_no_reporting_ai_or_administration(self, permission: Permission) -> None:

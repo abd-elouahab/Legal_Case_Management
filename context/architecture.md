@@ -40,6 +40,12 @@
 - `apps/web` — Collaborative web application used by administrators, lawyers, and court representatives.
 - `apps/api` — Backend responsible for authentication, authorization, business logic, AI orchestration, notifications, and real-time communication.
 - `modules/cases` — Case lifecycle management, lawyer assignment, hearings, court decisions, and case timeline.
+  Implemented inside `apps/api` (`models/case.py`, `core/cases.py`,
+  `repositories/case.py`, `services/case.py`, `services/case_access.py`,
+  `api/v1/cases/`) and `apps/web` (`components/cases/`,
+  `app/(protected)/cases/`), following the layering the backend already uses
+  rather than introducing a separate deployable. Hearings, court decisions, and
+  the case timeline are later features that attach to the Case entity.
 - `modules/documents` — Document upload, OCR, indexing, versioning, and secure storage.
 - `modules/reports` — AI-generated reports, legal summaries, exports, and report history.
 - `modules/notifications` — Real-time notifications, email notifications, WhatsApp alerts, and reminder scheduling.
@@ -217,7 +223,21 @@ Role-Based Access Control, implemented per
   permission by reference, so new permissions reach them automatically.
 - **A permission grants a capability, not a row.** "Lawyers can only access
   assigned cases" and "court representatives access only authorized cases" are
-  per-resource rules layered on top of `cases:view` by Case Management.
+  per-resource rules layered on top of `cases:view`. Case Management implements
+  them in `services/case_access.py`, expressed as capabilities rather than role
+  checks:
+  - `cases:view-all` lifts the row restriction. A caller who holds it reads
+    every case; everyone else is scoped, **in the SQL query**, to the cases they
+    are assigned to as lawyer or court representative — so page totals count
+    only what the caller may access.
+  - `cases:update-hearing` is the narrow half of `cases:update`, covering the
+    court-facing fields only (court name, filing date, next hearing date, and
+    the status change that follows). Court representatives hold it instead of
+    the full `cases:update`, which matches their role description exactly.
+  - Write access is decided **per field**: `cases:update` covers the whole case,
+    `cases:update-hearing` the court fields, `cases:assign` the two assignment
+    fields. A request touching a field the caller cannot reach is refused *in
+    full* — never applied in part.
 - **`AuthorizationService`** (`services/authorization.py`) evaluates every
   access decision — require role / permission / any / all — in both a boolean
   (`has_*`) and a raising (`require_*`) form. It is stateless and pure.
@@ -241,6 +261,35 @@ Role-Based Access Control, implemented per
   security boundary — every request is authorized independently by the API.
 
 ---
+
+### Case Lifecycle
+
+Implemented per `context/feature-specs/06-case-management.md`:
+
+- A case is the platform's central entity; every later module (documents,
+  timeline, hearings, reports, AI conversations, notifications) attaches to it.
+- **Statuses:** `draft` → `open` → `in_progress` ↔ `waiting_for_hearing` →
+  `closed`, with `archived` reachable from anywhere. The legal moves are
+  declared once in `core/cases.py` (`STATUS_TRANSITIONS`) and served to clients
+  on every case as `allowed_transitions`, so the UI cannot offer a transition
+  the API would refuse. Nothing returns *to* `draft`; an archived case is
+  restored to `open`.
+- **Archiving is the soft delete.** `DELETE /cases/{id}` sets
+  `status = archived`; the row is never removed, because documents, timeline
+  entries, and audit records reference it. Archived cases stay listed and
+  searchable, exactly as the spec requires.
+- **Priority** (`low` / `medium` / `high` / `urgent`) is ordered by
+  `PRIORITY_RANK`, not by its stored value — sorting alphabetically would place
+  `urgent` below `low`. The repository builds its `ORDER BY` from that rank.
+- **Case numbers** are unique (enforced by a database index, not only by the
+  service) and generated as `CASE-YYYY-NNNN` when a request omits one. A
+  client-supplied registry number is uppercased and stored verbatim, and does
+  not disturb the generated series.
+- **Assignments** are validated against the assignee's role and status: the
+  lawyer position accepts only an active account holding the lawyer role, the
+  representative position only an active account holding the court role. An
+  unchanged assignment is not re-validated, so a case whose lawyer was later
+  deactivated stays editable.
 
 ## Invariants
 

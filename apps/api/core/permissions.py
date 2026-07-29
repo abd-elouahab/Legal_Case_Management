@@ -61,6 +61,18 @@ class Permission(StrEnum):
     CASES_UPDATE = "cases:update"
     CASES_DELETE = "cases:delete"
     CASES_ASSIGN = "cases:assign"
+    #: Lifts the per-resource restriction on ``cases:view``: the holder reads
+    #: every case, not only the ones they are assigned to. Without it,
+    #: ``cases:view`` still grants the case-viewing *capability* — it just scopes
+    #: the rows to the caller's assignments (see :mod:`services.case_access`).
+    #: Modelling "sees everything" as a capability rather than as a role check is
+    #: what lets a future supervising role be added by policy alone.
+    CASES_VIEW_ALL = "cases:view-all"
+    #: The narrow half of ``cases:update``: the court-facing fields of a case —
+    #: court name, filing date, next hearing date, and the status changes that
+    #: follow from them. Held by court representatives, whose role description is
+    #: "update hearing-related information", not "edit the case".
+    CASES_UPDATE_HEARING = "cases:update-hearing"
 
     # --- Document management ------------------------------------------------ #
     DOCUMENTS_UPLOAD = "documents:upload"

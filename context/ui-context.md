@@ -196,6 +196,70 @@ components/users/
 
 ---
 
+### Case Management
+
+Gated on the `cases:*` permissions. Every role reaches the pages; **which cases
+they see is decided per case by the API**, so a lawyer's list contains only the
+matters they are assigned to and the pagination totals count only those.
+
+The list page shows a searchable, filterable, sortable, paginated table:
+
+- Case number, title (linking to the case), and category
+- Status and priority, each as a labelled badge — never colour alone
+- Court, assigned lawyer, assigned court representative, filing date, next
+  hearing, and last updated
+- A per-row actions menu: View, Edit, Manage assignments, Archive / Restore
+
+Search matches case number, title, description, or court name,
+case-insensitively. Status, priority, assignee, court, and the filing- and
+hearing-date ranges all combine with it. Case number, priority, filing date,
+hearing date, and last updated sort in both directions. The two assignee filters
+appear only for callers who may read the user directory.
+
+Columns hide progressively on smaller screens — the assignees below `xl`, court
+and dates below `lg` — so a phone still shows what identifies a case and whether
+it needs attention.
+
+The details page groups the record the way someone working a case reads it:
+**General information**, **Assignment**, **Court information**, and **Audit
+information**, followed by dashed placeholder cards reserving the layout for
+Documents, Timeline, Notes, AI Assistant, and Reports. Those cards say plainly
+that the module is not built yet, so an empty card is never mistaken for a
+loading failure.
+
+Dialogs:
+
+- **New case** — details, category, status, priority, court, dates, and the two
+  assignments. The case number field may be left empty, which asks the API to
+  generate the next one in the series.
+- **Edit case** — the same fields without the case number, which is immutable
+  once filed; sends only what changed. The Status select offers only the moves
+  the case can legally make, taken from the server's `allowed_transitions`.
+- **Manage assignments** — assign, change, or remove the lawyer and the court
+  representative. Its own dialog because assignment is a separate capability
+  from editing the case.
+- **Archive** — a destructive confirmation that states plainly that the case is
+  *kept, not deleted*, stays searchable, and can be restored.
+
+States:
+
+- Skeleton loader matching the table's column layout while the first page loads.
+- Distinct empty states for "no cases yet" (offering *New case*) and "no results"
+  (offering *Clear filters*).
+- An error state with a retry.
+
+A user is never offered an action the API would refuse: the assignment fields are
+hidden from a caller without `cases:assign`, and Archive and Restore each name
+the permission its own request needs.
+
+Business-specific components for this area live in:
+
+```
+components/cases/
+```
+
+---
+
 ### Authentication
 
 Public authentication pages use a standalone centered layout — no sidebar or app

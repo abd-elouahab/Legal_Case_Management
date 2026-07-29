@@ -9,12 +9,143 @@ change.
 
 ## Current Goal
 
-- **Next:** awaiting the next feature specification. User Management is complete;
-  per its "Out of Scope" section, Case Management, Document Management, Timeline,
-  Notifications, OCR, AI Assistant, Reports, Dashboard, Search, and the messaging
-  integrations are each their own unit.
+- **Next:** awaiting the next feature specification. Case Management is complete;
+  per its "Out of Scope" section, Document Management, OCR, Timeline, Notes, the
+  AI Assistant, Reports, Notifications, Real-Time Synchronization, Dashboard
+  Analytics, the Search Engine, and Localization are each their own unit. All of
+  them now have a Case to attach to.
 
 ## Completed
+
+- **Case Management (spec `06-case-management.md`)** — the platform's central
+  business entity and the workflow around it, layered on the Authentication,
+  Authorization, and User Management modules already in place. No new
+  dependencies, backend or frontend.
+  - **Case entity** (`models/case.py` + migration `b7d4e21c8f36`): every field
+    the spec lists — `case_number` (unique, indexed), `title`, `description`,
+    `category`, `status`, `priority`, `court_name`, `filing_date`,
+    `next_hearing_date`, both assignments, and the four audit columns. Dates are
+    `Date`, not timestamps: a filing happens on a day, and storing an instant
+    would make the value depend on the reader's timezone. All four foreign keys
+    into `users` are `ON DELETE SET NULL` — a case with an unknown assignee is
+    recoverable, a deleted case is not.
+  - **`CaseStatus`** (`draft` / `open` / `in_progress` / `waiting_for_hearing` /
+    `closed` / `archived`) and **`CasePriority`** (`low` / `medium` / `high` /
+    `urgent`), both persisted as PostgreSQL enums.
+  - **Case utilities** (`core/cases.py`): `STATUS_TRANSITIONS` (a read-only
+    mapping, so the policy cannot be widened by mutation at runtime),
+    `can_transition`, `PRIORITY_RANK`, normalization, and case-number formatting
+    and parsing. Pure functions, unit-testable without a database.
+  - **Schemas** (`schemas/case.py`): `CaseRead` (with a **computed**
+    `allowed_transitions` so the payload cannot drift from the lifecycle rules),
+    `CaseUserSummary`, `CasePage`, `CaseCreate`, `CaseUpdate`,
+    `CaseAssignmentUpdate`, `CaseListQuery`. Immutable fields (`id`,
+    `case_number`, `created_by`, `created_at`) are **absent** from `CaseUpdate`
+    rather than validated and rejected, so there is no field to forget to guard;
+    with `extra="forbid"`, sending one is a 422.
+  - **Repository** (`repositories/case.py`): search, filtering, sorting,
+    pagination, **and the assignment scope** all execute in the database. LIKE
+    wildcards are escaped, the primary key is appended to every `ORDER BY` as a
+    tiebreaker, and priority sorts through a SQL `CASE` built from
+    `PRIORITY_RANK`.
+  - **Per-resource authorization** (`services/case_access.py`): `CaseAccessPolicy`
+    decides which cases a caller reaches and which fields they may write. Two new
+    permissions — `cases:view-all` (lifts the row restriction) and
+    `cases:update-hearing` (the court-facing fields only). This closes the open
+    question RBAC left behind.
+  - **Service** (`services/case.py`): case-number generation with retry on
+    collision, uniqueness, legal transitions, assignee role and status
+    validation, the date rule that needs the stored case, soft-delete archiving,
+    and audit fields populated from the authenticated caller rather than the
+    request.
+  - **Endpoints** (`api/v1/cases/router.py`): `GET /cases` (page, size, search,
+    status, priority, both assignees, court, two date ranges, sort_by,
+    sort_order), `GET /cases/{id}`, `POST /cases` (201), `PATCH /cases/{id}`,
+    `PATCH /cases/{id}/assignments`, `DELETE /cases/{id}` (archive, returns the
+    updated case). The assignment endpoint delegates to the same service method
+    as the general update, so neither can drift from the other.
+  - **Errors** (`core/exceptions.py`): `CaseNotFoundError` (404),
+    `DuplicateCaseNumberError` (409), `InvalidCaseTransitionError` (409, naming
+    both statuses), `InvalidAssignmentError` (422, naming the field),
+    `InvalidCaseDatesError` (422), `CaseAccessDeniedError` (403, generic body),
+    and `CaseNumberGenerationError` (500, specifics in the log only).
+  - **Logging:** `case_created`, `case_updated` (field **names** only),
+    `case_status_changed` and `case_assignment_changed` as their own events — so
+    Notifications and the Timeline can subscribe to them rather than parsing a
+    field list — plus `case_archived` and every rejection path. Case *numbers*
+    are logged, never titles, descriptions, or courts, which are
+    client-confidential.
+  - **Frontend:** `types/case.ts`, `types/case-management.ts`,
+    `lib/validation/case.ts` (form + response Zod schemas mirroring the API),
+    `lib/api/cases.ts` (typed client, snake_case ↔ camelCase in one place),
+    `hooks/use-cases.ts` (TanStack Query: list, detail, create, update, assign,
+    archive, restore), `hooks/use-case-list-query.ts`, and
+    `hooks/use-case-assignees.ts` — which reads the **User Management**
+    directory rather than adding a second "assignable users" endpoint.
+  - **UI** (`components/cases/`): `CaseList` (the container), `CaseTable`
+    (sortable headers as real buttons carrying `aria-sort`), `CaseFilters`,
+    `CasePagination`, `CaseTableSkeleton`, `CaseRowActions`, `CaseAssignee`,
+    status/priority badges, `CaseFormFieldset`, `CaseDetails`,
+    `CasePlaceholderSections`, and four dialogs — create, edit, assign, and
+    archive (an `AlertDialog`, stating plainly that the case is *kept* and stays
+    searchable). Pages at `/cases` and `/cases/[id]`. Design System components
+    only.
+  - **Placeholder sections only, as the spec requires:** dashed cards reserving
+    the case workspace's layout for Documents, Timeline, Notes, AI Assistant, and
+    Reports, each saying explicitly that the module is not built yet. No
+    functionality.
+  - **Every UI gate names a permission, never a role**, and no action the API
+    would refuse is offered: assignment fields are hidden from a caller without
+    `cases:assign`, and Archive and Restore each name the permission their own
+    request needs.
+  - **One real defect found by end-to-end verification, not by tests:**
+    sorting by priority returned **500** on PostgreSQL. The `ORDER BY` used
+    SQLAlchemy's shorthand `case({...}, value=Case.priority)`, whose keys bind as
+    `VARCHAR` — and PostgreSQL has no `case_priority = character varying`
+    operator. **The whole test suite ran on SQLite, which is untyped enough to
+    accept it**, so 269 passing case tests said nothing about it. Rewritten as a
+    searched `CASE WHEN Case.priority == …`, which binds each value with the
+    column's own type. A regression test now compiles the clause against the
+    PostgreSQL dialect and asserts no priority value is bound as a `String` —
+    verified to fail on the old form and pass on the new one, so the gap is
+    closed without needing a running database. **General lesson: the SQLite test
+    database cannot catch a PostgreSQL type mismatch; anything that builds SQL by
+    hand needs either a dialect-compiled assertion or a live check.**
+  - **Validation (live Postgres + Redis + MinIO + Qdrant, real HTTP):** 841
+    backend tests (up from 563 — 272 of them for cases) and 282 frontend tests
+    (up from 211) pass; `ruff` clean across `apps/api` and `tests`,
+    `mypy --strict` clean on `apps/api`; `tsc` and ESLint clean; the production
+    build succeeds and prerenders all 16 routes (`/cases/[id]` added alongside
+    `/users/[id]`). Migration verified on **live PostgreSQL in both directions**:
+    the upgrade creates both enum types, the table, all five indexes, and all
+    four `ON DELETE SET NULL` foreign keys; the downgrade drops the table **and
+    both enum types** (confirmed absent from `pg_type`), and a re-upgrade is
+    clean. Over HTTP against a running API: unauthenticated requests to all six
+    routes return **401** with a `WWW-Authenticate: Bearer` challenge; both
+    restricted roles get **403** on create with a body naming neither permission
+    nor role; a case number is generated (`CASE-2026-0001` → `0002` → `0003`) and
+    a registry number (`TC/2026/9999`) does not disturb the series; a duplicate
+    returns **409** and a wrongly-rolled assignee **422** naming the field; an
+    unassigned lawyer gets **403** on read while the assigned one gets 200, and
+    the list totals differ accordingly (1 / 0 / 1 / 4 for lawyer / other lawyer /
+    court / administrator); a court representative can record a hearing and a
+    status change but is refused a title edit, and a mixed update is refused **in
+    full** with both fields verified unchanged; an illegal transition returns 409
+    naming both statuses; a hearing moved before the stored filing date returns
+    422; all four immutable fields return 422; assignment grants and withdraws
+    access immediately, and a lawyer self-assigning is refused; search is
+    case-insensitive across all four fields and treats `%` literally; every
+    status and priority filter, the court substring, date ranges, and combined
+    filters return the right counts; priority sorts by urgency in both
+    directions and case numbers in issue order; pages do not overlap; archiving
+    is a soft delete that stays readable, searchable, and idempotent, and
+    restores to `open`. **Zero 5xx responses and no tracebacks in the server
+    log**; the log shows `case_created`, `case_updated`, `case_status_changed`,
+    `case_assignment_changed`, `case_archived`, `case_access_denied`, and the
+    rejection paths — with case *numbers* only, and no title, description, court,
+    password, hash, or JWT anywhere. Frontend routes: `/cases` and `/cases/[id]`
+    307 to `/login` anonymously (carrying `?next=`) and 200 with a session
+    cookie; no errors or warnings in the dev-server log.
 
 - **User Management (spec `05-user-management.md`)** — the complete administrator
   workflow for provisioning and managing accounts, layered on the identity
@@ -487,6 +618,16 @@ change.
 
 ## Open Questions
 
+- **`category` is free text, not an enumeration — product decision needed.** The
+  spec names the field but defines no set of categories, and
+  `ai-workflow-rules.md` forbids inventing business behaviour, so it is stored as
+  a trimmed string (max 100 characters) and the form offers a plain input.
+  Consequences while it stays free text: two administrators can spell the same
+  category differently, and there is no "filter by category" (the spec's filter
+  list does not include one either). Promoting it to an enum later is a migration
+  plus a `<Select>`, not a redesign. **A list of categories from product would
+  settle it.**
+
 - **"Force password change" is signalled, not enforced — product decision needed.**
   The spec asks to "support forcing password change during the next
   authentication". What is implemented: a reset sets `must_change_password`, the
@@ -507,28 +648,31 @@ change.
   mail a **single-use reset link** to the user and return nothing to the
   administrator. Worth revisiting then.
 
-- **`/users` and `/lawyers` are separate destinations — worth confirming.**
-  `ui-context.md` listed only "Lawyers", and RBAC had provisionally gated it on
-  `users:view`. User Management manages accounts across *all three* roles, so
-  labelling it "Lawyers" would misdescribe it; a new "Users" item was added and
-  `ui-context.md` updated. `/lawyers` remains a placeholder for the case-facing
-  view of lawyers and their assignments, which belongs to Case Management. **If
-  product wants a single destination, delete the `/lawyers` nav item** — the
-  sidebar and route guard follow automatically.
+- **`/lawyers` is still a placeholder, and its purpose has narrowed.** It was
+  described as "the case-facing view of lawyers and their assignments, which
+  belongs to Case Management". Case Management shipped without it, deliberately:
+  the spec's scope is the Case entity, and "who is on this case" is answered on
+  the case itself while "which cases is this lawyer on" is answered by the
+  existing `?assigned_lawyer_id=` filter on `/cases`. **What remains for
+  `/lawyers` is a per-lawyer workload view** (their caseload, upcoming hearings,
+  capacity). If product does not want one, deleting the nav item removes it from
+  the sidebar and the route guard automatically. Its provisional `users:view`
+  gate is also now wrong for that purpose and should become `cases:view`.
 
-- **Per-resource authorization is not implemented (deferred by design).** RBAC
-  answers "may this user use this capability?"; it cannot yet answer "may this
-  lawyer see *this* case", because case assignments do not exist. The spec's
-  "assigned cases only" wording is therefore only half-satisfied, and **Case
-  Management must add the ownership/assignment check on top of `cases:view`** —
-  `code-standards.md` ("verify case ownership or assignment before exposing
-  resources") makes this a requirement, not an option. Flagged here so it is not
-  mistaken for finished work.
+- **Per-resource authorization — RESOLVED by Case Management.** Implemented in
+  `services/case_access.py`: `cases:view-all` lifts the row restriction, and
+  every other holder of `cases:view` is scoped **in the SQL query** to the cases
+  they are assigned to. Applies to reading, updating, and archiving alike. See
+  the Case Management entry under Completed.
 
-- **`hearings:*` permissions are missing from the catalog.** Court
-  representatives' hearing management currently rides on `cases:update`. The
-  spec's suggested permission list has none, so none were invented. Case
-  Management should introduce them and narrow the court role accordingly.
+- **`hearings:*` permissions — RESOLVED differently than anticipated.** Court
+  representatives no longer ride on the full `cases:update`; they hold
+  `cases:update-hearing`, which reaches only the court-facing fields (court name,
+  filing date, next hearing date, status). It sits in the `cases` group rather
+  than a new `hearings` one because there is no Hearing entity yet — these are
+  fields *of a case*. **When Hearing Management ships as its own entity, a
+  `hearings:*` group belongs with it**, and `cases:update-hearing` should be
+  reviewed then.
 
 - **Baseline permissions were a judgement call.** `notifications:view` and
   `settings:view` are granted to every role even though the spec's per-role lists
@@ -659,6 +803,102 @@ change.
   elements and capture pointers; jsdom implements no layout engine and only part
   of the Pointer Events API, so they throw on mount. Nothing under test depends on
   real geometry.
+
+### Case Management (spec `06`)
+
+- **A permission grants a capability; `cases:view-all` grants the rows.** The
+  spec's "lawyers view assigned cases" is a *per-resource* rule, and RBAC
+  deliberately deferred it. Expressing "sees everything" as a capability rather
+  than as `if user.role is ADMINISTRATOR` keeps the rule out of the enforcement
+  code — a future supervising role is admitted by editing policy, and
+  `code-standards.md`'s "do not hardcode role names" holds all the way down.
+- **The scope is applied in SQL, not in Python.** Filtering after the query would
+  mean fetching the whole caseload to hide most of it, and — worse — the
+  pagination total would count cases the caller is not entitled to know exist.
+  `visibility_scope()` returns a user id or `None`, and the repository ANDs it
+  into both the page query and the count, built from the same clause.
+- **Write access is decided per field, and a partial write is never performed.**
+  `cases:update` covers the case, `cases:update-hearing` the court-facing fields,
+  `cases:assign` the two assignment fields. `FIELD_PERMISSIONS` records only the
+  *exceptions*, so a field added to `CaseUpdate` without an entry defaults to the
+  strictest rule rather than arriving ungoverned. If any one field is out of
+  reach the whole request is refused — a court representative who submits a full
+  case form must not silently have half of it applied.
+- **Court representatives were narrowed from `cases:update` to
+  `cases:update-hearing`.** RBAC had provisionally given them the full update
+  because no better permission existed; that also let them rewrite a case's title
+  and description, which their role description ("update hearing-related
+  information") does not cover. Three existing tests documenting the provisional
+  policy were updated with the reason.
+- **Lawyers gained `cases:update`,** scoped to their assigned cases by the
+  per-resource check rather than by the permission — which is exactly the shape
+  the RBAC decisions predicted.
+- **Archiving *is* the `archived` status.** A separate `deleted_at` would be a
+  second source of truth about whether a case is live, and the first bug would be
+  a case that is archived but still open. Same reasoning as User Management's
+  soft delete, and it satisfies "archived cases remain searchable" for free:
+  archived cases stay in the list and the search index because nothing filters
+  them out.
+- **Transitions are data, and the legal ones are served to the client.**
+  `STATUS_TRANSITIONS` is a read-only mapping in `core/cases.py`; `CaseRead`
+  exposes `allowed_transitions` as a **computed** field. The edit dialog renders
+  what the server sent, so the UI cannot offer a move the API is about to refuse,
+  and a policy change reaches the menu without a frontend release. Re-submitting
+  the current status is not a transition, so a form that round-trips every field
+  still saves.
+- **Priority ordering lives in `PRIORITY_RANK`, and the SQL is built from it.**
+  Sorting on the stored value gives high, low, medium, urgent — alphabetical and
+  meaningless. One definition feeds the `ORDER BY` and any future report. It must
+  be a **searched** `CASE WHEN priority = …`, not the `case({...}, value=…)`
+  shorthand: the shorthand binds its keys as `VARCHAR`, which PostgreSQL will not
+  compare to a `case_priority` column. SQLite accepts both, so only a live
+  database — or the dialect-compiled regression test now guarding it — can tell
+  them apart.
+- **Case numbers are unique in the database, not only in the service.** The
+  service checks first so a client gets a clean 409, but the generated series is
+  a read-then-write and two simultaneous creations can pick the same sequence.
+  The unique index is what actually guarantees uniqueness; the service retries
+  the `IntegrityError` (rolling back first — a failed flush leaves the session
+  unusable) up to five times before failing as a 500.
+- **A registry number cannot disturb the generated series.**
+  `case_number_sequence` only parses `CASE-YYYY-NNNN`, so filing `TC/2026/9999`
+  does not advance the platform's counter. Numbers are zero-padded, which is what
+  makes "sort by case number" chronological without a second numeric column, and
+  uppercased, so the same reference cannot be filed twice in different casings.
+- **Assignments are validated against the assignee's role and status, but only
+  when they change.** A court representative in the lawyer position would hold
+  the lawyer's access without the role that carries it. Re-validating an
+  *unchanged* assignment would make a case whose lawyer was later deactivated
+  impossible to edit in any other respect.
+- **Assignees and auditors are returned as people, not identifiers, through a
+  narrow `CaseUserSummary` — deliberately not `UserRead`.** A case is readable by
+  lawyers and court representatives, who hold no `users:view`; embedding the full
+  directory record would hand them account status, audit trail, and the
+  assignee's effective permissions through a side door.
+- **Relationships are `lazy="selectin"`.** Those names are needed on every read,
+  so a default lazy load would be one query per case per relationship — the
+  classic N+1. `selectin` batches a whole page into four extra queries whatever
+  its size, and unlike an explicit `joinedload` it cannot be forgotten at a call
+  site.
+- **403, not a concealing 404, for a case the caller may not reach.** Case ids
+  are random UUIDs, so answering honestly enables no enumeration, and a lawyer
+  following a colleague's link needs to know the case exists and that they should
+  ask to be assigned. A 404 would read as a broken link. The body stays generic —
+  it never says *which* permission or assignment would have admitted them.
+- **The assignment endpoint delegates to the one update path.**
+  `PATCH /cases/{id}/assignments` converts its body into a `CaseUpdate` and calls
+  `update_case`, so the validation, audit, and logging cannot drift from the
+  general endpoint — "do not duplicate business logic", enforced structurally.
+- **`category` is free text.** The spec names the field but defines no set of
+  categories, and inventing one is exactly what `ai-workflow-rules.md` forbids.
+  Recorded as an open question above.
+- **The status and priority *labels* live in one map each on both sides.** The
+  API sends identifiers; `CASE_STATUS_LABELS` / `CASE_PRIORITY_LABELS` render
+  them. When next-intl lands they become translation keys and nothing else moves.
+- **`refineDateOrder` is a function applied to each schema, not a generic
+  wrapper.** A `withCoherentDates<T extends ZodTypeAny>(schema)` helper erases the
+  object's output type, which silently turns `z.infer` into `any` and costs every
+  form its field typing — caught by `tsc` on the first build.
 
 ### Authorization / RBAC (spec `04`)
 

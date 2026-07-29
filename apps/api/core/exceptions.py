@@ -214,6 +214,112 @@ class SelfModificationError(AppException):
     message = "You cannot change your own role or account status."
 
 
+# --------------------------------------------------------------------------- #
+# Case management errors
+#
+# Like the user-management errors above, these are informative: the caller has
+# already proved both who they are and that they hold the matching ``cases:*``
+# capability, so naming the problem helps them fix it. The one exception is
+# :class:`CaseAccessDeniedError`, which is a *per-resource* denial and therefore
+# says as little as the 403s in the authorization section.
+# --------------------------------------------------------------------------- #
+
+
+class CaseNotFoundError(AppException):
+    """No case exists with the requested identifier."""
+
+    status_code = status.HTTP_404_NOT_FOUND
+    error_code = "case_not_found"
+    message = "Case not found."
+
+
+class DuplicateCaseNumberError(AppException):
+    """Another case already uses this case number.
+
+    409 rather than 422, for the same reason as :class:`DuplicateEmailError`: the
+    request is well-formed, and whether it can succeed depends on the current
+    state of the system rather than on the payload.
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "case_number_already_exists"
+    message = "A case with this case number already exists."
+
+
+class CaseNumberGenerationError(AppException):
+    """A unique case number could not be generated after repeated attempts.
+
+    Only reachable when concurrent creations keep colliding, which means the
+    series is contended far beyond anything expected — a systems problem, not a
+    client one, so it fails as a generic 500 with the specifics in the log.
+    """
+
+    status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+    error_code = "internal_error"
+    message = "An unexpected error occurred."
+
+    def __init__(self, *, detail: str) -> None:
+        self.detail = detail
+        super().__init__()
+
+
+class InvalidCaseTransitionError(AppException):
+    """The requested status change is not a legal move from the current status.
+
+    Names both statuses: the caller chose them, they are visible in the case they
+    just read, and being told *which* move was refused is the difference between
+    a fixable error and a mysterious one.
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "invalid_case_transition"
+    message = "This case cannot move to that status."
+
+    def __init__(self, current: str, target: str) -> None:
+        super().__init__(f"A case that is {current!r} cannot move to {target!r}.")
+
+
+class InvalidAssignmentError(AppException):
+    """The user being assigned does not exist, is disabled, or holds the wrong role.
+
+    422 rather than 404: the identifier is a *field of the request body*, so this
+    is a validation failure about the payload, not a statement that the URL's
+    resource is missing.
+    """
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    error_code = "invalid_assignment"
+    message = "The selected user cannot be assigned to this case."
+
+
+class InvalidCaseDatesError(AppException):
+    """The requested dates are not coherent with one another.
+
+    Raised by the service rather than by the schema when a PATCH moves only one
+    of the two dates: the other one is only knowable from the stored case, so the
+    request is valid in isolation and invalid against reality.
+    """
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    error_code = "invalid_case_dates"
+    message = "The next hearing date cannot be before the filing date."
+
+
+class CaseAccessDeniedError(AuthorizationError):
+    """The caller holds the capability but is not party to *this* case.
+
+    A subclass of :class:`AuthorizationError`, so it answers **403** with the
+    same generic body as every other denial — a lawyer who is refused learns
+    only that they are refused, never which permission or assignment would have
+    admitted them.
+
+    403 rather than a concealing 404 is deliberate. Case ids are random UUIDs, so
+    answering honestly does not enable enumeration, and a lawyer who follows a
+    colleague's link needs to know the case exists and that they should ask to be
+    assigned — a 404 would read as a broken link.
+    """
+
+
 class TooManyLoginAttemptsError(AppException):
     """Too many consecutive failed logins; the attempt is refused outright.
 

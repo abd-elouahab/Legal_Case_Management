@@ -46,16 +46,19 @@ BASE_PERMISSIONS: frozenset[Permission] = frozenset(
 )
 
 
-#: Lawyers work inside cases assigned to them: they read the case and its
-#: documents, contribute documents and timeline entries, and use the AI assistant
-#: to summarise and report on that material. They do not create, re-assign, or
+#: Lawyers work inside cases assigned to them: they read and update the case,
+#: contribute documents and timeline entries, and use the AI assistant to
+#: summarise and report on that material. They do not create, re-assign, or
 #: delete cases, and they do not manage users.
 #:
-#: Note that a permission grants access to a *capability*, not to every row: the
-#: "only assigned cases" half of the rule is per-resource and belongs to Case
-#: Management, which will check assignment on top of ``cases:view``.
+#: Note that a permission grants access to a *capability*, not to every row.
+#: Lawyers deliberately do **not** hold ``cases:view-all``, so Case Management
+#: scopes both ``cases:view`` and ``cases:update`` to the cases they are assigned
+#: to (see :mod:`services.case_access`). That is the "only assigned cases" half
+#: of the rule, and it is enforced per resource rather than by this list.
 _LAWYER_PERMISSIONS: frozenset[Permission] = BASE_PERMISSIONS | {
     Permission.CASES_VIEW,
+    Permission.CASES_UPDATE,
     Permission.DOCUMENTS_VIEW,
     Permission.DOCUMENTS_UPLOAD,
     Permission.TIMELINE_VIEW,
@@ -72,12 +75,15 @@ _LAWYER_PERMISSIONS: frozenset[Permission] = BASE_PERMISSIONS | {
 #: get no reporting and no AI capabilities — the role descriptions in
 #: `project-overview.md` and `architecture.md` assign neither.
 #:
-#: Hearing management has no dedicated permission yet; until Case Management
-#: introduces one it is covered by ``cases:update``, which is what "trigger case
-#: status updates" requires.
+#: They hold ``cases:update-hearing`` rather than ``cases:update``, which narrows
+#: them to the court-facing fields (court name, filing date, next hearing date,
+#: and the resulting status change) and matches the role description exactly.
+#: Case Management introduced that permission; before it existed, hearing work
+#: rode on the full ``cases:update``, which also let a court representative
+#: rewrite a case's title and description.
 _COURT_PERMISSIONS: frozenset[Permission] = BASE_PERMISSIONS | {
     Permission.CASES_VIEW,
-    Permission.CASES_UPDATE,
+    Permission.CASES_UPDATE_HEARING,
     Permission.DOCUMENTS_VIEW,
     Permission.DOCUMENTS_UPLOAD,
     Permission.TIMELINE_VIEW,

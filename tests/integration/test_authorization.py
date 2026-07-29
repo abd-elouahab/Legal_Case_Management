@@ -226,7 +226,11 @@ class TestReusableDependencies:
 
         @app.get(
             "/any-guarded",
-            dependencies=[Depends(require_any_permission(Permission.AI_CHAT, Permission.CASES_UPDATE))],
+            dependencies=[
+                Depends(
+                    require_any_permission(Permission.AI_CHAT, Permission.CASES_UPDATE_HEARING)
+                )
+            ],
         )
         def any_guarded() -> dict[str, bool]:
             return {"ok": True}
@@ -276,7 +280,7 @@ class TestReusableDependencies:
             ("/permission-guarded", UserRole.ADMINISTRATOR, 200),
             ("/permission-guarded", UserRole.LAWYER, 200),
             ("/permission-guarded", UserRole.COURT_REPRESENTATIVE, 200),
-            # any: lawyer has ai:chat, court has cases:update, both pass.
+            # any: lawyer has ai:chat, court has cases:update-hearing, both pass.
             ("/any-guarded", UserRole.LAWYER, 200),
             ("/any-guarded", UserRole.COURT_REPRESENTATIVE, 200),
             # all: only roles holding *both* reporting and document access pass.

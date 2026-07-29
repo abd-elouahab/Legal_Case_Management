@@ -140,6 +140,75 @@ export function userPagePayload(
   };
 }
 
+// --------------------------------------------------------------------------- //
+// Case Management fixtures
+// --------------------------------------------------------------------------- //
+
+/** A case assignee or auditor in the API's wire format. */
+export function caseUserPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "22222222-2222-4222-8222-222222222222",
+    full_name: "Karim Zahra",
+    email: "karim.zahra@example.com",
+    role: "lawyer" as UserRole,
+    ...overrides,
+  };
+}
+
+/**
+ * A case record in the API's wire format, as `GET /cases` returns it.
+ *
+ * `allowed_transitions` defaults to the legal moves from `open`, so a test that
+ * opens the edit dialog sees a realistic status menu without spelling it out.
+ */
+export function legalCasePayload(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "33333333-3333-4333-8333-333333333333",
+    case_number: "CASE-2026-0001",
+    title: "Benali v. Societe Atlas",
+    description: "Breach of a supply contract.",
+    category: "Commercial",
+    status: "open",
+    priority: "high",
+    court_name: "Tribunal de Commerce de Casablanca",
+    filing_date: "2026-05-10",
+    next_hearing_date: "2026-06-10",
+    assigned_lawyer_id: caseUserPayload().id,
+    assigned_court_representative_id: null,
+    assigned_lawyer: caseUserPayload(),
+    assigned_court_representative: null,
+    created_by: TEST_USER.id,
+    updated_by: TEST_USER.id,
+    creator: caseUserPayload({
+      id: TEST_USER.id,
+      full_name: TEST_USER.full_name,
+      email: TEST_USER.email,
+      role: "administrator",
+    }),
+    updater: null,
+    created_at: "2026-05-10T09:00:00Z",
+    updated_at: "2026-05-20T08:30:00Z",
+    is_archived: false,
+    allowed_transitions: ["open", "in_progress", "waiting_for_hearing", "closed", "archived"],
+    ...overrides,
+  };
+}
+
+/** A page of cases in the API's wire format. */
+export function casePagePayload(
+  items: Array<Record<string, unknown>> = [legalCasePayload()],
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    items,
+    total_records: items.length,
+    page: 1,
+    page_size: 20,
+    total_pages: 1,
+    ...overrides,
+  };
+}
+
 /** A single scripted response for one endpoint. */
 export interface RouteResponse {
   status?: number;
