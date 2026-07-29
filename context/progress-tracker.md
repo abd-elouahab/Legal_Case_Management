@@ -9,12 +9,130 @@ change.
 
 ## Current Goal
 
-- **Next:** User Management — administrator-managed creation, editing, enabling,
-  and disabling of users. RBAC has already reserved the `users:*` permissions and
-  the administrator-only `/lawyers` route, so the endpoints and UI can be gated
-  with the existing dependencies and `<ProtectedRoute>` without new plumbing.
+- **Next:** awaiting the next feature specification. User Management is complete;
+  per its "Out of Scope" section, Case Management, Document Management, Timeline,
+  Notifications, OCR, AI Assistant, Reports, Dashboard, Search, and the messaging
+  integrations are each their own unit.
 
 ## Completed
+
+- **User Management (spec `05-user-management.md`)** — the complete administrator
+  workflow for provisioning and managing accounts, layered on the identity
+  (Authentication) and capability (RBAC) systems already in place. No new
+  dependencies, backend or frontend.
+  - **User entity completed** (`models/user.py` + migration `c41d7b8e5a92`): the
+    identity-only row grew into the full entity the spec defines —
+    `first_name` / `last_name` (replacing `full_name`), `phone`, `profile_image`,
+    `status`, `must_change_password`, `created_by`, `updated_by`. Two derived
+    properties keep every existing caller working unchanged: `full_name` composes
+    the parts, and `is_active` reads `status is ACTIVE`. **No authentication code
+    was touched.**
+  - **`UserStatus`** (`active` / `inactive` / `suspended`) replaces the `is_active`
+    boolean, which could not express "suspended". `inactive` *is* the soft-delete
+    state, so there is no second "deleted" flag that could disagree with it.
+  - **User utilities** (`core/users.py`): name/email/phone normalization and
+    `split_full_name` / `compose_full_name`. Pure functions, so the same rules
+    apply through the API, through `scripts/create_user.py`, and through any
+    future import — and they are unit-testable without a request.
+  - **Schemas** (`schemas/user.py`): `UserRead` (one user shape on the wire, used
+    by both `/auth/me` and the directory), `UserCreate`, `UserUpdate`,
+    `UserListQuery`, `UserPage`, `PasswordResetResponse`. `UserUpdate.provided_fields()`
+    uses `exclude_unset`, which is what separates "leave the phone alone" from
+    `"phone": null` meaning "clear it".
+  - **Password policy extracted** to `schemas/password.py` so `schemas.auth` (a
+    user changing their own) and `schemas.user` (an administrator setting one)
+    enforce the same rules from one definition — `schemas.auth` imports `UserRead`
+    from `schemas.user`, so either importing the other directly would be a cycle.
+    `schemas.auth` re-exports `MIN_PASSWORD_LENGTH` / `NewPassword`, so existing
+    importers are unaffected.
+  - **Repository** (`repositories/user.py`): search, filtering, sorting, and
+    pagination all execute **in the database**, so a page costs the same whatever
+    the directory's size. LIKE wildcards in a search term are escaped (an
+    unescaped `%` would match everyone), and the primary key is appended to every
+    ORDER BY as a tiebreaker — without it, rows tying on a sort value (two users
+    who have never signed in) could be duplicated or skipped across pages.
+  - **Service** (`services/user.py`): the business rules no permission can
+    express — email uniqueness (case-insensitive, and an edit may re-submit its
+    own email), audit fields populated from the authenticated caller rather than
+    the request, soft delete, and password reset.
+  - **Endpoints** (`api/v1/users/router.py`): `GET /users` (page, size, search,
+    role, status, sort_by, sort_order), `GET /users/{id}`, `POST /users` (201),
+    `PATCH /users/{id}`, `DELETE /users/{id}` (soft delete, returns the updated
+    user), `POST /users/{id}/reset-password`. Each guarded by
+    `require_permission(Permission.USERS_*)`, so authorization is declared beside
+    the route and appears in OpenAPI.
+  - **Password reset** generates a 16-character password with `secrets`, stores
+    only its bcrypt hash, returns it **once** (it is never logged and cannot be
+    retrieved again), sets `must_change_password`, and revokes every session for
+    that user. Deactivation revokes sessions the same way, so a disabled user
+    loses access immediately rather than when their token expires.
+  - **Force password change:** `must_change_password` is set by a reset, carried
+    on every user payload (so a client sees it at sign-in), and cleared by
+    `PATCH /auth/change-password`.
+  - **Errors** (`core/exceptions.py`): `UserNotFoundError` (404),
+    `DuplicateEmailError` (409 — the request is well-formed; whether it can
+    succeed depends on system state), and `SelfModificationError` (400).
+  - **Self-lockout guard (a judgement call, not in the spec):** an administrator
+    may not deactivate themselves or change their own role or status. The
+    alternative is an administrator who cannot undo it — and, if they are the last
+    one, a platform recoverable only by running a script on the server. Editing
+    one's own name, phone, or avatar stays permitted, and re-submitting an
+    unchanged role is not a change, so an edit form that posts every field works.
+  - **Logging:** `user_created`, `user_updated`, `user_deactivated`,
+    `user_password_reset`, plus the rejection paths. `user_updated` records the
+    field **names** only — so an operator can see what an administrator touched
+    without an email or phone number entering the log. Verified: no password,
+    hash, JWT, email, name, or phone appears anywhere.
+  - **Frontend:** `types/user.ts` (+ `UserStatus`, `ManagedUser`, labels),
+    `types/user-management.ts` (query/payload DTOs), `lib/validation/user.ts`
+    (form + response Zod schemas mirroring the API's rules),
+    `lib/api/users.ts` (typed client, snake_case ↔ camelCase in one place),
+    `lib/format.ts` (Intl date formatting, locale pinned so SSR and client agree),
+    `hooks/use-users.ts` (TanStack Query: list, detail, create, update,
+    deactivate, activate, reset) and `hooks/use-user-list-query.ts` (search,
+    filters, sort, page).
+  - **UI** (`components/users/`): `UserDirectory` (the container), `UserTable`
+    (sortable headers as real buttons carrying `aria-sort`), `UserFilters`,
+    `UserPagination`, `UserTableSkeleton`, `UserRowActions`, `UserAvatar`,
+    role/status badges, `UserFormFieldset`, and four dialogs — create, edit,
+    deactivate (an `AlertDialog`, stating plainly that the account is *kept*),
+    and reset-password (confirm, then reveal once with a copy control). Pages at
+    `/users` and `/users/[id]`. Design System components only.
+  - **Every UI gate names a permission, never a role** (`<Protected permission=…>`),
+    so a policy change in `core/roles.py` reaches the menus with no edit. Actions
+    the API would refuse — deactivating your own account — are not offered.
+  - **Two real defects found and fixed by end-to-end verification, not by tests:**
+    (1) `proxy.ts` carried a **hand-maintained** list of protected route prefixes
+    and `/users` was missing from it, so the app shell was served to anonymous
+    visitors. The list is now *derived* from `ROUTES` minus the two public
+    routes — the previous shape failed **open** whenever someone forgot an entry.
+    A test now asserts every route in `ROUTES` is protected. (2) A stale
+    pre-existing dev server was serving `/users/[id]` as a 500; a clean restart
+    confirmed the route itself was fine.
+  - **Validation (live Postgres + Redis, real HTTP):** 563 backend tests (up from
+    377) and 211 frontend tests (up from 153) pass; `ruff`, `mypy --strict`, `tsc`,
+    and ESLint clean; production build succeeds and prerenders all 14 routes.
+    Migration verified on live Postgres in **both** directions: upgrade split five
+    existing `full_name` values into correct first/last names and mapped
+    `is_active` onto `status`; downgrade restored `full_name` and `is_active`
+    exactly and dropped the `user_status` enum type; re-upgrade clean. Over HTTP:
+    unauthenticated requests to all six routes return **401** with a
+    `WWW-Authenticate: Bearer` challenge; both restricted roles get **403** on all
+    six with a body that names neither the permission nor the role; create
+    normalizes and populates audit fields; a duplicate email returns **409**; a
+    bad phone returns **422** with the offending field named; search is
+    case-insensitive and treats `%` literally; filters combine; pagination and
+    sorting work; a partial PATCH leaves other fields alone and `"phone": null`
+    clears it; a password cannot be set through PATCH; self role-change and
+    self-deactivation are refused while editing one's own profile is allowed. Full
+    reset lifecycle verified: victim's session dies, old password stops working,
+    the temporary password signs in with `must_change_password: true`, and
+    changing the password clears the flag. Deactivation kills the live session,
+    refuses login with `account_disabled`, keeps the row readable, is idempotent,
+    and reactivation restores sign-in. OpenAPI carries a summary, description,
+    request schema, and error responses for all six endpoints. Frontend routes:
+    `/users` and `/users/[id]` 307 to `/login` anonymously and 200 with a session
+    cookie; no errors or warnings in the dev-server log.
 
 - **Authorization / RBAC (spec `04-authorization-rbac.md`)** — a centralized,
   reusable permission system layered on the identity established by
@@ -354,16 +472,49 @@ change.
 
 ## Next Up
 
-- **User Management** — administrator-managed creation, editing, enabling, and
-  disabling of users. This is why registration is deliberately absent from
-  Authentication; `scripts/create_user.py` is the interim provisioning path and
-  should be superseded by real admin endpoints + UI.
 - **Change-password UI** — the backend endpoint, API client, validation schema, and
   `useChangePassword` hook are all in place and tested, but no settings screen wires
   them to a form yet (spec `03` only required a login page). A form should also tell
   the user that other devices were signed out, using the `sessions_revoked` flag.
+  **User Management raised the stakes:** a password reset now sets
+  `must_change_password`, which every user payload carries — but with no
+  change-password screen, a user who receives a temporary password has nowhere in
+  the UI to replace it. See the open question below.
+- **Profile image upload** — `users.profile_image` stores a location and the UI
+  renders it, but nothing uploads one yet; MinIO integration belongs with Document
+  Management. Until then avatars fall back to initials, which is what nearly every
+  row shows.
 
 ## Open Questions
+
+- **"Force password change" is signalled, not enforced — product decision needed.**
+  The spec asks to "support forcing password change during the next
+  authentication". What is implemented: a reset sets `must_change_password`, the
+  flag rides on every user payload (login, refresh, `/auth/me`), and changing the
+  password clears it. What is **not** implemented: blocking API access until the
+  password is changed. Enforcing it now would lock a reset user out of the whole
+  platform, because **no change-password screen exists yet** (see Next Up) — they
+  would have a valid session and no way to satisfy the requirement. The strict
+  reading should be adopted *together with* that screen: reject every request
+  except `/auth/me` and `/auth/change-password` while the flag is set, and have
+  the client redirect on it. Flagged so this is not mistaken for finished work.
+
+- **The temporary password is returned in the API response.** With no email
+  service (out of scope), an out-of-band channel does not exist, so the
+  administrator is handed the password to relay themselves. It is shown once, only
+  its hash is stored, and it is never logged — but it does pass through the
+  administrator's browser. When Email Notifications ship, the better design is to
+  mail a **single-use reset link** to the user and return nothing to the
+  administrator. Worth revisiting then.
+
+- **`/users` and `/lawyers` are separate destinations — worth confirming.**
+  `ui-context.md` listed only "Lawyers", and RBAC had provisionally gated it on
+  `users:view`. User Management manages accounts across *all three* roles, so
+  labelling it "Lawyers" would misdescribe it; a new "Users" item was added and
+  `ui-context.md` updated. `/lawyers` remains a placeholder for the case-facing
+  view of lawyers and their assignments, which belongs to Case Management. **If
+  product wants a single destination, delete the `/lawyers` nav item** — the
+  sidebar and route guard follow automatically.
 
 - **Per-resource authorization is not implemented (deferred by design).** RBAC
   answers "may this user use this capability?"; it cannot yet answer "may this
@@ -387,9 +538,10 @@ change.
   `BASE_PERMISSIONS` in `core/roles.py` is a one-line change — the sidebar and
   route guard follow automatically. **Product confirmation would settle it.**
 
-- **No UI assigns roles to users** — deliberately out of scope for this spec.
-  `scripts/create_user.py` remains the only way to set a role until User
-  Management ships.
+- **No UI assigns roles to users — RESOLVED:** the User Management create and edit
+  dialogs assign roles, and `scripts/create_user.py` is now the bootstrap path
+  only (creating the first administrator, before an account exists to authorize
+  that call).
 
 - **Login rate limiting — RESOLVED:** implemented as a Redis-backed throttle
   (5 consecutive failures / 15-minute window → 429 for 15 minutes, per account and
@@ -422,6 +574,91 @@ change.
   reconcile `ui-context.md` down to dark-only or plan a future light theme.
 
 ## Architecture Decisions
+
+### User Management (spec `05`)
+
+- **`full_name` was split into `first_name` / `last_name`, with the display name
+  derived.** The spec's entity lists both parts, and the platform searches and
+  sorts on them independently — "sort by name" means family name in a directory.
+  Storing the composed name *as well* would let the two disagree after an edit, so
+  `User.full_name` is a property. Every existing consumer (`UserRead`, the
+  frontend's `SessionUser.name`) is unchanged, and the migration backfills by
+  splitting on the first space.
+- **`is_active` became `status`, and survives as a derived property.** A boolean
+  cannot express "suspended", and keeping both would allow a row where the two
+  disagree about whether sign-in is permitted. `User.is_active` now reads
+  `status is UserStatus.ACTIVE`, so **authentication was not modified at all** —
+  it still asks one question, and a future status cannot accidentally grant
+  sign-in.
+- **Soft delete *is* the inactive status.** A separate `deleted_at` would create a
+  second source of truth about whether an account works, and the first bug would
+  be a row that is deleted but still active. `DELETE /users/{id}` sets
+  `status = inactive`; reactivation is an ordinary `PATCH`.
+- **Deactivation and password reset revoke sessions immediately** by incrementing
+  `session_generation` — the mechanism a password change already uses. Without it
+  a user disabled for cause keeps working until their access token expires, which
+  is precisely the window an administrator is trying to close.
+- **Audit fields are populated from the authenticated caller, never from the
+  request.** `UserCreate`/`UserUpdate` use `extra="forbid"`, so a client cannot
+  supply `created_by` and claim someone else made the change. A test asserts the
+  attempt is a 422.
+- **`UserUpdate` distinguishes "omitted" from "null" via `exclude_unset`.** A
+  plain `model_dump` would send every field, so a PATCH that changed a name would
+  silently wipe the phone. The frontend mirrors this by sending a **diff**: a
+  dialog that echoed every field would also overwrite a concurrent edit by another
+  administrator with values it loaded before that edit happened.
+- **The password is absent from `UserUpdate` entirely.** Changing one must revoke
+  sessions, which is not something a profile edit should do as a side effect — so
+  it has its own endpoint, and the field does not exist to be forgotten.
+- **404 and 409 are informative, unlike the 403s.** The caller has already proved
+  both who they are and that they may manage users, so naming the problem helps
+  them fix it and reveals nothing they could not learn from the list endpoint they
+  are entitled to use. This is the opposite of the RBAC decision above, and
+  deliberately so — the two answer different questions.
+- **An administrator cannot disable or demote themselves.** Not in the spec, and
+  recorded as a judgement call: the alternative is an administrator who cannot
+  undo it and, if they are the last one, a platform recoverable only by running a
+  script on the server. Scoped as narrowly as possible — only `role` and `status`,
+  only on one's own account, and re-submitting an unchanged value is not a change.
+- **Search, filtering, sorting, and pagination run in the database.** Fetching and
+  filtering in Python would make every page cost the size of the whole directory.
+  The count is taken over the filtered set before pagination, from the same filter
+  clause, so it cannot drift from the rows when a filter is added later.
+- **Every ORDER BY ends with the primary key.** Users tying on a sort value —
+  everyone who has never signed in — would otherwise come back in an arbitrary
+  order per request, duplicating or skipping rows across page boundaries. This is
+  invisible until the directory outgrows one page.
+- **LIKE wildcards in a search term are escaped.** An unescaped `%` matches every
+  user, which reads as a broken filter rather than as the injection-shaped bug it
+  is. Verified over HTTP: searching `%` returns zero results.
+- **The list query state lives in one hook, not in the page.** `useUserListQuery`
+  owns the rule that *any* change except the page itself resets to page 1 —
+  otherwise typing a search while on page 4 requests the fourth page of a
+  two-page result and shows an empty table. Spread across individual control
+  handlers, that rule gets reintroduced as a bug.
+- **The `proxy.ts` protected-route list is derived from `ROUTES`, not written
+  out.** The hand-maintained version shipped with `/users` missing, serving the
+  app shell to anonymous visitors — a list that must be updated in lockstep with
+  every new feature fails **open** when someone forgets. A test now asserts every
+  route in `ROUTES` outside the two public ones redirects.
+- **The password policy lives in `schemas/password.py`.** `schemas.auth` imports
+  `UserRead` from `schemas.user`, so putting the shared `NewPassword` type in
+  either would be an import cycle; a third module lets both enforce one
+  definition, and `schemas.auth` re-exports it so existing importers are
+  unaffected.
+- **The user details page fetches client-side.** The access token lives in browser
+  memory only, so a server render has no credential to call the API with.
+  Authorization is unaffected: `RouteGuard` gates `/users/*` through the `/users`
+  rule by longest-prefix match, and the API authorizes the request itself.
+- **`useWatch` rather than `watch()` in the dialogs.** `watch()` returns a
+  function the React Compiler cannot memoize, so it skips the whole component;
+  `useWatch` is a real hook and additionally limits re-renders to the named fields
+  instead of every keystroke.
+- **jsdom polyfills were added to `tests/setup.ts`** (`ResizeObserver`, pointer
+  capture, `scrollIntoView`). Radix's Select, Checkbox, and Dropdown Menu measure
+  elements and capture pointers; jsdom implements no layout engine and only part
+  of the Pointer Events API, so they throw on mount. Nothing under test depends on
+  real geometry.
 
 ### Authorization / RBAC (spec `04`)
 
@@ -722,14 +959,38 @@ blocking its validation):
 
 ## Session Notes
 
-- **Creating users (no self-registration).** From `apps/api`:
+- **Creating users.** Day to day, use the **Users** page (`/users`) or
+  `POST /api/v1/users` — there is no self-registration. `scripts/create_user.py`
+  is the **bootstrap** path, for the first administrator (before any account
+  exists to authorize that call) or to recover from a total lockout. From
+  `apps/api`:
   ```
   python -m scripts.create_user --email admin@example.com --name "Amina Benali" \
       --role administrator          # omit --password to be prompted securely
   ```
-  Roles: `administrator` | `lawyer` | `court`. Re-running for an existing email
-  updates that account (including resetting the password). Note that
+  Roles: `administrator` | `lawyer` | `court`. `--name` is split on the first
+  space into first/last name. Re-running for an existing email updates that
+  account, resets its password, and **revokes its sessions** (an out-of-band
+  credential change must end sessions holding the old one). Note that
   `email-validator` rejects `.local`/`.test` domains, so use a real-looking domain.
+- **User Management test strategy:** the same no-Docker approach as auth —
+  `tests/unit/test_user_service.py` runs the *real* repository against SQLite
+  in-memory, so search/sort/pagination SQL is exercised without a container, while
+  `tests/integration/test_users.py` drives the endpoints over HTTP through
+  `api_client`. The `make_user` fixture accepts `first_name`/`last_name`,
+  `status` (or the `is_active` shorthand), `phone`, `last_login_at`, and an
+  explicit `created_at` — the last so ordering tests do not depend on wall-clock
+  gaps between rows inserted in the same millisecond.
+- **Frontend Radix components need jsdom polyfills**, now in `tests/setup.ts`
+  (`ResizeObserver`, `hasPointerCapture`/`setPointerCapture`/`releasePointerCapture`,
+  `scrollIntoView`). Without them Select and Checkbox throw on mount or on click.
+  Any future test rendering a Radix primitive inherits these for free.
+- **Watch out for a stale `next dev` server.** A dev server left running from an
+  earlier session serves its old compilation and reports new routes as 500s.
+  `Get-NetTCPConnection -LocalPort 3000 -State Listen` finds the owning PID; kill
+  it and restart before concluding a route is broken. The same applies to
+  `uvicorn` on 8000 — bind failures are logged and the process exits, so requests
+  silently hit the *other* server.
 - **Auth test strategy:** backend auth tests need **no Docker** — `tests/conftest.py`
   overrides `get_db` with SQLite in-memory, and `get_token_revocation_store` /
   `get_login_throttle` with in-memory doubles, and forces `BCRYPT_ROUNDS=4`

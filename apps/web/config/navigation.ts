@@ -8,6 +8,7 @@ import {
   Scale,
   Settings,
   Users,
+  UsersRound,
 } from "lucide-react";
 
 import { ROUTES } from "@/lib/routes";
@@ -81,11 +82,20 @@ export const sidebarNavigation: NavSection[] = [
         access: { permission: PERMISSION.documentsView },
       },
       {
+        title: "Users",
+        href: ROUTES.users,
+        icon: UsersRound,
+        description: "Platform accounts and roles",
+        // User Management: administrators only, by capability rather than role.
+        access: { permission: PERMISSION.usersView },
+      },
+      {
         title: "Lawyers",
         href: ROUTES.lawyers,
         icon: Users,
         description: "Assigned lawyers",
-        // Managing who the lawyers are is an administrative capability.
+        // Case-facing view of lawyers and their assignments (a later feature).
+        // Distinct from Users, which manages accounts across all three roles.
         access: { permission: PERMISSION.usersView },
       },
       {

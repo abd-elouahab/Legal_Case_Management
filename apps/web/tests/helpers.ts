@@ -51,6 +51,7 @@ export const TEST_USER = {
   role: "administrator" as const,
   is_active: true,
   permissions: ROLE_PERMISSIONS.administrator,
+  must_change_password: false,
   last_login_at: null,
   created_at: "2026-07-01T09:00:00Z",
 };
@@ -61,6 +62,7 @@ export const TEST_SESSION_USER: SessionUser = {
   name: TEST_USER.full_name,
   role: TEST_USER.role,
   permissions: TEST_USER.permissions,
+  mustChangePassword: false,
 };
 
 /** A signed-in user with the grants their role actually carries. */
@@ -85,8 +87,57 @@ export function tokenResponse(overrides: Record<string, unknown> = {}) {
   };
 }
 
-export function errorEnvelope(code: string, message = "Something went wrong.") {
-  return { error: code, message, request_id: "req-1", details: [] };
+export function errorEnvelope(
+  code: string,
+  message = "Something went wrong.",
+  details: Array<{ field?: string | null; message: string }> = [],
+) {
+  return { error: code, message, request_id: "req-1", details };
+}
+
+// --------------------------------------------------------------------------- //
+// User Management fixtures
+// --------------------------------------------------------------------------- //
+
+/** A user record in the API's wire format, as `GET /users` returns it. */
+export function managedUserPayload(overrides: Record<string, unknown> = {}) {
+  const role = (overrides.role as UserRole | undefined) ?? "lawyer";
+
+  return {
+    id: "11111111-1111-4111-8111-111111111111",
+    email: "karim.zahra@example.com",
+    first_name: "Karim",
+    last_name: "Zahra",
+    full_name: "Karim Zahra",
+    phone: "+212 612345678",
+    profile_image: null,
+    role,
+    status: "active",
+    is_active: true,
+    must_change_password: false,
+    last_login_at: "2026-07-20T08:30:00Z",
+    created_at: "2026-07-01T09:00:00Z",
+    updated_at: "2026-07-20T08:30:00Z",
+    created_by: TEST_USER.id,
+    updated_by: TEST_USER.id,
+    permissions: ROLE_PERMISSIONS[role],
+    ...overrides,
+  };
+}
+
+/** A page of users in the API's wire format. */
+export function userPagePayload(
+  items: Array<Record<string, unknown>> = [managedUserPayload()],
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    items,
+    total_records: items.length,
+    page: 1,
+    page_size: 20,
+    total_pages: 1,
+    ...overrides,
+  };
 }
 
 /** A single scripted response for one endpoint. */

@@ -187,9 +187,14 @@ def throttle() -> InMemoryLoginThrottle:
 
 @pytest.fixture
 def make_user(db_session: Session):  # type: ignore[no-untyped-def]
-    """Factory creating persisted users with a known password."""
+    """Factory creating persisted users with a known password.
+
+    ``is_active`` is accepted as a convenience because most tests only care
+    whether an account can sign in; it maps onto the ``status`` column, which is
+    the real field. Pass ``status`` directly to build a suspended account.
+    """
     from core.security import hash_password
-    from models.user import User, UserRole
+    from models.user import User, UserRole, UserStatus
 
     def _make(
         *,
@@ -197,18 +202,32 @@ def make_user(db_session: Session):  # type: ignore[no-untyped-def]
         # rejects, so fixtures use a domain that passes EmailStr validation.
         email: str = "amina.benali@example.com",
         password: str = "correct-horse-battery",
-        full_name: str = "Amina Benali",
+        first_name: str = "Amina",
+        last_name: str = "Benali",
+        phone: str | None = None,
         role: UserRole = UserRole.ADMINISTRATOR,
         is_active: bool = True,
+        status: UserStatus | None = None,
+        must_change_password: bool = False,
+        last_login_at: datetime | None = None,
+        created_at: datetime | None = None,
     ) -> User:
         user = User(
             id=uuid.uuid4(),
             email=email.lower(),
-            full_name=full_name,
+            first_name=first_name,
+            last_name=last_name,
+            phone=phone,
             role=role,
-            is_active=is_active,
+            status=status or (UserStatus.ACTIVE if is_active else UserStatus.INACTIVE),
+            must_change_password=must_change_password,
+            last_login_at=last_login_at,
             hashed_password=hash_password(password),
         )
+        if created_at is not None:
+            # Set explicitly so ordering tests do not depend on wall-clock gaps
+            # between rows inserted in the same millisecond.
+            user.created_at = created_at
         db_session.add(user)
         db_session.commit()
         return user

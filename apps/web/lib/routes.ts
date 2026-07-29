@@ -20,6 +20,7 @@ export const ROUTES = {
   dashboard: "/dashboard",
   cases: "/cases",
   documents: "/documents",
+  users: "/users",
   lawyers: "/lawyers",
   courtUpdates: "/court",
   reports: "/reports",
@@ -30,6 +31,17 @@ export const ROUTES = {
 
 export type RouteKey = keyof typeof ROUTES;
 export type RoutePath = (typeof ROUTES)[RouteKey];
+
+/**
+ * Path to one user's details page.
+ *
+ * A function rather than a template literal at the call site, so the nesting
+ * under {@link ROUTES.users} stays in this file — which is also what keeps the
+ * route guard's longest-prefix match working for `/users/{id}`.
+ */
+export function userRoute(userId: string): string {
+  return `${ROUTES.users}/${encodeURIComponent(userId)}`;
+}
 
 /** Landing route once a session exists. */
 export const DEFAULT_AUTHENTICATED_ROUTE = ROUTES.dashboard;

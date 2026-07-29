@@ -29,7 +29,7 @@ from api.authorization import (
 from core.config import settings
 from core.permissions import ALL_PERMISSIONS, Permission, sort_permissions
 from core.roles import ROLE_PERMISSIONS, permissions_for_role
-from models.user import User, UserRole
+from models.user import User, UserRole, UserStatus
 from tests.helpers import expired_access_token
 
 PASSWORD = "correct-horse-battery"
@@ -323,7 +323,7 @@ class TestReusableDependencies:
         user = make_user(email="disabled@example.com", password=PASSWORD, role=UserRole.ADMINISTRATOR)
         headers = bearer(token_for(api_client, "disabled@example.com"))
 
-        user.is_active = False
+        user.status = UserStatus.INACTIVE
         db_session.commit()
 
         response = guarded_client.get("/role-guarded", headers=headers)

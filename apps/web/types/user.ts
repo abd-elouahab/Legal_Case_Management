@@ -11,6 +11,13 @@ import type { Permission } from "@/types/authorization";
 export const USER_ROLES = ["administrator", "lawyer", "court"] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
+/**
+ * Account lifecycle states. Only `active` may sign in; `inactive` is also the
+ * soft-delete state, and `suspended` marks an account blocked pending review.
+ */
+export const USER_STATUSES = ["active", "inactive", "suspended"] as const;
+export type UserStatus = (typeof USER_STATUSES)[number];
+
 export interface SessionUser {
   id: string;
   name: string;
@@ -24,8 +31,43 @@ export interface SessionUser {
    * authority — this list decides what is *shown*, never what is *allowed*.
    */
   permissions: readonly Permission[];
+  /**
+   * Whether an administrator reset this user's password, so they must choose a
+   * new one before continuing.
+   */
+  mustChangePassword: boolean;
   /** Optional avatar URL; the UI falls back to initials when absent. */
   avatarUrl?: string;
+}
+
+/**
+ * A user record as shown in the administrative directory.
+ *
+ * Richer than {@link SessionUser}, which describes only *the signed-in user*.
+ * This is what `GET /users` and `GET /users/{id}` return: the full profile, the
+ * account's lifecycle state, and the audit trail.
+ */
+export interface ManagedUser {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  /** Display name, composed by the API from the name parts. */
+  fullName: string;
+  phone: string | null;
+  profileImage: string | null;
+  role: UserRole;
+  status: UserStatus;
+  /** Whether the account may authenticate (`status === "active"`). */
+  isActive: boolean;
+  mustChangePassword: boolean;
+  /** ISO-8601 timestamps, formatted for display at the point of use. */
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string | null;
+  updatedBy: string | null;
+  permissions: readonly Permission[];
 }
 
 /** Human-readable role labels (future: i18n keys). */
@@ -33,4 +75,11 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   administrator: "Administrator",
   lawyer: "Lawyer",
   court: "Court Representative",
+};
+
+/** Human-readable status labels (future: i18n keys). */
+export const STATUS_LABELS: Record<UserStatus, string> = {
+  active: "Active",
+  inactive: "Inactive",
+  suspended: "Suspended",
 };

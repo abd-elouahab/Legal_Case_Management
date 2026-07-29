@@ -7,6 +7,6 @@ used in tests.
 
 from __future__ import annotations
 
-from models.user import User, UserRole
+from models.user import User, UserRole, UserStatus
 
-__all__ = ["User", "UserRole"]
+__all__ = ["User", "UserRole", "UserStatus"]

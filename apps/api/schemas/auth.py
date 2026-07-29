@@ -7,37 +7,25 @@ so routes stay thin and validation errors are consistent.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
-from core.security import BCRYPT_MAX_PASSWORD_BYTES
+from core.users import normalize_email
+from schemas.password import MIN_PASSWORD_LENGTH, NewPassword, validate_password_bytes
 from schemas.user import UserRead
 
-#: Minimum password length. Applies to new passwords; login only checks presence
-#: so that an existing (possibly shorter, legacy) password can still sign in.
-MIN_PASSWORD_LENGTH = 8
-
-
-def _validate_password_bytes(value: str) -> str:
-    """Reject passwords bcrypt cannot hash without silently truncating them.
-
-    ``max_length`` counts characters, but bcrypt's limit is 72 *bytes*, so a
-    short string of multi-byte characters can still exceed it.
-    """
-    if len(value.encode("utf-8")) > BCRYPT_MAX_PASSWORD_BYTES:
-        raise ValueError(f"Password must not exceed {BCRYPT_MAX_PASSWORD_BYTES} bytes when UTF-8 encoded.")
-    return value
-
-
-#: A password being *set* — length-checked at both ends.
-NewPassword = Annotated[
-    str,
-    Field(
-        min_length=MIN_PASSWORD_LENGTH,
-        max_length=BCRYPT_MAX_PASSWORD_BYTES,
-        description=f"At least {MIN_PASSWORD_LENGTH} characters.",
-    ),
+#: Re-exported so existing importers (``scripts.create_user``, the test suite)
+#: keep a single, stable import site for the password policy.
+__all__ = [
+    "MIN_PASSWORD_LENGTH",
+    "ChangePasswordRequest",
+    "ChangePasswordResponse",
+    "LoginRequest",
+    "MessageResponse",
+    "NewPassword",
+    "RefreshRequest",
+    "TokenResponse",
 ]
 
 
@@ -55,7 +43,7 @@ class LoginRequest(BaseModel):
     @classmethod
     def _normalize_email(cls, value: str) -> str:
         """Lowercase and trim so logins are case-insensitive."""
-        return value.strip().lower()
+        return normalize_email(value)
 
 
 class RefreshRequest(BaseModel):
@@ -84,7 +72,7 @@ class ChangePasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def _check_new_password_bytes(cls, value: str) -> str:
-        return _validate_password_bytes(value)
+        return validate_password_bytes(value)
 
     @model_validator(mode="after")
     def _require_new_password_differs(self) -> ChangePasswordRequest:

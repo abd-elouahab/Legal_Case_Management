@@ -31,6 +31,7 @@ function toSessionUser(payload: {
   full_name: string;
   role: SessionUser["role"];
   permissions: readonly Permission[];
+  must_change_password: boolean;
 }): SessionUser {
   return {
     id: payload.id,
@@ -40,6 +41,7 @@ function toSessionUser(payload: {
     // Carried straight through: the API computes the role's permissions, so the
     // client never derives them and cannot disagree with the server.
     permissions: payload.permissions,
+    mustChangePassword: payload.must_change_password,
   };
 }
 

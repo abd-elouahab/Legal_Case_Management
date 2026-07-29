@@ -38,3 +38,11 @@ export const AUTH_ENDPOINTS = {
   me: "/auth/me",
   changePassword: "/auth/change-password",
 } as const;
+
+/** User management endpoint paths, relative to the version prefix. */
+export const USER_ENDPOINTS = {
+  list: "/users",
+  create: "/users",
+  detail: (id: string) => `/users/${encodeURIComponent(id)}`,
+  resetPassword: (id: string) => `/users/${encodeURIComponent(id)}/reset-password`,
+} as const;

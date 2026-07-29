@@ -21,19 +21,25 @@ import { DEFAULT_AUTHENTICATED_ROUTE, ROUTES } from "@/lib/routes";
  *   boundary that actually protects data.
  */
 
-/** Routes that require a session. */
-const PROTECTED_PREFIXES = [
-  ROUTES.dashboard,
-  ROUTES.cases,
-  ROUTES.documents,
-  ROUTES.lawyers,
-  ROUTES.courtUpdates,
-  ROUTES.reports,
-  ROUTES.notifications,
-  ROUTES.aiAssistant,
-  ROUTES.settings,
-  ROUTES.accessDenied,
-];
+/**
+ * Routes reachable without a session.
+ *
+ * `/` is listed because it is handled separately below — it redirects by session
+ * state rather than requiring one.
+ */
+const PUBLIC_ROUTES: readonly string[] = [ROUTES.home, ROUTES.login];
+
+/**
+ * Routes that require a session: **everything else in {@link ROUTES}**.
+ *
+ * Derived rather than listed, so adding a route to `ROUTES` protects it
+ * automatically. The previous hand-maintained list had to be updated in lockstep
+ * with every new feature, and silently served the app shell to anonymous
+ * visitors whenever someone forgot — which is a failure mode that fails *open*.
+ */
+const PROTECTED_PREFIXES: readonly string[] = Object.values(ROUTES).filter(
+  (route) => !PUBLIC_ROUTES.includes(route),
+);
 
 /** Public routes an authenticated user should not land on. */
 const AUTH_ONLY_PREFIXES = [ROUTES.login];

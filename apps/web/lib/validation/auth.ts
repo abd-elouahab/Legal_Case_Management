@@ -98,6 +98,11 @@ export const userResponseSchema = z.object({
         (PERMISSIONS as readonly string[]).includes(value),
       ),
     ),
+  /**
+   * Set after an administrator resets the password. Defaults to `false` so a
+   * payload from an older backend still parses.
+   */
+  must_change_password: z.boolean().default(false),
   last_login_at: z.string().nullable().optional(),
   created_at: z.string().optional(),
 });

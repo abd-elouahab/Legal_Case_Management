@@ -14,7 +14,7 @@ import pytest
 from core.exceptions import AuthorizationConfigurationError, AuthorizationError
 from core.permissions import ALL_PERMISSIONS, Permission
 from core.roles import UserRole, permissions_for_role
-from models.user import User
+from models.user import User, UserStatus
 from services.authorization import AuthorizationService
 
 
@@ -23,9 +23,10 @@ def make_user(role: UserRole) -> User:
     return User(
         id=uuid.uuid4(),
         email=f"{role.value}@example.com",
-        full_name="Test User",
+        first_name="Test",
+        last_name="User",
         role=role,
-        is_active=True,
+        status=UserStatus.ACTIVE,
         hashed_password="not-used",
     )
 

@@ -59,7 +59,24 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/health)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8000/api/v1/authorization/me)",
       "Bash(PATH=__TRACKED_VAR__/.venv/Scripts:__TRACKED_VAR__ bash C:/Users/ADMINI~1/AppData/Local/Temp/claude/d--Legal-Case-Management-Platform/ff13db08-af58-4403-91c1-25e049cf7073/scratchpad/verify_rbac.sh)",
-      "Bash(.venv/Scripts/python.exe -c \"import sys,json;d=json.load\\(sys.stdin\\);print\\('permissions in /auth/me:',len\\(d['permissions']\\)\\)\")"
+      "Bash(.venv/Scripts/python.exe -c \"import sys,json;d=json.load\\(sys.stdin\\);print\\('permissions in /auth/me:',len\\(d['permissions']\\)\\)\")",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/unit/test_user_utils.py tests/unit/test_user_schemas.py tests/unit/test_user_service.py -q)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/integration/test_users.py -q)",
+      "Bash(.venv/Scripts/python.exe -m pytest --collect-only -q)",
+      "PowerShell(.venv\\\\Scripts\\\\python.exe -m pytest --collect-only -q 2>$null)",
+      "Bash(../../.venv/Scripts/python.exe -m alembic current)",
+      "Bash(../../.venv/Scripts/python.exe -m alembic upgrade head)",
+      "Bash(../../.venv/Scripts/python.exe -m alembic downgrade -1)",
+      "Bash(../../.venv/Scripts/python.exe -m uvicorn main:app --port 8000)",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(curl -s http://localhost:8000/ready)",
+      "Bash(../../.venv/Scripts/python.exe -m scripts.create_user --email admin@example.com --name \"Amina Benali\" --role administrator --password \"correct-horse-battery\")",
+      "Bash(../../.venv/Scripts/python.exe -m uvicorn main:app --port 8100)",
+      "Bash(curl -s http://localhost:8100/health)",
+      "Bash(curl -s http://localhost:8100/openapi.json)",
+      "Bash(python -c ' *)",
+      "Bash(grep -iA20 \"error\\\\|⨯\")",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Write-Output \"killing PID $_\"; Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }; Start-Sleep -Seconds 2; Write-Output \"done\")"
     ]
   }
 }

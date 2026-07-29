@@ -15,6 +15,7 @@ current and the failure modes explicit.
 from __future__ import annotations
 
 import hmac
+import secrets
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -30,6 +31,17 @@ from core.config import settings
 # that, so longer passwords must be rejected rather than truncated (truncation
 # would make two different passwords equivalent).
 BCRYPT_MAX_PASSWORD_BYTES: Final[int] = 72
+
+#: Length of an administrator-generated temporary password. Long enough that it
+#: cannot be guessed within the short window before the user must replace it.
+TEMPORARY_PASSWORD_LENGTH: Final[int] = 16
+
+#: Alphabet for temporary passwords. Excludes characters that are easy to confuse
+#: when a password is read out or copied by hand (0/O, 1/l/I) and quoting-hostile
+#: shell metacharacters, since these are transcribed by a human at least once.
+_TEMPORARY_PASSWORD_ALPHABET: Final[str] = (
+    "ABCDEFGHJKLMNPQRSTUVWXYZ" "abcdefghijkmnopqrstuvwxyz" "23456789" "-_@#%+=?"
+)
 
 
 class TokenType(StrEnum):
@@ -124,6 +136,19 @@ def verify_password(password: str, hashed_password: str) -> bool:
 def hashes_equal(left: str, right: str) -> bool:
     """Constant-time comparison of two hash strings."""
     return hmac.compare_digest(left, right)
+
+
+def generate_temporary_password(length: int = TEMPORARY_PASSWORD_LENGTH) -> str:
+    """Generate a single-use password for an administrator-initiated reset.
+
+    Uses :mod:`secrets`, not :mod:`random`: the value is a credential, and a
+    predictable PRNG would make every reset password guessable from any other.
+
+    The result is returned to the administrator exactly once (only its hash is
+    stored) and the account is flagged ``must_change_password``, so the value is
+    expected to live only as long as it takes to hand it to the user.
+    """
+    return "".join(secrets.choice(_TEMPORARY_PASSWORD_ALPHABET) for _ in range(length))
 
 
 # --------------------------------------------------------------------------- #

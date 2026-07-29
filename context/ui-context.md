@@ -130,6 +130,7 @@ Navigation:
 - Dashboard
 - Cases
 - Documents
+- Users
 - Lawyers
 - Court Updates
 - Reports
@@ -138,6 +139,60 @@ Navigation:
 - Settings
 
 The active page is clearly highlighted.
+
+**Users** is the administrator's account directory (User Management): it manages
+accounts across all three roles — creating, editing, deactivating, and resetting
+passwords. **Lawyers** is the case-facing view of lawyers and their assignments,
+and belongs to Case Management. They are separate destinations because they
+answer different questions ("who has an account?" versus "who is on this case?").
+
+Each item declares its own permission requirement, so the sidebar shows only what
+the current role may open. Items a user cannot reach are hidden, and a section
+whose items are all hidden disappears with them.
+
+---
+
+### User Management
+
+Administrator-only, gated on the `users:*` permissions.
+
+The list page shows a searchable, filterable, sortable, paginated table:
+
+- Avatar (initials when no profile image), full name, and phone
+- Email
+- Role and status, each as a labelled badge — never colour alone
+- Last sign-in and created date
+- A per-row actions menu: View, Edit, Reset Password, Activate / Deactivate
+
+Search matches first name, last name, or email, case-insensitively. Role and
+status filters combine with it. Columns sort in both directions.
+
+Dialogs:
+
+- **Add user** — personal details, contact, initial password, role, status, and
+  an option to require a password change at first sign-in.
+- **Edit user** — the same fields without the password; sends only what changed.
+- **Deactivate** — a destructive confirmation that states plainly that the
+  account is *kept, not deleted*, that the user is signed out everywhere, and
+  that it can be reactivated.
+- **Reset password** — confirms, then reveals the generated password once, with
+  a copy control, because the server does not store it and cannot show it again.
+
+States:
+
+- Skeleton loader matching the table's column layout while the first page loads.
+- Distinct empty states for "no users yet" (offering *Add user*) and "no results"
+  (offering *Clear filters*).
+- An error state with a retry.
+
+An administrator is never offered actions on their own account that the API
+refuses — deactivating themselves, or changing their own role or status.
+
+Business-specific components for this area live in:
+
+```
+components/users/
+```
 
 ---
 

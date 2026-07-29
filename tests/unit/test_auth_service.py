@@ -15,7 +15,7 @@ from core.exceptions import (
     TokenExpiredError,
 )
 from core.security import TokenType, create_access_token, decode_token, verify_password
-from models.user import User, UserRole
+from models.user import User, UserRole, UserStatus
 from services.auth import AuthService, TokenPair
 from tests.helpers import expired_access_token
 
@@ -153,7 +153,7 @@ class TestRefresh:
         user = make_user(password=PASSWORD)
         _, tokens = auth_service.login(user.email, PASSWORD)
 
-        user.is_active = False
+        user.status = UserStatus.INACTIVE
         db_session.commit()
 
         with pytest.raises(InactiveAccountError):

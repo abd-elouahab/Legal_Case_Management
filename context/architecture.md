@@ -44,6 +44,10 @@
 - `modules/reports` — AI-generated reports, legal summaries, exports, and report history.
 - `modules/notifications` — Real-time notifications, email notifications, WhatsApp alerts, and reminder scheduling.
 - `modules/users` — Administrator, lawyer, and court representative management.
+  Implemented inside `apps/api` (`services/user.py`, `repositories/user.py`,
+  `api/v1/users/`) and `apps/web` (`components/users/`, `app/(protected)/users/`),
+  following the layering the backend already uses rather than introducing a
+  separate deployable.
 - `modules/localization` — Arabic and French translations, language switching, and RTL support.
 - `services/ai` — Retrieval-Augmented Generation (RAG), semantic search, summarization, information extraction, report generation, compliance checking, and multilingual AI services.
 - `services/workers` — Background workers responsible for OCR, embeddings, indexing, notifications, and scheduled tasks.
@@ -182,7 +186,20 @@ Implemented token strategy (see `context/feature-specs/03-authentication.md`):
   credentials are verified, and a successful sign-in clears the counters. The
   per-IP counter derives the address from `X-Forwarded-For` only when the app is
   configured to trust a reverse proxy.
-- Accounts are provisioned by administrators; there is **no self-registration**.
+- Accounts are provisioned by administrators through the User Management API
+  (`POST /api/v1/users`); there is **no self-registration**.
+  `scripts/create_user.py` remains the **bootstrap** path only — it creates the
+  first administrator, before any account exists to authorize that call.
+- **Account status, not a boolean, decides who may sign in.** `users.status` is
+  `active` | `inactive` | `suspended`; only `active` authenticates.
+  `User.is_active` is a derived property over it, so authentication has a single
+  question to ask and the two can never disagree.
+- **Administrator-initiated password reset** (`POST /users/{id}/reset-password`)
+  generates a temporary password with a cryptographic RNG, stores only its hash,
+  returns it once in the response, flags the account `must_change_password`, and
+  revokes every session for that user via the same `session_generation` counter.
+  Deactivating an account revokes its sessions the same way, so a disabled user
+  loses access immediately rather than when their access token expires.
 
 Authorization
 

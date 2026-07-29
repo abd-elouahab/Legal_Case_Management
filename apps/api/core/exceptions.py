@@ -170,6 +170,50 @@ class InvalidPasswordError(AppException):
     message = "Current password is incorrect."
 
 
+# --------------------------------------------------------------------------- #
+# User management errors
+#
+# Unlike the authentication errors above, these are *administrative* responses:
+# the caller has already proved both who they are and that they may manage users,
+# so naming the problem helps them fix it and reveals nothing they could not
+# discover through the list endpoint they are entitled to use.
+# --------------------------------------------------------------------------- #
+
+
+class UserNotFoundError(AppException):
+    """No user exists with the requested identifier."""
+
+    status_code = status.HTTP_404_NOT_FOUND
+    error_code = "user_not_found"
+    message = "User not found."
+
+
+class DuplicateEmailError(AppException):
+    """Another account already uses this email address.
+
+    409 rather than 422: the request is well-formed, and whether it can succeed
+    depends on the current state of the system rather than on the payload.
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "email_already_exists"
+    message = "A user with this email address already exists."
+
+
+class SelfModificationError(AppException):
+    """An administrator tried to disable or demote their own account.
+
+    Not in the spec's error list, but the alternative is an administrator who can
+    lock themselves — and, if they are the last one, the whole platform — out of
+    user management, recoverable only by running ``scripts/create_user.py`` on the
+    server. Every other account remains fully manageable.
+    """
+
+    status_code = status.HTTP_400_BAD_REQUEST
+    error_code = "cannot_modify_own_account"
+    message = "You cannot change your own role or account status."
+
+
 class TooManyLoginAttemptsError(AppException):
     """Too many consecutive failed logins; the attempt is refused outright.
 

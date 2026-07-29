@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from core.config import settings
-from models.user import User, UserRole
+from models.user import User, UserRole, UserStatus
 from tests.helpers import expired_access_token, expired_refresh_token, forge_token
 
 PASSWORD = "correct-horse-battery"
@@ -236,7 +236,7 @@ class TestCurrentUser:
         self, api_client: TestClient, user: User, db_session: Session
     ) -> None:
         tokens = login(api_client)
-        user.is_active = False
+        user.status = UserStatus.INACTIVE
         db_session.commit()
 
         response = api_client.get(ME_URL, headers=bearer(tokens["access_token"]))
@@ -321,7 +321,7 @@ class TestRefresh:
         self, api_client: TestClient, user: User, db_session: Session
     ) -> None:
         login(api_client)
-        user.is_active = False
+        user.status = UserStatus.INACTIVE
         db_session.commit()
 
         response = api_client.post(REFRESH_URL)

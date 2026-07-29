@@ -21,6 +21,7 @@ from repositories.user import UserRepository
 from services.auth import AuthService
 from services.login_throttle import LoginThrottle
 from services.token_revocation import TokenRevocationStore
+from services.user import UserService
 
 # auto_error=False so a missing header raises our own MissingTokenError (with a
 # consistent error envelope) instead of FastAPI's bare 403 "Not authenticated".
@@ -54,6 +55,16 @@ def get_auth_service(
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
+
+
+def get_user_service(
+    users: Annotated[UserRepository, Depends(get_user_repository)],
+) -> UserService:
+    """Provide the user management service."""
+    return UserService(users)
+
+
+UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 
 
 def get_client_ip(request: Request) -> str | None:
