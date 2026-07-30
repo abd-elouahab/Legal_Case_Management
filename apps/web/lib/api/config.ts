@@ -54,3 +54,21 @@ export const CASE_ENDPOINTS = {
   detail: (id: string) => `/cases/${encodeURIComponent(id)}`,
   assignments: (id: string) => `/cases/${encodeURIComponent(id)}/assignments`,
 } as const;
+
+/**
+ * Document management endpoint paths, relative to the version prefix.
+ *
+ * `download` and `preview` take an optional version: omitted serves the current
+ * one, which is what the API does when the parameter is absent.
+ */
+export const DOCUMENT_ENDPOINTS = {
+  list: "/documents",
+  upload: "/documents/upload",
+  detail: (id: string) => `/documents/${encodeURIComponent(id)}`,
+  versions: (id: string) => `/documents/${encodeURIComponent(id)}/versions`,
+  replace: (id: string) => `/documents/${encodeURIComponent(id)}/replace`,
+  download: (id: string, version?: number) =>
+    `/documents/${encodeURIComponent(id)}/download${version ? `?version=${version}` : ""}`,
+  preview: (id: string, version?: number) =>
+    `/documents/${encodeURIComponent(id)}/preview${version ? `?version=${version}` : ""}`,
+} as const;

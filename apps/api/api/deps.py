@@ -18,9 +18,12 @@ from core.security import TokenPayload
 from db.session import get_db
 from models.user import User
 from repositories.case import CaseRepository
+from repositories.document import DocumentRepository
 from repositories.user import UserRepository
 from services.auth import AuthService
 from services.case import CaseService
+from services.document import DocumentService
+from services.document_storage import DocumentStorageService
 from services.login_throttle import LoginThrottle
 from services.token_revocation import TokenRevocationStore
 from services.user import UserService
@@ -89,6 +92,38 @@ def get_case_service(
 
 
 CaseServiceDep = Annotated[CaseService, Depends(get_case_service)]
+
+
+def get_document_repository(session: DbSession) -> DocumentRepository:
+    """Provide a request-scoped document repository."""
+    return DocumentRepository(session)
+
+
+def get_document_storage() -> DocumentStorageService:
+    """Provide the MinIO-backed document storage service.
+
+    A dependency rather than a module-level singleton so an integration test can
+    override it with a fake and exercise the endpoints without a running MinIO.
+    """
+    return DocumentStorageService()
+
+
+def get_document_service(
+    documents: Annotated[DocumentRepository, Depends(get_document_repository)],
+    cases: Annotated[CaseRepository, Depends(get_case_repository)],
+    storage: Annotated[DocumentStorageService, Depends(get_document_storage)],
+) -> DocumentService:
+    """Provide the document management service with its collaborators injected.
+
+    The case repository is injected because a document must belong to a case the
+    caller may reach — a rule the document repository has no business knowing
+    about, and one that must not be re-implemented against a second copy of the
+    case query.
+    """
+    return DocumentService(documents, cases, storage)
+
+
+DocumentServiceDep = Annotated[DocumentService, Depends(get_document_service)]
 
 
 def get_client_ip(request: Request) -> str | None:

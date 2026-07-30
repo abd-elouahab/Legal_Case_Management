@@ -320,6 +320,96 @@ class CaseAccessDeniedError(AuthorizationError):
     """
 
 
+# --------------------------------------------------------------------------- #
+# Document management errors
+#
+# Same posture as the case errors above: a caller who has proved both who they
+# are and that they hold the matching ``documents:*`` capability is told what is
+# wrong, because it is information they could obtain from the endpoints they are
+# entitled to use. :class:`DocumentAccessDeniedError` is the exception, being a
+# per-resource denial.
+# --------------------------------------------------------------------------- #
+
+
+class DocumentNotFoundError(AppException):
+    """No document exists with the requested identifier, or it has been deleted.
+
+    A soft-deleted document answers the same 404 as one that never existed: it
+    has been withdrawn from the case, and the row survives only so the history
+    and the stored file remain recoverable — not so it can still be read through
+    the API.
+    """
+
+    status_code = status.HTTP_404_NOT_FOUND
+    error_code = "document_not_found"
+    message = "Document not found."
+
+
+class DocumentVersionNotFoundError(AppException):
+    """The document exists but has no such version."""
+
+    status_code = status.HTTP_404_NOT_FOUND
+    error_code = "document_version_not_found"
+    message = "This document has no such version."
+
+
+class InvalidDocumentFileError(AppException):
+    """The uploaded file is missing, empty, too large, or of an unsupported type.
+
+    422 rather than 400: the file is a *field of the request*, so this is a
+    validation failure about the payload, and it travels in the same envelope —
+    with ``details`` naming the ``file`` field — as every other rejected field.
+    """
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    error_code = "invalid_document_file"
+    message = "The uploaded file could not be accepted."
+
+
+class DocumentPreviewUnavailableError(AppException):
+    """The document's file type cannot be rendered in a browser.
+
+    415 rather than 404 or 422: the document is there and the request is
+    well-formed — the *representation* the endpoint would produce is the thing
+    that does not exist. Clients are expected to fall back to the download
+    endpoint, which the message says explicitly.
+    """
+
+    status_code = status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+    error_code = "preview_unavailable"
+    message = "This file type cannot be previewed. Download it instead."
+
+
+class DocumentStorageError(AppException):
+    """MinIO could not be reached, or refused the operation.
+
+    503 with a generic body: object storage being unavailable is an
+    infrastructure fault the caller can neither fix nor learn anything useful
+    from, and the underlying S3 error can name buckets, keys, and endpoints. The
+    specifics go to the log through ``detail``, exactly as
+    :class:`AuthorizationConfigurationError` does.
+    """
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    error_code = "document_storage_unavailable"
+    message = "Document storage is currently unavailable. Please try again."
+
+    def __init__(self, *, detail: str) -> None:
+        self.detail = detail
+        super().__init__()
+
+
+class DocumentAccessDeniedError(AuthorizationError):
+    """The caller holds the capability but is not party to the document's case.
+
+    A subclass of :class:`AuthorizationError`, so it answers **403** with the
+    same generic body as every other denial. Document access follows case access
+    exactly — see :mod:`services.document_access` — so the reasoning behind
+    :class:`CaseAccessDeniedError` (403 rather than a concealing 404) applies
+    unchanged.
+    """
+
+
 class TooManyLoginAttemptsError(AppException):
     """Too many consecutive failed logins; the attempt is refused outright.
 

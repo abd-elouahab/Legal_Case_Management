@@ -50,3 +50,30 @@ def expired_access_token(subject: str) -> str:
 def expired_refresh_token(subject: str) -> str:
     """A refresh token that expired five minutes ago."""
     return forge_token(subject, token_type=TokenType.REFRESH, expires_in=timedelta(minutes=-5))
+
+
+# --------------------------------------------------------------------------- #
+# Document fixtures
+#
+# Real bytes rather than `b"x"`: the upload validator checks each format's
+# leading signature, so a placeholder payload would be rejected as a corrupted
+# upload — which is precisely the rule these give the tests something to prove.
+# They live here rather than in `conftest.py` because pytest loads that module as
+# top-level `conftest`, so importing from it under its package path creates a
+# second copy of everything it defines.
+# --------------------------------------------------------------------------- #
+
+#: A minimal, structurally valid PDF.
+PDF_BYTES = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"
+
+#: A PNG signature followed by filler.
+PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+
+#: A JPEG signature followed by filler.
+JPEG_BYTES = b"\xff\xd8\xff\xe0" + b"\x00" * 32
+
+#: An OOXML package, i.e. a ZIP archive — what a .docx actually is.
+DOCX_BYTES = b"PK\x03\x04" + b"\x00" * 32
+
+#: Plain text, which has no signature and is validated negatively.
+TXT_BYTES = "Procès-verbal d'audience.\n".encode()

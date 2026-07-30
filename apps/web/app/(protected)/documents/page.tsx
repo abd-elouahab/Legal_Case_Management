@@ -1,28 +1,31 @@
-import { FileText } from "lucide-react";
-
-import { EmptyState } from "@/components/shared/empty-state";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
+import { DocumentList } from "@/components/documents/document-list";
 import { createMetadata } from "@/lib/metadata";
 
 export const metadata = createMetadata(
   "Documents",
-  "Legal documents and files.",
+  "Upload, organize, version, and retrieve legal documents.",
 );
 
-/** Documents — PLACEHOLDER. Document management arrives with a later feature. */
+/**
+ * Document Management — the platform's case file.
+ *
+ * A thin Server Component: it renders the shared page chrome and delegates all
+ * interactivity to `DocumentList`. Authorization is not asserted here — the
+ * `RouteGuard` in the protected layout applies the `documents:view` rule declared
+ * for `/documents` in `config/navigation.ts`, so every page under `(protected)` is
+ * guarded by construction rather than by each page remembering to. Which
+ * *documents* the caller sees is decided by the API, per case assignment.
+ */
 export default function DocumentsPage() {
   return (
     <PageContainer>
       <PageHeader
         title="Documents"
-        description="Upload, index, and manage legal documents securely."
+        description="Upload, organize, version, and retrieve the files attached to your cases."
       />
-      <EmptyState
-        icon={FileText}
-        title="No documents yet"
-        description="Document upload and processing will be implemented in an upcoming feature."
-      />
+      <DocumentList />
     </PageContainer>
   );
 }

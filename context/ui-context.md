@@ -222,10 +222,12 @@ it needs attention.
 
 The details page groups the record the way someone working a case reads it:
 **General information**, **Assignment**, **Court information**, and **Audit
-information**, followed by dashed placeholder cards reserving the layout for
-Documents, Timeline, Notes, AI Assistant, and Reports. Those cards say plainly
-that the module is not built yet, so an empty card is never mistaken for a
-loading failure.
+information**, followed by the case's **Documents** (the real list, scoped to
+this case) and then dashed placeholder cards reserving the layout for Timeline,
+Notes, AI Assistant, and Reports. Those cards say plainly that the module is not
+built yet, so an empty card is never mistaken for a loading failure. Documents no
+longer has a placeholder — the module shipped, and a placeholder beside a working
+feature reads as a bug.
 
 Dialogs:
 
@@ -256,6 +258,70 @@ Business-specific components for this area live in:
 
 ```
 components/cases/
+```
+
+---
+
+### Document Management
+
+Gated on the `documents:*` permissions. Every role reaches the page; **which
+documents they see is decided per case by the API**, so a lawyer's list contains
+only files on the matters they are assigned to and the pagination totals count
+only those.
+
+The list page shows a searchable, filterable, sortable, paginated table:
+
+- File name (with a file-type icon and the description beneath it), the case it
+  is filed under, category as a labelled badge — never colour alone — file size,
+  version, uploader, and upload date
+- A per-row actions menu: View details, Preview, Download, Replace, Delete
+
+Search matches the original filename, the description, or a category name,
+case-insensitively. Category, file type, uploader, and the upload-date range all
+combine with it. File name, category, size, version, and upload date sort in both
+directions. The uploader filter appears only for callers who may read the user
+directory.
+
+Columns hide progressively on smaller screens — the uploader and date below `xl`,
+the case and version below `lg` — so a phone still shows what identifies a file.
+
+**Preview is offered only when the server says the type can be rendered**
+(`isPreviewable`), so the menu never contains an action the API answers with 415.
+Files are fetched as blobs through an authenticated request and displayed from an
+object URL: the access token is a header, not a cookie, so pointing an `<iframe>`
+at the API would arrive anonymous. The preview frame is fully sandboxed.
+
+Dialogs:
+
+- **Upload** — file, case, category, and an optional description, with a real
+  transmitted-byte progress bar. The file picker's `accept` mirrors the server's
+  accepted types; a rejection the browser cannot foresee (a corrupted or renamed
+  file) comes back from the server against the same field.
+- **Document details** — metadata, the case, and the complete version history with
+  a download for every version, current or not. Editing the category and
+  description happens here, gated on `documents:update`; the binary is never
+  touched.
+- **Replace** — a new file. The copy states plainly that the previous version is
+  *kept* and stays downloadable, because "replace" usually implies otherwise.
+- **Delete** — a destructive confirmation that states plainly that the document is
+  *kept, not destroyed*, along with every stored version.
+
+States:
+
+- Skeleton loader matching the table's column layout while the first page loads.
+- Distinct empty states for "no documents yet" (offering *Upload*) and "no
+  results" (offering *Clear filters*).
+- An error state with a retry, an upload progress indicator, and per-action
+  downloading states.
+
+The same list is embedded in the case workspace, pinned to that case: the case
+column disappears, the upload dialog pre-selects the case, and *Clear filters*
+does not widen the view to the whole platform.
+
+Business-specific components for this area live in:
+
+```
+components/documents/
 ```
 
 ---
@@ -348,13 +414,14 @@ The AI Assistant can summarize documents, answer questions, and generate reports
 
 The document viewer supports:
 
-- PDF preview
-- OCR text display
-- AI-generated summaries
-- Semantic search highlights
-- Source references
-- Version history
-- Document metadata
+- PDF preview — **implemented** (plus PNG, JPEG, and plain text; other types fall
+  back to download)
+- Document metadata — **implemented**
+- Version history — **implemented**
+- OCR text display — deferred to OCR & Document Processing
+- AI-generated summaries — deferred to the AI Assistant
+- Semantic search highlights — deferred to the RAG pipeline
+- Source references — deferred to the AI Assistant
 
 ---
 

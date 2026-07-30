@@ -1,18 +1,22 @@
 import type { LucideIcon } from "lucide-react";
-import { Bot, FileStack, FileText, History, StickyNote } from "lucide-react";
+import { Bot, FileText, History, StickyNote } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 /**
  * Placeholder cards for the modules that will attach to a case.
  *
- * **Layout only — no functionality.** The spec asks for the case workspace's
- * shape to exist now so that Documents, Timeline, Notes, the AI Assistant, and
- * Reports each land in a place already reserved for them, rather than forcing a
- * redesign of the details page when the first one ships.
+ * **Layout only — no functionality.** The case workspace's shape exists now so
+ * that Timeline, Notes, the AI Assistant, and Reports each land in a place
+ * already reserved for them, rather than forcing a redesign of the details page
+ * when the next one ships.
  *
  * Each card says plainly that the feature is not built yet, so nobody mistakes an
- * empty card for a loading failure or for a case with no documents.
+ * empty card for a loading failure.
+ *
+ * **Documents no longer has a card here.** Document Management shipped, so the
+ * case details page renders the real list (`components/documents/case-documents`)
+ * in its place — a placeholder beside a working feature would read as a bug.
  */
 
 interface PlaceholderSection {
@@ -23,13 +27,6 @@ interface PlaceholderSection {
 }
 
 const SECTIONS: PlaceholderSection[] = [
-  {
-    key: "documents",
-    title: "Documents",
-    description:
-      "Filings, evidence, and correspondence — with OCR and versioning — will be attached here.",
-    icon: FileStack,
-  },
   {
     key: "timeline",
     title: "Timeline",

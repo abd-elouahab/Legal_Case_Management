@@ -100,6 +100,20 @@ class Settings(BaseSettings):
     MINIO_SECURE: bool = False
     MINIO_REGION: str | None = None
     MINIO_CONNECT_TIMEOUT: int = 3
+    #: Bucket holding case documents. Created on first use if absent.
+    MINIO_DOCUMENTS_BUCKET: str = "legal-documents"
+
+    # --- Document management ---
+    # Upload ceiling, enforced by the API. In production the reverse proxy should
+    # carry a matching `client_max_body_size` so an oversized body is refused at
+    # the edge rather than after being buffered.
+    MAX_DOCUMENT_SIZE_MB: int = 25
+    # Accepted file types. Narrowing this list is the supported way to restrict
+    # uploads for a deployment; it can never *widen* the set, because a type the
+    # platform has no MIME entry for cannot be served (see `core/documents.py`).
+    ALLOWED_DOCUMENT_EXTENSIONS: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["pdf", "docx", "doc", "txt", "jpg", "jpeg", "png"]
+    )
 
     # --- Qdrant ---
     QDRANT_HOST: str = "localhost"
@@ -144,13 +158,28 @@ class Settings(BaseSettings):
     REFRESH_COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "strict"
     REFRESH_COOKIE_DOMAIN: str | None = None
 
-    @field_validator("CORS_ORIGINS", "ALLOWED_HOSTS", mode="before")
+    @field_validator("CORS_ORIGINS", "ALLOWED_HOSTS", "ALLOWED_DOCUMENT_EXTENSIONS", mode="before")
     @classmethod
     def _split_comma_separated(cls, value: object) -> object:
         """Parse a comma-separated string into a list (a real list passes through)."""
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
+
+    @field_validator("ALLOWED_DOCUMENT_EXTENSIONS")
+    @classmethod
+    def _normalize_document_extensions(cls, value: list[str]) -> list[str]:
+        """Accept ``.PDF``, ``pdf``, and ``PDF`` as the same entry.
+
+        An empty list would disable uploads entirely, which is never the intent
+        of setting the variable — far more likely a blank line in ``.env`` — so it
+        is rejected rather than silently honoured.
+        """
+        normalized = [item.strip().lstrip(".").lower() for item in value]
+        cleaned = [item for item in normalized if item]
+        if not cleaned:
+            raise ValueError("ALLOWED_DOCUMENT_EXTENSIONS must list at least one file type")
+        return cleaned
 
     @field_validator("REDIS_PASSWORD", "MINIO_REGION", "QDRANT_API_KEY", "REFRESH_COOKIE_DOMAIN", mode="before")
     @classmethod
@@ -174,6 +203,7 @@ class Settings(BaseSettings):
         "MAX_FAILED_LOGIN_ATTEMPTS",
         "LOGIN_FAILURE_WINDOW_MINUTES",
         "LOGIN_LOCKOUT_MINUTES",
+        "MAX_DOCUMENT_SIZE_MB",
     )
     @classmethod
     def _require_positive(cls, value: int, info: ValidationInfo) -> int:
@@ -244,6 +274,11 @@ class Settings(BaseSettings):
     def refresh_token_ttl(self) -> timedelta:
         """Lifetime of a refresh token."""
         return timedelta(days=self.REFRESH_TOKEN_EXPIRE_DAYS)
+
+    @property
+    def max_document_size_bytes(self) -> int:
+        """Upload ceiling in bytes, derived from the configured megabytes."""
+        return self.MAX_DOCUMENT_SIZE_MB * 1024 * 1024
 
     @property
     def login_failure_window(self) -> timedelta:

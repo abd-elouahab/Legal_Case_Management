@@ -9,13 +9,174 @@ change.
 
 ## Current Goal
 
-- **Next:** awaiting the next feature specification. Case Management is complete;
-  per its "Out of Scope" section, Document Management, OCR, Timeline, Notes, the
-  AI Assistant, Reports, Notifications, Real-Time Synchronization, Dashboard
-  Analytics, the Search Engine, and Localization are each their own unit. All of
-  them now have a Case to attach to.
+- **Next:** awaiting the next feature specification. Document Management is
+  complete; per its "Out of Scope" section, OCR, text extraction, embeddings,
+  vector storage, semantic search, the AI Assistant, AI report generation,
+  automatic classification, summarization, the Timeline, and Notifications are
+  each their own unit. All of them now have a Document to attach to.
 
 ## Completed
+
+- **Document Management (spec `07-document-management.md`)** — secure upload,
+  versioning, preview, download, metadata management, and archiving of documents
+  attached to a case, layered on the Authentication, Authorization, User
+  Management, and Case Management modules already in place. **No new
+  dependencies**, backend or frontend: `python-multipart` and the MinIO client
+  were already installed by earlier specs.
+  - **Two entities** (`models/document.py` + migration `e2f8a4c19d57`).
+    `documents` carries **exactly the fields the spec lists** — `id`, `case_id`,
+    `original_filename`, `stored_filename`, `file_extension`, `mime_type`,
+    `file_size`, `storage_bucket`, `storage_key`, `category`, `description`,
+    `version`, `uploaded_by`, `created_at`, `updated_at`, `deleted_at` — and
+    describes the *current* version. `document_versions` is one immutable row per
+    uploaded file, including the current one, with a **unique
+    `(document_id, version)` constraint**: the next number is a read-then-write,
+    so without it two simultaneous replacements could both commit N+1 and one file
+    would vanish from the history.
+  - **`DocumentCategory`** (`contract` / `evidence` / `court_decision` /
+    `pleading` / `correspondence` / `invoice` / `identity_document` / `other`),
+    persisted as a PostgreSQL enum, declared once, with `CATEGORY_RANK` **derived
+    from the declaration order** so no second list can drift.
+  - **Document utilities** (`core/documents.py`): the category rank, the
+    extension → MIME map (the *only* source of a served MIME type), the
+    previewable set, the magic-byte signatures, filename sanitisation, storage-key
+    construction, and size formatting. Pure functions, unit-testable without a
+    database, a request, or a running MinIO.
+  - **Schemas** (`schemas/document.py`): `DocumentRead` (with **computed**
+    `is_deleted`, `version_count`, `is_previewable`, and `file_size_label`, so the
+    payload cannot drift from the policy), `DocumentVersionRead`,
+    `DocumentCaseSummary`, `DocumentPage`, `DocumentUploadForm`, `DocumentUpdate`,
+    `DocumentListQuery`. Every binary and immutable field is **absent** from
+    `DocumentUpdate` rather than validated and rejected; with `extra="forbid"`,
+    sending one is a 422. The uploader summary is `CaseUserSummary` reused, not a
+    second copy.
+  - **Repository** (`repositories/document.py`): search, filtering, sorting,
+    pagination, **and the case scope** all execute in the database. LIKE wildcards
+    are escaped, the primary key is appended to every `ORDER BY` as a tiebreaker,
+    the upload-date filter covers the whole end day, and category sorts through a
+    **searched** SQL `CASE` built from `CATEGORY_RANK`.
+  - **MinIO storage service** (`services/document_storage.py`): upload, download
+    (streamed, never buffered), retrieve metadata, and a **logical-only** delete
+    that deliberately removes nothing. Every MinIO failure becomes a generic 503
+    with the specifics in the log.
+  - **Upload validation** (`services/document_validation.py`): missing, empty,
+    oversized, unsupported type, and *corrupted* (leading bytes must match the
+    declared format). Framework-independent — it takes a filename and a stream,
+    not an `UploadFile` — so a future importer validates through the same path.
+  - **Per-resource authorization** (`services/document_access.py`): owns no policy
+    of its own and **delegates every decision to `CaseAccessPolicy`**, so document
+    access cannot drift from case access. The shared scope predicate was extracted
+    as `assigned_case_scope` in `repositories/case.py` rather than restated.
+  - **Service** (`services/document.py`): upload, replace (a new version, never an
+    overwrite), metadata update, idempotent soft delete, and the download/preview
+    paths. Storage is written **before** the metadata commit, deliberately: the
+    reverse order can leave a row pointing at an object that was never written,
+    which no retry repairs, while this order can only leave an unreferenced object.
+  - **Endpoints** (`api/v1/documents/router.py`): `GET /documents` (page, size,
+    search, case, category, uploader, file type, upload-date range,
+    include_deleted, sort_by, sort_order), `POST /documents/upload` (201),
+    `GET /documents/{id}`, `GET /documents/{id}/versions`,
+    `GET /documents/{id}/download?version=`, `GET /documents/{id}/preview?version=`,
+    `PATCH /documents/{id}`, `POST /documents/{id}/replace`,
+    `DELETE /documents/{id}`. Each guarded by `require_permission`, so
+    authorization is declared beside the route and appears in OpenAPI.
+  - **Errors** (`core/exceptions.py`): `DocumentNotFoundError` (404),
+    `DocumentVersionNotFoundError` (404), `InvalidDocumentFileError` (422, naming
+    the `file` field), `DocumentPreviewUnavailableError` (415, pointing at the
+    download), `DocumentStorageError` (503, generic body with the S3 specifics in
+    the log only), and `DocumentAccessDeniedError` (403, generic body).
+  - **Configuration:** `MINIO_DOCUMENTS_BUCKET`, `MAX_DOCUMENT_SIZE_MB` (25), and
+    `ALLOWED_DOCUMENT_EXTENSIONS`, all documented in `.env.example`. The extension
+    list can only ever **narrow** the policy — a type with no MIME entry cannot be
+    served, so configuration alone cannot enable one.
+  - **Logging:** `document_uploaded`, `document_downloaded`, `document_previewed`,
+    `document_replaced`, `document_updated` (field **names** only),
+    `document_deleted`, plus `document_object_uploaded`,
+    `document_object_logically_deleted`, `document_upload_rejected`,
+    `document_access_denied`, and every lookup failure. Identifiers, the category,
+    and the file's shape only — **never a filename and never a description**, both
+    of which can name a client or quote a matter.
+  - **Frontend:** `types/document.ts`, `types/document-management.ts`,
+    `lib/validation/document.ts` (form + response Zod schemas mirroring the API),
+    `lib/api/documents.ts` (typed client, snake_case ↔ camelCase in one place),
+    `lib/api/upload.ts` (multipart with real progress, plus authenticated binary
+    fetch and save), `hooks/use-documents.ts`, `hooks/use-document-list-query.ts`,
+    and `hooks/use-document-cases.ts` — which reads the **Case Management** list
+    rather than adding a second "cases I may upload to" endpoint.
+  - **UI** (`components/documents/`): `DocumentList` (the container),
+    `DocumentTable` (sortable headers as real buttons carrying `aria-sort`),
+    `DocumentFilters`, `DocumentPagination`, `DocumentTableSkeleton`,
+    `DocumentRowActions`, `DocumentCategoryBadge` / `DocumentTypeIcon`,
+    `UploadProgress`, `DocumentVersionHistory`, `CaseDocuments`, and five dialogs —
+    upload, details (metadata + version history + inline editing), preview,
+    replace, and delete (an `AlertDialog`, stating plainly that the document is
+    *kept*). Page at `/documents`, plus the case-scoped list on `/cases/[id]`.
+    Design System components only.
+  - **The case workspace's Documents placeholder was replaced with the real
+    list**, pinned to that case. `CasePlaceholderSections` now reserves four cards
+    (Timeline, Notes, AI Assistant, Reports) instead of five.
+  - **Every UI gate names a permission, never a role**, and no action the API would
+    refuse is offered: Replace and Delete are hidden without `documents:update` /
+    `documents:delete`, and **Preview is hidden for a file type the server says it
+    cannot render**, taken from the computed `is_previewable` rather than a second
+    client-side copy of the rule.
+  - **Uploads use `XMLHttpRequest`, not `fetch` — a deliberate deviation from the
+    rest of the API client.** `fetch` reports nothing while a request body is being
+    sent, and streaming request bodies are not available across the browsers this
+    platform targets, so a real progress bar is impossible with it. A 25 MB scan on
+    a slow link is exactly the case the spec's "display upload progress" is about.
+    `lib/api/upload.ts` reuses the same Bearer credential, cookie handling,
+    `ApiError` envelope, and refresh-once-and-replay behaviour.
+  - **One FastAPI trap found during implementation:** `Annotated[Model, Form()]`
+    is **not** flattened when the same request also carries a separate `File`
+    part — the model arrives as one missing field called `payload` and every upload
+    is a 422 (reproduced in isolation). The upload endpoint therefore declares its
+    form fields individually and assembles `DocumentUploadForm` in a helper, which
+    keeps the rules in the schema layer and re-raises a Pydantic failure as
+    FastAPI's own validation error so it reaches the client in the standard
+    envelope.
+  - **The PostgreSQL enum-vs-VARCHAR bug that shipped in Case Management was not
+    repeated.** The category `ORDER BY` is a searched `CASE WHEN category = …` from
+    the start, and a dialect-compiled regression test asserts no category value is
+    bound as a `String` — the SQLite test database still cannot catch this class of
+    fault on its own.
+  - **Validation (live Postgres + Redis + MinIO + Qdrant, real HTTP):** 1067
+    backend tests (up from 841 — 226 of them for documents) and 341 frontend tests
+    (up from 282) pass; `ruff` clean across `apps/api` and `tests`,
+    `mypy --strict` clean on `apps/api`; `tsc` and ESLint clean; the production
+    build succeeds and prerenders every route. Migration verified on **live
+    PostgreSQL in both directions**: the upgrade creates the enum type, both
+    tables, all seven indexes, the unique `(document_id, version)` constraint, and
+    all four foreign keys; the downgrade drops both tables **and the enum type**
+    (confirmed absent from `pg_type`), and a re-upgrade is clean. **132/132
+    end-to-end HTTP checks passed** against a running API with real MinIO:
+    unauthenticated requests to all nine routes return **401** with a
+    `WWW-Authenticate: Bearer` challenge; an upload stores the bytes in MinIO under
+    a case/document/version key and the metadata in PostgreSQL; the original
+    filename is preserved while the stored name is generated; empty, unsupported,
+    corrupted, and missing files each return **422** naming the `file` field, and
+    an unknown case **404**; a spoofed `Content-Type: text/html` on a `.txt` is
+    ignored and the file is served as `text/plain`; `../../etc/passwd.pdf` is
+    stored as `passwd.pdf`; downloads carry the original name in both
+    `Content-Disposition` forms (an Arabic filename verified to survive) with
+    `nosniff`, a sandbox CSP, and `no-store`; a PDF previews inline while a DOCX
+    returns **415** pointing at the download and still downloads; three
+    replacements produce v1/v2/v3 under three distinct keys with **the earlier
+    objects byte-for-byte intact in MinIO**, all three downloadable, and an unknown
+    version **404**; a PATCH changes only category and description and leaves the
+    binary untouched, while all five binary/immutable fields return 422; search is
+    case-insensitive across filename, description, and category name and treats
+    `%` literally; every filter, all five sort columns in both directions, and
+    pagination behave; the category sort keeps `other` last; both restricted roles
+    read and upload only on their assigned case, are refused another case's
+    documents with a **403** naming neither permission nor role, and are refused
+    update and delete entirely; deletion is soft — 404 afterwards, gone from the
+    list, recoverable with `include_deleted`, idempotent, **and the file still in
+    MinIO**. **Zero 5xx responses and no tracebacks in the server log**; the log
+    shows all fourteen document events with **no filename, description, password,
+    hash, or JWT anywhere**. Frontend routes: `/documents` 307s to `/login`
+    anonymously (carrying `?next=`) and 200s with a session cookie, as does
+    `/cases/[id]`; no errors or warnings in the dev-server log.
 
 - **Case Management (spec `06-case-management.md`)** — the platform's central
   business entity and the workflow around it, layered on the Authentication,
@@ -611,12 +772,58 @@ change.
   `must_change_password`, which every user payload carries — but with no
   change-password screen, a user who receives a temporary password has nowhere in
   the UI to replace it. See the open question below.
-- **Profile image upload** — `users.profile_image` stores a location and the UI
-  renders it, but nothing uploads one yet; MinIO integration belongs with Document
-  Management. Until then avatars fall back to initials, which is what nearly every
-  row shows.
+- **Profile image upload — now unblocked.** `users.profile_image` stores a
+  location and the UI renders it, but nothing uploads one yet. This was waiting on
+  MinIO integration, which Document Management has now built
+  (`services/document_storage.py`, plus the filename and type policy in
+  `core/documents.py`). An avatar is **not** a case document, so it should not
+  reuse the `documents` tables — but it can reuse the storage service and the
+  validation helpers against an `avatars` bucket. Until then avatars fall back to
+  initials, which is what nearly every row shows.
 
 ## Open Questions
+
+- **No cleanup job exists yet for archived document files — by design, but it is
+  now owed.** Deleting a document is logical: the row keeps `deleted_at` and every
+  stored object stays in MinIO, which is exactly what the spec and
+  `code-standards.md` require ("do not immediately remove the file", "never
+  permanently delete legal documents without authorization"). The spec then says
+  *"future cleanup jobs can permanently remove archived files"*, and that job does
+  not exist. Consequence: storage grows monotonically, including superseded
+  versions and objects orphaned by a metadata write that failed after a successful
+  upload. `services/document_storage.py` logs
+  `document_object_logically_deleted` (with the key) precisely so such a job has a
+  record to work from. **What product needs to decide is the retention period** —
+  how long a deleted document and its versions must remain recoverable before the
+  bytes may go. `apps/worker/cleanup_worker.py` is the empty placeholder it belongs
+  in.
+
+- **Court representatives cannot replace a document, and lawyers cannot either.**
+  `documents:update` and `documents:delete` are administrator-only, which matches
+  the spec's per-role lists exactly (lawyers and court representatives are granted
+  upload, view, and download and nothing more). The consequence is that a lawyer
+  who uploads the wrong file must ask an administrator to replace it, or upload a
+  second document. Widening it is a one-line policy change in `core/roles.py` —
+  and "may replace a document **they** uploaded" would need a new per-resource
+  rule rather than a permission. **Flagged rather than decided, because the spec's
+  role lists are explicit.**
+
+- **The upload ceiling is enforced after the body is received.** `MAX_DOCUMENT_SIZE_MB`
+  (25) is checked once Starlette has parsed the multipart body into a spooled
+  temporary file, because that is the first point at which the length is known.
+  A caller can therefore make the server buffer an arbitrarily large upload before
+  it is refused. The correct outer guard is at the edge — `client_max_body_size`
+  in Nginx — which `.env.example` now says explicitly. **It must be configured when
+  the reverse proxy is set up**; until then, only the application check applies.
+
+- **File-type validation checks the leading bytes, not the whole file.** The
+  "corrupted uploads" rule compares the first 512 bytes against the format's
+  signature, which catches a truncated transfer, a zero-padded placeholder, and a
+  renamed executable. It does **not** catch a valid PDF with a malicious payload
+  inside it, and it is not meant to: content is never executed, previews are
+  sandboxed with a `default-src 'none'` CSP, and the served MIME type comes from
+  the extension mapping rather than from the bytes. **Antivirus scanning is not in
+  scope for this feature** and would belong with the background workers.
 
 - **`category` is free text, not an enumeration — product decision needed.** The
   spec names the field but defines no set of categories, and
@@ -899,6 +1106,100 @@ change.
   wrapper.** A `withCoherentDates<T extends ZodTypeAny>(schema)` helper erases the
   object's output type, which silently turns `z.infer` into `any` and costs every
   form its field typing — caught by `tsc` on the first build.
+
+### Document Management (spec `07`)
+
+- **Two tables: a current-state row and an immutable version history.** The
+  alternative — one row per version, with the "document" being the newest of a
+  group — makes every list query a "latest version per group" problem, which is a
+  window function or a correlated subquery on the hot path, and makes the
+  document's identity a synthetic group key rather than a real primary key. This
+  shape keeps `documents` **exactly the entity the spec enumerates**, keeps its
+  `id` stable across replacements so existing links work, and lets search, the
+  type filter, and the size sort run against one table with no join. The cost is a
+  denormalization: the document's binary columns mirror its current version. That
+  has one writer (`DocumentService`), one rule with no exceptions ("the document
+  row describes its current version"), and a test asserting the mirror holds after
+  a replacement.
+- **The version number comes from the history, never from `documents.version`.**
+  A version row is never deleted, so `max(version) + 1` cannot collide with a
+  number already issued — whereas the current-state column could, if a future
+  feature ever reverted it. The unique `(document_id, version)` constraint is what
+  actually guarantees it under concurrency; the service's read is the fast path.
+- **The storage key contains the version, so "never overwrite" is structural.**
+  `cases/{case}/documents/{document}/v{n}/{generated}.ext` cannot address a
+  predecessor, which means the guarantee holds even if someone later writes a code
+  path that forgets it. The generated filename is a fresh UUID rather than
+  anything derived from the upload: two users filing `contract.pdf` on one case
+  must not contend for a key, and the layout must not be influenceable by a
+  crafted name.
+- **Storage is written before the metadata is committed.** The reverse order can
+  produce a committed row pointing at an object that was never written — a
+  document that exists and cannot be downloaded, which no retry repairs. This
+  order can only produce an *unreferenced object*, which is a storage cost and is
+  exactly what the cleanup job the spec anticipates is for. The failure path logs
+  the orphaned key rather than deleting it, because the storage service has no
+  physical delete by design.
+- **`DocumentStorageService.delete_object` deliberately deletes nothing.** It is
+  not a stub: the spec says "do not immediately remove the file from MinIO",
+  `code-standards.md` forbids permanently deleting a legal document without
+  authorization, and `architecture.md` invariant 6 makes an uploaded document
+  immutable. Exposing a real physical delete would put a destructive operation one
+  call away from every future feature. What the method does instead is leave the
+  audit record a cleanup job will need.
+- **Document access delegates to case access rather than restating it.**
+  `DocumentAccessPolicy` holds no rule of its own — a document is reachable
+  exactly when its case is. Two copies of that predicate would be one policy
+  change away from disagreeing about who can see what, so the SQL half was
+  extracted as `assigned_case_scope` in `repositories/case.py` and the Python half
+  is a straight delegation to `CaseAccessPolicy`. The module exists so the
+  delegation is stated once and testable as the invariant it is.
+- **The MIME type comes from the extension, never from the client.** The
+  browser's `Content-Type` on a multipart part is attacker-controlled, and it is
+  the value that would decide how the preview endpoint's response is rendered —
+  which is how an "image" gets served as HTML from the platform's own origin.
+  `EXTENSION_MIME_TYPES` is the only source, and `ALLOWED_DOCUMENT_EXTENSIONS` can
+  only intersect with it, so configuration can narrow the policy but never widen
+  it past what the platform can safely serve.
+- **Preview is a separate endpoint from download, and answers 415 rather than
+  falling back.** The document exists and the request is well-formed; it is the
+  *representation* that does not. Making preview silently serve an attachment
+  would leave a client unable to tell whether its inline viewer failed. The
+  computed `is_previewable` on every document is what stops the UI from offering
+  the action in the first place — the same reasoning as a case's
+  `allowed_transitions`.
+- **Files are fetched as blobs on the client, not linked to.** The access token
+  lives in memory and travels as an `Authorization` header, so a plain `<a href>`
+  or `<iframe src>` pointed at the API arrives anonymous and is refused. Every
+  download and preview is an authenticated request whose blob becomes an object
+  URL, revoked as soon as it is consumed — an object URL pins the whole file in
+  memory until it is.
+- **Uploads use `XMLHttpRequest` while everything else uses `fetch`.** A
+  deliberate, contained deviation: `fetch` fires no upload-progress events and
+  streaming request bodies are not broadly available, so "display upload progress"
+  is not implementable with it. `lib/api/upload.ts` is the only module that knows
+  this, and it reuses the same credential, cookie handling, error envelope, and
+  refresh-once-and-replay semantics as `lib/api/client.ts`.
+- **`category` is a PostgreSQL enum, unlike a case's free-text `category`.** The
+  spec *enumerates* the document categories, so inventing nothing is possible
+  here — which is exactly why the case field stayed free text. Extending it is one
+  enum member plus a one-line `ALTER TYPE`, and the sort order follows the
+  declaration order automatically.
+- **The upload form's fields are declared individually on the endpoint.**
+  `Annotated[DocumentUploadForm, Form()]` is not flattened by FastAPI when the
+  same request also carries a separate `File` part; the model arrives as one
+  missing field called `payload` and every upload is a 422. Verified in isolation.
+  The rules still live in `schemas/document.py` — the endpoint assembles the model
+  and re-raises a Pydantic failure as FastAPI's own validation error, so a bad
+  description reaches the client in the standard envelope with the field named.
+- **Deletion is idempotent, unlike the read paths.** A second `DELETE` succeeds
+  and preserves the original timestamp, matching how case archiving behaves, while
+  `GET` on a deleted document is a 404 — the row survives so the deletion is
+  recoverable, not so the API can still serve it.
+- **`documents:update` and `documents:delete` stayed administrator-only.** The
+  spec's per-role lists grant lawyers and court representatives upload, view, and
+  download and nothing else, so replace and delete are theirs alone. Recorded as an
+  open question rather than quietly widened.
 
 ### Authorization / RBAC (spec `04`)
 
@@ -1225,6 +1526,45 @@ blocking its validation):
   (`ResizeObserver`, `hasPointerCapture`/`setPointerCapture`/`releasePointerCapture`,
   `scrollIntoView`). Without them Select and Checkbox throw on mount or on click.
   Any future test rendering a Radix primitive inherits these for free.
+- **A locally installed PostgreSQL can shadow the container on port 5432.** During
+  spec `07`'s validation, every host connection to `localhost:5432` failed with
+  *password authentication failed for user "postgres"* while the container was
+  healthy and held the real data. The cause was a Windows PostgreSQL service
+  (`D:\Apps\PostgreSQL\bin\postgres.exe`) listening on the same port and winning
+  the loopback binding — Docker's published port is still there, but connections
+  reach the local server instead. `Get-NetTCPConnection -LocalPort 5432 -State
+  Listen` plus `Get-Process -Id <pid> | Select Path` identifies the owner. The
+  non-invasive workaround, used for that validation, is a throwaway TCP proxy on a
+  spare port, which leaves the user's services untouched:
+  ```
+  docker run -d --rm --name legal-pgproxy \
+      --network legalcasemanagementplatform_default -p 55432:5432 \
+      alpine/socat tcp-listen:5432,fork,reuseaddr tcp-connect:legal-postgres:5432
+  # then run anything with POSTGRES_PORT=55432
+  ```
+  Stopping the local Windows service is the permanent fix, but that is the user's
+  machine to change.
+- **Document Management test strategy:** the same no-Docker approach as cases —
+  `tests/unit/test_document_service.py` runs the *real* repository against SQLite
+  in-memory so the search/filter/sort/scope SQL is exercised without a container,
+  with only object storage faked. `tests/conftest.py` provides
+  `InMemoryDocumentStorage` (which deliberately keeps the "logical delete keeps
+  the bytes" behaviour — a double that actually removed them would let a
+  retention test pass falsely) and a `make_document` factory that writes both the
+  metadata and the bytes, so a fixture-built document is genuinely downloadable.
+  Real file signatures live in `tests/helpers.py` (`PDF_BYTES`, `PNG_BYTES`,
+  `DOCX_BYTES`, `TXT_BYTES`): a `b"x"` placeholder is rejected by the
+  corrupted-upload check, which is the rule those bytes exist to prove.
+- **Frontend upload tests need an XHR double, not the `fetch` double.** Uploads go
+  through `lib/api/upload.ts`, which uses `XMLHttpRequest`, so `mockFetch` never
+  sees them. `mockUpload` in `apps/web/tests/helpers.ts` scripts them the same
+  way, emits progress events, and takes `hold: true` + `release()` so a test can
+  observe an in-flight state — without it a request completes on the next
+  macrotask, faster than any assertion, and a progress bar appears never to
+  render. Note also that `userEvent` honours a file input's `accept` attribute:
+  to exercise the *schema* rule behind it, set it up with
+  `userEvent.setup({ applyAccept: false })` (a setup option in v14, not a
+  per-call one).
 - **Watch out for a stale `next dev` server.** A dev server left running from an
   earlier session serves its old compilation and reports new routes as 500s.
   `Get-NetTCPConnection -LocalPort 3000 -State Listen` finds the owning PID; kill

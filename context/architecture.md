@@ -47,6 +47,14 @@
   rather than introducing a separate deployable. Hearings, court decisions, and
   the case timeline are later features that attach to the Case entity.
 - `modules/documents` — Document upload, OCR, indexing, versioning, and secure storage.
+  Upload, versioning, preview, download, and archiving are implemented inside
+  `apps/api` (`models/document.py`, `core/documents.py`,
+  `repositories/document.py`, `services/document.py`,
+  `services/document_storage.py`, `services/document_validation.py`,
+  `services/document_access.py`, `api/v1/documents/`) and `apps/web`
+  (`components/documents/`, `app/(protected)/documents/`), following the same
+  layering as Cases and Users rather than introducing a separate deployable. OCR,
+  indexing, and embeddings are later features that attach to the Document entity.
 - `modules/reports` — AI-generated reports, legal summaries, exports, and report history.
 - `modules/notifications` — Real-time notifications, email notifications, WhatsApp alerts, and reminder scheduling.
 - `modules/users` — Administrator, lawyer, and court representative management.
@@ -75,6 +83,8 @@ Stores structured business data:
 - Lawyers
 - Court Representatives
 - Legal Cases
+- Documents (metadata only)
+- Document Versions
 - Lawyer Assignments
 - Clients
 - Hearings
@@ -111,6 +121,17 @@ Stores files:
 - OCR outputs
 - Exported documents
 - Future voice recordings
+
+Case documents live in the `MINIO_DOCUMENTS_BUCKET` bucket (`legal-documents` by
+default, created on first upload), keyed
+`cases/{case_id}/documents/{document_id}/v{version}/{stored_filename}`. Because
+the key carries the version, a replacement cannot overwrite its predecessor —
+"preserve previous versions" is a property of the layout rather than a rule the
+service must remember. `stored_filename` is a generated UUID, never derived from
+the uploaded name, so a crafted filename cannot influence the layout. **Nothing
+is ever physically deleted**: `services/document_storage.py` deliberately
+exposes no destructive operation, and deletion is a metadata change
+(`documents.deleted_at`), leaving a future cleanup job to reclaim storage.
 
 ---
 
@@ -290,6 +311,44 @@ Implemented per `context/feature-specs/06-case-management.md`:
   representative position only an active account holding the court role. An
   unchanged assignment is not re-validated, so a case whose lawyer was later
   deactivated stays editable.
+
+### Document Lifecycle
+
+Implemented per `context/feature-specs/07-document-management.md`:
+
+- A document belongs to exactly one case, and **its access follows its case's**.
+  `services/document_access.py` owns no policy of its own; it delegates to
+  `CaseAccessPolicy`, so document visibility cannot drift from case visibility.
+  The list scope is applied in SQL (via the shared `assigned_case_scope` clause
+  that `repositories/case.py` exports) so page totals count only what the caller
+  may reach.
+- **Two tables, because a document has two lifetimes.** `documents` is the
+  current state — the file downloaded today, plus the category and description
+  that survive a replacement. `document_versions` is one immutable row per
+  uploaded file, including the current one. The document row's binary columns
+  *mirror* its current version; that denormalization has a single writer and is
+  what lets the list search filenames, filter by type, and sort by size against
+  one table with no join and no "latest version" window function.
+- **Categories** (`contract`, `evidence`, `court_decision`, `pleading`,
+  `correspondence`, `invoice`, `identity_document`, `other`) are declared once as
+  a PostgreSQL enum; `CATEGORY_RANK` derives the display and sort order from the
+  declaration order, so "sort by category" keeps `other` last instead of
+  alphabetically in the middle.
+- **A document's MIME type comes from its extension, never from the client's
+  `Content-Type`** — the browser-supplied value is attacker-controlled and is what
+  would decide how an inline preview renders.
+- **Uploads are validated in one place** (`services/document_validation.py`):
+  missing, empty, oversized, unsupported type, and *corrupted* (the leading bytes
+  must match the declared format). The filename is sanitised — directory
+  components discarded, control and header-special characters replaced — because
+  it reaches a `Content-Disposition` header.
+- **Preview and download stream from object storage** with
+  `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none';
+  sandbox`, and `Cache-Control: private, no-store`. A type no browser renders
+  answers **415**, and the document's computed `is_previewable` says so in
+  advance, so a client never offers a preview the API will refuse.
+- **Deletion is logical.** `DELETE /documents/{id}` sets `deleted_at`; the row and
+  every stored file are kept, and the operation is idempotent.
 
 ## Invariants
 

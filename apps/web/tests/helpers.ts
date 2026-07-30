@@ -209,12 +209,104 @@ export function casePagePayload(
   };
 }
 
+// --------------------------------------------------------------------------- //
+// Document Management fixtures
+// --------------------------------------------------------------------------- //
+
+/** One version of a document in the API's wire format. */
+export function documentVersionPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    version: 1,
+    original_filename: "contrat-de-bail.pdf",
+    file_extension: "pdf",
+    mime_type: "application/pdf",
+    file_size: 2048,
+    file_size_label: "2.0 KB",
+    uploaded_by: TEST_USER.id,
+    uploader: caseUserPayload({
+      id: TEST_USER.id,
+      full_name: TEST_USER.full_name,
+      email: TEST_USER.email,
+      role: "administrator",
+    }),
+    created_at: "2026-07-20T09:00:00Z",
+    ...overrides,
+  };
+}
+
+/**
+ * A document record in the API's wire format, as `GET /documents` returns it.
+ *
+ * Defaults to a single-version PDF, which is what nearly every row is; a test
+ * that cares about versioning overrides `version` and `versions` explicitly.
+ */
+export function legalDocumentPayload(overrides: Record<string, unknown> = {}) {
+  const versions = (overrides.versions as unknown[] | undefined) ?? [documentVersionPayload()];
+
+  return {
+    id: "44444444-4444-4444-8444-444444444444",
+    case_id: legalCasePayload().id,
+    case: {
+      id: legalCasePayload().id,
+      case_number: "CASE-2026-0001",
+      title: "Benali v. Societe Atlas",
+    },
+    original_filename: "contrat-de-bail.pdf",
+    stored_filename: "9f8e7d6c5b4a.pdf",
+    file_extension: "pdf",
+    mime_type: "application/pdf",
+    file_size: 2048,
+    file_size_label: "2.0 KB",
+    storage_bucket: "legal-documents",
+    storage_key: "cases/x/documents/y/v1/9f8e7d6c5b4a.pdf",
+    category: "contract",
+    description: "Bail commercial signé",
+    version: 1,
+    version_count: versions.length,
+    uploaded_by: TEST_USER.id,
+    uploader: caseUserPayload({
+      id: TEST_USER.id,
+      full_name: TEST_USER.full_name,
+      email: TEST_USER.email,
+      role: "administrator",
+    }),
+    uploaded_at: "2026-07-20T09:00:00Z",
+    created_at: "2026-07-20T09:00:00Z",
+    updated_at: "2026-07-20T09:00:00Z",
+    deleted_at: null,
+    is_deleted: false,
+    is_previewable: true,
+    ...overrides,
+    versions,
+  };
+}
+
+/** A page of documents in the API's wire format. */
+export function documentPagePayload(
+  items: Array<Record<string, unknown>> = [legalDocumentPayload()],
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    items,
+    total_records: items.length,
+    page: 1,
+    page_size: 20,
+    total_pages: 1,
+    ...overrides,
+  };
+}
+
 /** A single scripted response for one endpoint. */
 export interface RouteResponse {
   status?: number;
   body?: unknown;
   /** Throw a network-level failure instead of responding. */
   networkError?: boolean;
+  /**
+   * Answer with these raw bytes instead of JSON — for the download and preview
+   * endpoints, which return a file rather than an envelope.
+   */
+  binary?: { content: string; contentType?: string; disposition?: string };
 }
 
 export interface RecordedRequest {
@@ -246,7 +338,7 @@ export function mockFetch(routes: Record<string, RouteResponse | RouteResponse[]
       url,
       method: init?.method ?? "GET",
       headers,
-      body: init?.body ? JSON.parse(init.body as string) : undefined,
+      body: readBody(init?.body),
       credentials: init?.credentials,
     });
 
@@ -260,6 +352,19 @@ export function mockFetch(routes: Record<string, RouteResponse | RouteResponse[]
     if (route.networkError) throw new TypeError("Failed to fetch");
 
     const status = route.status ?? 200;
+
+    if (route.binary) {
+      return new Response(route.binary.content, {
+        status,
+        headers: {
+          "Content-Type": route.binary.contentType ?? "application/octet-stream",
+          ...(route.binary.disposition
+            ? { "Content-Disposition": route.binary.disposition }
+            : {}),
+        },
+      });
+    }
+
     return new Response(route.body === undefined ? null : JSON.stringify(route.body), {
       status,
       headers: { "Content-Type": "application/json" },
@@ -268,4 +373,164 @@ export function mockFetch(routes: Record<string, RouteResponse | RouteResponse[]
 
   vi.stubGlobal("fetch", fetchMock);
   return { fetchMock, requests };
+}
+
+/**
+ * Record a request body without assuming it is JSON.
+ *
+ * Uploads send `FormData`, which `JSON.parse` chokes on. Flattening it to a plain
+ * object is what lets an upload test assert on the fields it carried.
+ */
+function readBody(body: BodyInit | null | undefined): unknown {
+  if (body === null || body === undefined) return undefined;
+  if (typeof body === "string") {
+    try {
+      return JSON.parse(body);
+    } catch {
+      return body;
+    }
+  }
+  if (body instanceof FormData) return formDataToObject(body);
+  return body;
+}
+
+export function formDataToObject(form: FormData): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of form.entries()) {
+    result[key] = value instanceof File ? { name: value.name, size: value.size } : value;
+  }
+  return result;
+}
+
+// --------------------------------------------------------------------------- //
+// XMLHttpRequest double (multipart uploads)
+//
+// `lib/api/upload.ts` uses XHR rather than `fetch`, because `fetch` cannot report
+// upload progress — and progress is a requirement for document uploads. That
+// means the scripted `fetch` above cannot see those calls, so they get their own
+// double with the same shape: script a response, inspect what was sent.
+// --------------------------------------------------------------------------- //
+
+export interface RecordedUpload {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  fields: Record<string, unknown>;
+  withCredentials: boolean;
+}
+
+export interface UploadResponse {
+  status?: number;
+  body?: unknown;
+  /** Fire an `error` event instead of responding, i.e. the server is unreachable. */
+  networkError?: boolean;
+  /** Progress events to emit before the response, as `[loaded, total]` pairs. */
+  progress?: Array<[number, number]>;
+  /**
+   * Emit the progress events but withhold the response until `release()` is
+   * called. Without this a request completes on the next macrotask, which is
+   * faster than any assertion can observe — so an in-flight state (a progress
+   * bar, a disabled button) would appear to never render at all.
+   */
+  hold?: boolean;
+}
+
+/**
+ * Install an `XMLHttpRequest` double that answers every multipart request.
+ *
+ * A queue, like {@link mockFetch}: successive uploads consume it in order and the
+ * last entry repeats.
+ */
+export function mockUpload(responses: UploadResponse | UploadResponse[] = {}) {
+  const uploads: RecordedUpload[] = [];
+  const queue = Array.isArray(responses) ? [...responses] : [responses];
+  const held: Array<() => void> = [];
+
+  class FakeXhr {
+    status = 0;
+    responseText = "";
+    withCredentials = false;
+    upload = new EventTarget();
+
+    private url = "";
+    private method = "GET";
+    private readonly headers: Record<string, string> = {};
+    private readonly listeners = new Map<string, Array<() => void>>();
+    private readonly responseHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    open(method: string, url: string): void {
+      this.method = method;
+      this.url = url;
+    }
+
+    setRequestHeader(name: string, value: string): void {
+      this.headers[name] = value;
+    }
+
+    getResponseHeader(name: string): string | null {
+      return this.responseHeaders[name] ?? null;
+    }
+
+    addEventListener(type: string, listener: () => void): void {
+      this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+    }
+
+    abort(): void {
+      this.emit("abort");
+    }
+
+    send(form: FormData): void {
+      uploads.push({
+        url: this.url,
+        method: this.method,
+        headers: { ...this.headers },
+        fields: formDataToObject(form),
+        withCredentials: this.withCredentials,
+      });
+
+      const route = queue.length > 1 ? queue.shift()! : (queue[0] ?? {});
+
+      // Asynchronous, like a real request: a synchronous resolution would let a
+      // component skip its pending state entirely and hide a bug in it.
+      setTimeout(() => {
+        for (const [loaded, total] of route.progress ?? []) {
+          this.upload.dispatchEvent(
+            Object.assign(new Event("progress"), { lengthComputable: true, loaded, total }),
+          );
+        }
+
+        const complete = () => {
+          if (route.networkError) {
+            this.emit("error");
+            return;
+          }
+
+          this.status = route.status ?? 201;
+          this.responseText = route.body === undefined ? "" : JSON.stringify(route.body);
+          this.emit("load");
+        };
+
+        if (route.hold) {
+          held.push(complete);
+          return;
+        }
+        complete();
+      }, 0);
+    }
+
+    private emit(type: string): void {
+      for (const listener of this.listeners.get(type) ?? []) listener();
+    }
+  }
+
+  vi.stubGlobal("XMLHttpRequest", FakeXhr);
+
+  /** Let every held request finish. */
+  function release(): void {
+    for (const complete of held.splice(0)) complete();
+  }
+
+  return { uploads, release };
 }

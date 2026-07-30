@@ -21,7 +21,7 @@ from typing import Any
 from sqlalchemy import Case as SqlCase
 from sqlalchemy import Select, asc, case, desc, func, or_, select
 from sqlalchemy.orm import Session
-from sqlalchemy.sql.elements import UnaryExpression
+from sqlalchemy.sql.elements import ColumnElement, UnaryExpression
 
 from core.cases import (
     CASE_NUMBER_PREFIX,
@@ -31,6 +31,20 @@ from core.cases import (
 )
 from models.case import Case
 from schemas.case import CaseListQuery, CaseSortField, SortOrder
+
+
+def assigned_case_scope(user_id: uuid.UUID) -> ColumnElement[bool]:
+    """SQL predicate matching the cases ``user_id`` is party to.
+
+    The per-resource visibility rule, expressed once. Document Management applies
+    the *same* restriction to documents (a document is reachable exactly when its
+    case is), so it imports this rather than re-writing the OR — two copies would
+    be one policy change away from disagreeing about who can see what.
+    """
+    return or_(
+        Case.assigned_lawyer_id == user_id,
+        Case.assigned_court_representative_id == user_id,
+    )
 
 
 class CaseRepository:
@@ -159,12 +173,7 @@ class CaseRepository:
         be widened by any combination of them.
         """
         if visible_to is not None:
-            statement = statement.where(
-                or_(
-                    Case.assigned_lawyer_id == visible_to,
-                    Case.assigned_court_representative_id == visible_to,
-                )
-            )
+            statement = statement.where(assigned_case_scope(visible_to))
 
         if query.search:
             # ILIKE with escaped wildcards: a term containing % or _ must match

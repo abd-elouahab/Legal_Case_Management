@@ -8,12 +8,16 @@ used in tests.
 from __future__ import annotations
 
 from models.case import Case, CasePriority, CaseStatus
+from models.document import Document, DocumentCategory, DocumentVersion
 from models.user import User, UserRole, UserStatus
 
 __all__ = [
     "Case",
     "CasePriority",
     "CaseStatus",
+    "Document",
+    "DocumentCategory",
+    "DocumentVersion",
     "User",
     "UserRole",
     "UserStatus",

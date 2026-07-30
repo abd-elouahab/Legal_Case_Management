@@ -291,6 +291,178 @@ def make_case(db_session: Session):  # type: ignore[no-untyped-def]
     return _make
 
 
+# --------------------------------------------------------------------------- #
+# Document fixtures
+# --------------------------------------------------------------------------- #
+
+
+class FakeObjectStream:
+    """Test double for :class:`~services.document_storage.ObjectStream`."""
+
+    def __init__(self, payload: bytes) -> None:
+        self._payload = payload
+        self.closed = False
+
+    def __iter__(self) -> Iterator[bytes]:
+        yield self._payload
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class InMemoryDocumentStorage:
+    """Test double for :class:`~services.document_storage.DocumentStorageService`.
+
+    Mirrors the real contract — write once per key, stream back, report metadata,
+    and *never physically delete* — with a dict instead of MinIO. Keeping the
+    "logical delete" behaviour in the double matters: a test asserting that a
+    deleted document's bytes survive would otherwise pass against a double that
+    simply removed them.
+    """
+
+    def __init__(self, bucket: str = "test-documents") -> None:
+        self.bucket = bucket
+        self.objects: dict[str, bytes] = {}
+        self.content_types: dict[str, str] = {}
+        self.logical_deletes: list[str] = []
+        #: Set to raise on the next write, to exercise the storage-failure path.
+        self.fail_next_upload = False
+
+    def ensure_bucket(self) -> None:
+        return None
+
+    def upload_object(self, *, key: str, stream, size: int, content_type: str):  # type: ignore[no-untyped-def]
+        from core.exceptions import DocumentStorageError
+        from services.document_storage import StoredObjectInfo
+
+        if self.fail_next_upload:
+            self.fail_next_upload = False
+            raise DocumentStorageError(detail="fake storage failure")
+
+        stream.seek(0)
+        self.objects[key] = stream.read()
+        self.content_types[key] = content_type
+        return StoredObjectInfo(
+            key=key, size=size, content_type=content_type, last_modified=None, etag=None
+        )
+
+    def open_object(self, key: str) -> FakeObjectStream:
+        from core.exceptions import DocumentStorageError
+
+        if key not in self.objects:
+            raise DocumentStorageError(detail=f"missing object {key!r}")
+        return FakeObjectStream(self.objects[key])
+
+    def object_metadata(self, key: str):  # type: ignore[no-untyped-def]
+        from core.exceptions import DocumentStorageError
+        from services.document_storage import StoredObjectInfo
+
+        if key not in self.objects:
+            raise DocumentStorageError(detail=f"missing object {key!r}")
+        return StoredObjectInfo(
+            key=key,
+            size=len(self.objects[key]),
+            content_type=self.content_types[key],
+            last_modified=None,
+            etag=None,
+        )
+
+    def delete_object(self, key: str, *, reason: str) -> None:
+        # Logical only, exactly like the real service: the bytes stay.
+        self.logical_deletes.append(key)
+
+
+@pytest.fixture
+def document_storage() -> InMemoryDocumentStorage:
+    """A fresh in-memory object store per test."""
+    return InMemoryDocumentStorage()
+
+
+@pytest.fixture
+def make_document(db_session: Session, document_storage: InMemoryDocumentStorage):  # type: ignore[no-untyped-def]
+    """Factory creating persisted documents, with their version-1 row and bytes.
+
+    Writes to the fake object store as well as the database, so a document built
+    by this factory is downloadable — a fixture that only inserted metadata would
+    make every download test fail for a reason it is not about.
+    """
+    from core.documents import build_storage_key, mime_type_for
+    from models.document import Document, DocumentCategory, DocumentVersion
+    from tests.helpers import PDF_BYTES
+
+    counter = itertools.count(1)
+
+    def _make(
+        *,
+        case_id: uuid.UUID,
+        original_filename: str | None = None,
+        extension: str = "pdf",
+        category: DocumentCategory = DocumentCategory.OTHER,
+        description: str | None = None,
+        content: bytes | None = None,
+        uploaded_by: uuid.UUID | None = None,
+        created_at: datetime | None = None,
+        deleted_at: datetime | None = None,
+    ) -> Document:
+        payload = PDF_BYTES if content is None else content
+        index = next(counter)
+        document_id = uuid.uuid4()
+        stored_filename = f"{uuid.uuid4().hex}.{extension}"
+        storage_key = build_storage_key(
+            case_id=case_id,
+            document_id=document_id,
+            version=1,
+            stored_filename=stored_filename,
+        )
+        filename = original_filename or f"document-{index}.{extension}"
+
+        document = Document(
+            id=document_id,
+            case_id=case_id,
+            original_filename=filename,
+            stored_filename=stored_filename,
+            file_extension=extension,
+            mime_type=mime_type_for(extension),
+            file_size=len(payload),
+            storage_bucket=document_storage.bucket,
+            storage_key=storage_key,
+            category=category,
+            description=description,
+            version=1,
+            uploaded_by=uploaded_by,
+            deleted_at=deleted_at,
+        )
+        document.versions.append(
+            DocumentVersion(
+                id=uuid.uuid4(),
+                document_id=document_id,
+                version=1,
+                original_filename=filename,
+                stored_filename=stored_filename,
+                file_extension=extension,
+                mime_type=mime_type_for(extension),
+                file_size=len(payload),
+                storage_bucket=document_storage.bucket,
+                storage_key=storage_key,
+                uploaded_by=uploaded_by,
+            )
+        )
+        if created_at is not None:
+            # Set explicitly so ordering tests do not depend on wall-clock gaps
+            # between rows inserted in the same millisecond.
+            document.created_at = created_at
+            document.versions[0].created_at = created_at
+
+        db_session.add(document)
+        db_session.commit()
+
+        document_storage.objects[storage_key] = payload
+        document_storage.content_types[storage_key] = mime_type_for(extension)
+        return document
+
+    return _make
+
+
 @pytest.fixture
 def auth_service(  # type: ignore[no-untyped-def]
     db_session: Session,
@@ -317,15 +489,17 @@ def api_client(
     db_session: Session,
     revocations: InMemoryRevocationStore,
     throttle: InMemoryLoginThrottle,
+    document_storage: InMemoryDocumentStorage,
 ) -> Iterator[TestClient]:
-    """A TestClient whose database, denylist, and throttle are the test doubles."""
-    from api.deps import get_login_throttle, get_token_revocation_store
+    """A TestClient whose database, denylist, throttle, and object store are doubles."""
+    from api.deps import get_document_storage, get_login_throttle, get_token_revocation_store
     from db.session import get_db
     from main import app
 
     app.dependency_overrides[get_db] = lambda: db_session
     app.dependency_overrides[get_token_revocation_store] = lambda: revocations
     app.dependency_overrides[get_login_throttle] = lambda: throttle
+    app.dependency_overrides[get_document_storage] = lambda: document_storage
     try:
         with TestClient(app) as test_client:
             yield test_client

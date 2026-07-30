@@ -26,6 +26,7 @@ import { CaseAssignee } from "@/components/cases/case-assignee";
 import { CasePriorityBadge, CaseStatusBadge } from "@/components/cases/case-badges";
 import { CasePlaceholderSections } from "@/components/cases/case-placeholder-sections";
 import { EditCaseDialog } from "@/components/cases/edit-case-dialog";
+import { CaseDocuments } from "@/components/documents/case-documents";
 import { caseErrorMessage, useCase, useRestoreCase } from "@/hooks/use-cases";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { ROUTES } from "@/lib/routes";
@@ -228,6 +229,13 @@ function CaseDetailsContent({ legalCase }: { legalCase: LegalCase }) {
       </div>
 
       <Separator />
+
+      {/* Gated on the capability, not the role: a caller without `documents:view`
+          is shown nothing here rather than an empty list they cannot populate. */}
+      <Protected permission={PERMISSION.documentsView}>
+        <CaseDocuments caseId={legalCase.id} />
+        <Separator />
+      </Protected>
 
       <CasePlaceholderSections />
 

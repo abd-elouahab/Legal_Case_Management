@@ -122,7 +122,13 @@
       "Bash(./.venv/Scripts/python.exe -)",
       "Bash(./.venv/Scripts/python.exe -m pytest tests/unit/test_case_utils.py::TestPrioritySortSql -q -p no:randomly)",
       "Bash(cp /tmp/case_repo_good.py apps/api/repositories/case.py)",
-      "Bash(./.venv/Scripts/python.exe -m ruff check apps/api tests)"
+      "Bash(./.venv/Scripts/python.exe -m ruff check apps/api tests)",
+      "Bash(ENVIRONMENT=testing ../../.venv/Scripts/python.exe -c ' *)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/unit/test_document_utils.py tests/unit/test_document_validation.py -q)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/unit/test_document_schemas.py -q)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/unit/test_document_service.py -q)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/integration/test_documents.py -q)",
+      "Bash(docker exec *)"
     ]
   }
 }
