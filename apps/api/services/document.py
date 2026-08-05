@@ -23,6 +23,11 @@ What it does own are the rules nothing else can express: that a document belongs
 to a case its uploader may reach, that a replacement adds a version rather than
 overwriting one, that a deletion is logical, and that the ``documents`` row
 always mirrors its current version.
+
+It also **publishes to the timeline** — uploads, metadata edits, replacements,
+deletions, and downloads are the document half of a case's history. As with the
+case service, publication happens after the change is committed, describes rather
+than decides, and can never fail the request that caused it.
 """
 
 from __future__ import annotations
@@ -43,6 +48,7 @@ from core.exceptions import (
 )
 from models.case import Case
 from models.document import Document, DocumentVersion
+from models.timeline import TimelineEventType
 from models.user import User
 from repositories.case import CaseRepository
 from repositories.document import DocumentRepository
@@ -50,6 +56,7 @@ from schemas.document import DocumentListQuery, DocumentUpdate, DocumentUploadFo
 from services.document_access import DocumentAccessPolicy
 from services.document_storage import DocumentStorageService, ObjectStream
 from services.document_validation import ValidatedUpload
+from services.timeline import NullTimelineRecorder, TimelineRecorder
 
 logger = structlog.get_logger(__name__)
 
@@ -84,11 +91,16 @@ class DocumentService:
         cases: CaseRepository,
         storage: DocumentStorageService | None = None,
         access: DocumentAccessPolicy | None = None,
+        *,
+        timeline: TimelineRecorder | None = None,
     ) -> None:
         self._documents = documents
         self._cases = cases
         self._storage = storage or DocumentStorageService()
         self._access = access or DocumentAccessPolicy()
+        # See `CaseService.__init__` for why the default records nothing; the
+        # application wires the real recorder in `api.deps.get_document_service`.
+        self._timeline: TimelineRecorder = timeline or NullTimelineRecorder()
 
     # ------------------------------------------------------------- reading #
 
@@ -168,6 +180,12 @@ class DocumentService:
         saved = self._persist(document, key=storage_key, operation="upload", is_new=True)
 
         logger.info("document_uploaded", **self._event(saved, actor=actor))
+        self._publish(
+            saved,
+            TimelineEventType.DOCUMENT_UPLOADED,
+            actor=actor,
+            description=f'{actor.full_name} uploaded "{saved.original_filename}".',
+        )
         return saved
 
     # ------------------------------------------------------------ updating #
@@ -200,6 +218,18 @@ class DocumentService:
             # business — entering the log.
             fields=sorted(changes),
             **self._event(saved, actor=actor),
+        )
+        self._publish(
+            saved,
+            TimelineEventType.DOCUMENT_UPDATED,
+            actor=actor,
+            description=(
+                f'{actor.full_name} updated the details of "{saved.original_filename}".'
+            ),
+            # Unlike the application log, the timeline may carry the *values*: it
+            # is served only to users already entitled to the case, whereas a log
+            # line goes to an operator with no such entitlement.
+            extra={"fields": sorted(changes)},
         )
         return saved
 
@@ -260,6 +290,16 @@ class DocumentService:
             previous_version=previous_version,
             **self._event(saved, actor=actor),
         )
+        self._publish(
+            saved,
+            TimelineEventType.DOCUMENT_REPLACED,
+            actor=actor,
+            description=(
+                f'{actor.full_name} replaced "{saved.original_filename}" with version '
+                f"{saved.version}."
+            ),
+            extra={"previous_version": previous_version},
+        )
         return saved
 
     def delete_document(self, document_id: uuid.UUID, *, actor: User) -> Document:
@@ -300,6 +340,16 @@ class DocumentService:
             already_deleted=already_deleted,
             **self._event(document, actor=actor),
         )
+        # Only when something actually changed. Deletion is idempotent, and a
+        # repeated request must not append a second "deleted" entry to a history
+        # in which nothing happened the second time.
+        if not already_deleted:
+            self._publish(
+                document,
+                TimelineEventType.DOCUMENT_DELETED,
+                actor=actor,
+                description=f'{actor.full_name} deleted "{document.original_filename}".',
+            )
         return document
 
     # ------------------------------------------------------------- serving #
@@ -321,6 +371,21 @@ class DocumentService:
 
         logger.info(
             "document_downloaded", version=entry.version, **self._event(document, actor=actor)
+        )
+        # Recorded because ``08-timeline.md`` lists DOCUMENT_DOWNLOADED as a
+        # document event, and who took a copy of a legal document is exactly the
+        # accountability the audit trail exists for. Preview is deliberately *not*
+        # recorded: the spec defines no event for it, and inventing one is not
+        # this feature's call.
+        self._publish(
+            document,
+            TimelineEventType.DOCUMENT_DOWNLOADED,
+            actor=actor,
+            description=(
+                f'{actor.full_name} downloaded "{entry.original_filename}" '
+                f"(version {entry.version})."
+            ),
+            extra={"downloaded_version": entry.version},
         )
         return download
 
@@ -472,6 +537,43 @@ class DocumentService:
             storage_bucket=self._storage.bucket,
             storage_key=key,
             uploaded_by=actor.id,
+        )
+
+    def _publish(
+        self,
+        document: Document,
+        event_type: TimelineEventType,
+        *,
+        actor: User,
+        description: str,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        """Announce a document event on its case's timeline.
+
+        Every document event carries the same identifying metadata, assembled
+        here so five call sites cannot each remember a different subset of it;
+        ``extra`` adds whatever is specific to one of them.
+
+        **The filename appears here and nowhere in the application log.** That is
+        the spec's separation, not an oversight: the timeline is served only to
+        users already entitled to the document's case, while a log line goes to an
+        operator who has no such entitlement — and a filename can name a client or
+        a matter.
+        """
+        self._timeline.record(
+            case_id=document.case_id,
+            event_type=event_type,
+            actor=actor,
+            description=description,
+            metadata={
+                "document_id": document.id,
+                "filename": document.original_filename,
+                "category": document.category.value,
+                "version": document.version,
+                "file_extension": document.file_extension,
+                "file_size": document.file_size,
+                **(extra or {}),
+            },
         )
 
     @staticmethod

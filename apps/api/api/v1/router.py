@@ -11,6 +11,8 @@ from api.v1.auth.router import router as auth_router
 from api.v1.authorization.router import router as authorization_router
 from api.v1.cases.router import router as cases_router
 from api.v1.documents.router import router as documents_router
+from api.v1.timeline.router import case_timeline_router
+from api.v1.timeline.router import router as timeline_router
 from api.v1.users.router import router as users_router
 
 api_router = APIRouter()
@@ -20,3 +22,9 @@ api_router.include_router(authorization_router, prefix="/authorization", tags=["
 api_router.include_router(users_router, prefix="/users", tags=["users"])
 api_router.include_router(cases_router, prefix="/cases", tags=["cases"])
 api_router.include_router(documents_router, prefix="/documents", tags=["documents"])
+
+# `GET /cases/{case_id}/timeline` lives under the case prefix but belongs to the
+# timeline module, so it is registered from there rather than added to the case
+# router. Tagged `timeline`, so OpenAPI groups it with the module that owns it.
+api_router.include_router(case_timeline_router, prefix="/cases", tags=["timeline"])
+api_router.include_router(timeline_router, prefix="/timeline", tags=["timeline"])

@@ -223,11 +223,12 @@ it needs attention.
 The details page groups the record the way someone working a case reads it:
 **General information**, **Assignment**, **Court information**, and **Audit
 information**, followed by the case's **Documents** (the real list, scoped to
-this case) and then dashed placeholder cards reserving the layout for Timeline,
-Notes, AI Assistant, and Reports. Those cards say plainly that the module is not
-built yet, so an empty card is never mistaken for a loading failure. Documents no
-longer has a placeholder — the module shipped, and a placeholder beside a working
-feature reads as a bug.
+this case), its **Timeline** (the real activity history), and then dashed
+placeholder cards reserving the layout for Notes, AI Assistant, and Reports.
+Those cards say plainly that the module is not built yet, so an empty card is
+never mistaken for a loading failure. Documents and Timeline no longer have
+placeholders — both modules shipped, and a placeholder beside a working feature
+reads as a bug.
 
 Dialogs:
 
@@ -322,6 +323,55 @@ Business-specific components for this area live in:
 
 ```
 components/documents/
+```
+
+---
+
+### Timeline & Audit Trail
+
+Gated on `timeline:view`, which every role holds. **Which timelines a user sees is
+decided per case by the API**, so a lawyer reads the history of the matters they
+are assigned to and is refused the rest with a 403 — never with an empty list,
+which would make an inaccessible case indistinguishable from a quiet one.
+
+It has no page of its own. A timeline belongs to a case, so it is rendered inside
+the case workspace, in reverse chronological order. Each entry shows:
+
+- An **event icon**, chosen by the event's category — folder for case events, file
+  for documents, user for assignments, refresh for status, flag for priority. The
+  category is computed by the API, so the icon cannot disagree with what happened.
+- The **event title** ("Document Uploaded"), the **description** (the sentence the
+  publishing module wrote, e.g. `Amina Benali uploaded "Contract.pdf"`), and a meta
+  line carrying the **user**, their **role**, and the **timestamp**.
+
+Timestamps read the way an activity feed does — *Today • 14:32*, *Yesterday •
+09:15*, *24 July • 14:32*, and the year once it stops being obvious — with the
+exact instant on the element's `title`, because precision is what matters in a
+legal audit trail.
+
+Search matches the event title or description, case-insensitively. Activity type,
+actor, and the date range all combine with it, and the order flips between newest-
+and oldest-first. The actor filter appears only for callers who may read the user
+directory, since nobody else could resolve a name from an identifier.
+
+The structured `metadata` an event carries is **never rendered raw**. It exists so
+a future module can attach specifics without a schema change; everything a reader
+needs is already in the description.
+
+States:
+
+- Skeleton loader matching the entry layout while the first page loads, and a
+  spinner in the pagination controls while a later page is in flight — the
+  previous page stays on screen, so without it pressing Next looks inert.
+- Distinct empty states for "no activity yet" (explaining that entries appear
+  automatically) and "no results" (offering *Clear filters*).
+- An error state with a retry, which also carries the refusal message when the
+  caller is not party to the case.
+
+Business-specific components for this area live in:
+
+```
+components/timeline/
 ```
 
 ---

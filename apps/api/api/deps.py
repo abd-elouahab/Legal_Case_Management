@@ -19,12 +19,14 @@ from db.session import get_db
 from models.user import User
 from repositories.case import CaseRepository
 from repositories.document import DocumentRepository
+from repositories.timeline import TimelineRepository
 from repositories.user import UserRepository
 from services.auth import AuthService
 from services.case import CaseService
 from services.document import DocumentService
 from services.document_storage import DocumentStorageService
 from services.login_throttle import LoginThrottle
+from services.timeline import TimelineService
 from services.token_revocation import TokenRevocationStore
 from services.user import UserService
 
@@ -77,9 +79,32 @@ def get_user_service(
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 
 
+def get_timeline_repository(session: DbSession) -> TimelineRepository:
+    """Provide a request-scoped timeline repository."""
+    return TimelineRepository(session)
+
+
+def get_timeline_service(
+    events: Annotated[TimelineRepository, Depends(get_timeline_repository)],
+    cases: Annotated[CaseRepository, Depends(get_case_repository)],
+) -> TimelineService:
+    """Provide the timeline service with its collaborators injected.
+
+    The case repository is injected because a case's timeline may only be served
+    to a caller party to that case — a rule the timeline repository has no
+    business knowing about, and one that must not be re-implemented against a
+    second copy of the case query.
+    """
+    return TimelineService(events, cases)
+
+
+TimelineServiceDep = Annotated[TimelineService, Depends(get_timeline_service)]
+
+
 def get_case_service(
     cases: Annotated[CaseRepository, Depends(get_case_repository)],
     users: Annotated[UserRepository, Depends(get_user_repository)],
+    timeline: Annotated[TimelineService, Depends(get_timeline_service)],
 ) -> CaseService:
     """Provide the case management service.
 
@@ -87,8 +112,14 @@ def get_case_service(
     assignee exists and holds the right role — a rule the case repository has no
     business knowing about, and one that must not be re-implemented against a
     second copy of the user query.
+
+    The timeline service is injected because the case service *publishes* to it:
+    creating, updating, archiving, restoring, and re-assigning a case are the
+    events the case timeline is made of. This is the only place the real recorder
+    is wired in — the service's own default records nothing — so a test asserts
+    that this function supplies it.
     """
-    return CaseService(cases, users)
+    return CaseService(cases, users, timeline=timeline)
 
 
 CaseServiceDep = Annotated[CaseService, Depends(get_case_service)]
@@ -112,6 +143,7 @@ def get_document_service(
     documents: Annotated[DocumentRepository, Depends(get_document_repository)],
     cases: Annotated[CaseRepository, Depends(get_case_repository)],
     storage: Annotated[DocumentStorageService, Depends(get_document_storage)],
+    timeline: Annotated[TimelineService, Depends(get_timeline_service)],
 ) -> DocumentService:
     """Provide the document management service with its collaborators injected.
 
@@ -119,8 +151,13 @@ def get_document_service(
     caller may reach — a rule the document repository has no business knowing
     about, and one that must not be re-implemented against a second copy of the
     case query.
+
+    The timeline service is injected because the document service *publishes* to
+    it: uploads, metadata edits, replacements, deletions, and downloads are the
+    document half of a case's history. As with the case service, this is the only
+    place the real recorder is wired in.
     """
-    return DocumentService(documents, cases, storage)
+    return DocumentService(documents, cases, storage, timeline=timeline)
 
 
 DocumentServiceDep = Annotated[DocumentService, Depends(get_document_service)]

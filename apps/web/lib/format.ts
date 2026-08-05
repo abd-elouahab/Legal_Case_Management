@@ -48,6 +48,69 @@ export function formatDateTime(value: string | null | undefined, fallback = "—
   return date ? DATE_TIME_FORMAT.format(date) : fallback;
 }
 
+const TIME_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+const DAY_MONTH_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
+  day: "numeric",
+  month: "long",
+});
+
+const DAY_MONTH_YEAR_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+/** Whether two instants fall on the same calendar day, in the viewer's timezone. */
+function isSameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+/**
+ * Format an event's time the way an activity feed reads it.
+ *
+ * `Today • 14:32`, `Yesterday • 09:15`, `24 July • 14:32`, and `24 July 2025 •
+ * 14:32` once the year stops being obvious — which is the progression
+ * `08-timeline.md`'s examples show. The year is omitted for the current year
+ * because repeating it on every entry of a case opened this year is noise.
+ *
+ * **Relative to *now*, so it must only be rendered on the client.** The timeline
+ * is fetched client-side (the access token lives in browser memory), so there is
+ * no server render of these values to disagree with — but a future server
+ * component must not call this without pinning `now`.
+ *
+ * @param now Injectable for testing; defaults to the current instant.
+ */
+export function formatEventTime(
+  value: string | null | undefined,
+  now: Date = new Date(),
+): string {
+  const date = parse(value);
+  if (!date) return "—";
+
+  const time = TIME_FORMAT.format(date);
+
+  if (isSameDay(date, now)) return `Today • ${time}`;
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (isSameDay(date, yesterday)) return `Yesterday • ${time}`;
+
+  const day =
+    date.getFullYear() === now.getFullYear()
+      ? DAY_MONTH_FORMAT.format(date)
+      : DAY_MONTH_YEAR_FORMAT.format(date);
+
+  return `${day} • ${time}`;
+}
+
 /**
  * Initials for an avatar fallback.
  *

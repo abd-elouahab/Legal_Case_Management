@@ -296,6 +296,51 @@ export function documentPagePayload(
   };
 }
 
+// --------------------------------------------------------------------------- //
+// Timeline fixtures
+// --------------------------------------------------------------------------- //
+
+/**
+ * A timeline event in the API's wire format, as `GET /cases/{id}/timeline`
+ * returns it.
+ *
+ * Defaults to a document upload by the signed-in administrator, which is the
+ * shape the spec's own example uses. `category` is included because the API
+ * computes and serves it — a test that omitted it would be asserting against a
+ * payload the server never sends.
+ */
+export function timelineEventPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "55555555-5555-4555-8555-555555555555",
+    case_id: legalCasePayload().id,
+    event_type: "document_uploaded",
+    category: "document",
+    title: "Document Uploaded",
+    description: 'Amina Benali uploaded "contrat-de-bail.pdf".',
+    actor_id: TEST_USER.id,
+    actor_name: TEST_USER.full_name,
+    actor_role: "administrator",
+    metadata: { filename: "contrat-de-bail.pdf", version: 1 },
+    created_at: "2026-07-20T14:32:00Z",
+    ...overrides,
+  };
+}
+
+/** A page of timeline events in the API's wire format. */
+export function timelinePagePayload(
+  items: Array<Record<string, unknown>> = [timelineEventPayload()],
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    items,
+    total_records: items.length,
+    page: 1,
+    page_size: 20,
+    total_pages: 1,
+    ...overrides,
+  };
+}
+
 /** A single scripted response for one endpoint. */
 export interface RouteResponse {
   status?: number;

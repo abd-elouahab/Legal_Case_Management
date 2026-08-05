@@ -39,6 +39,14 @@
 
 - `apps/web` — Collaborative web application used by administrators, lawyers, and court representatives.
 - `apps/api` — Backend responsible for authentication, authorization, business logic, AI orchestration, notifications, and real-time communication.
+- `modules/timeline` — Activity timeline and audit trail. Implemented inside
+  `apps/api` (`models/timeline.py`, `core/timeline.py`,
+  `repositories/timeline.py`, `services/timeline.py`,
+  `services/timeline_access.py`, `api/v1/timeline/`) and `apps/web`
+  (`components/timeline/`, embedded in `app/(protected)/cases/[id]`), following
+  the same layering as Cases and Documents. It is **generic by construction**:
+  business modules publish to it, and it knows nothing about what their events
+  mean.
 - `modules/cases` — Case lifecycle management, lawyer assignment, hearings, court decisions, and case timeline.
   Implemented inside `apps/api` (`models/case.py`, `core/cases.py`,
   `repositories/case.py`, `services/case.py`, `services/case_access.py`,
@@ -349,6 +357,55 @@ Implemented per `context/feature-specs/07-document-management.md`:
   advance, so a client never offers a preview the API will refuse.
 - **Deletion is logical.** `DELETE /documents/{id}` sets `deleted_at`; the row and
   every stored file are kept, and the operation is idempotent.
+
+### Timeline & Audit Trail
+
+Implemented per `context/feature-specs/08-timeline.md`:
+
+- **The timeline module holds no business logic.** It records what it is told.
+  The services that own a rule — `services/case.py`, `services/document.py` —
+  publish to `TimelineService.record(...)` *after* their change is committed;
+  the timeline owns storage, presentation, and authorization of those events and
+  nothing else. `TimelineRecorder` is the narrow protocol a publisher depends on,
+  so a publishing module cannot reach the read or authorization side.
+- **Append-only.** `timeline_events` has no `updated_at` and no soft-delete
+  column, and `TimelineRepository` exposes no update and no delete — a repository
+  that cannot express "change this event" cannot be talked into it. The API is
+  read-only for the same reason: an audit trail a client can edit is not one.
+- **The actor is snapshotted, not joined.** `actor_name` and `actor_role` are
+  copied onto the row when the event happens. A join would render the actor as
+  they are *today*, so renaming a user would silently rewrite history.
+  `actor_id` is kept alongside for correlation.
+- **`event_type` and `actor_role` are `VARCHAR`, not database enums** — the only
+  place on the platform that departs from `case_status` / `document_category` /
+  `user_role`. The spec requires that future modules publish without modifying
+  the timeline, and an `ALTER TYPE` per new event type is exactly that
+  modification; and a *snapshot* column must tolerate its vocabulary moving on.
+  `TimelineEventType` (`core`/`models`) remains the central registry publishers
+  use, and every read path is tolerant of an identifier it does not recognise.
+- **`metadata` is JSONB**, `NOT NULL DEFAULT '{}'`, normalised by
+  `core/timeline.py` to JSON-safe values and capped at 8 KB. It is the extension
+  point: a later module attaches its own specifics with no schema change.
+- **A failure to record never fails the operation that caused it.** The business
+  change is already committed by then, so raising would answer a successful
+  request with a 500 and invite a duplicating retry. The failure is logged; the
+  structured application log for the underlying operation is emitted
+  independently, so the operational record survives.
+- **`created_at` is stamped by the service, monotonically per instance.** One
+  request can publish several events, and the timeline is ordered by this column
+  — but PostgreSQL's `now()` is the transaction's start time and the platform
+  clock is only so fine-grained, so ties would order history arbitrarily against
+  a random-UUID tiebreaker. A service instance is per request, which is exactly
+  the scope where ordering is guaranteed and needed.
+- **Access follows the case, exactly.** `services/timeline_access.py` owns no
+  policy; it delegates to `CaseAccessPolicy`, as `document_access.py` does. A
+  caller not party to a case is refused **403**, never handed an empty page — an
+  empty timeline and an inaccessible one must not be confused.
+- **The timeline is not the application log, and neither is derived from the
+  other.** Timeline events are business facts a lawyer reads; the structured logs
+  are for an operator. That is why a **filename appears in a timeline
+  description and never in a log line**: the timeline is served only to users
+  already entitled to the case.
 
 ## Invariants
 

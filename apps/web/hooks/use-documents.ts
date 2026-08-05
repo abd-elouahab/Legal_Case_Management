@@ -19,6 +19,7 @@ import {
   updateDocument,
   uploadDocument,
 } from "@/lib/api/documents";
+import { timelineKeys } from "@/hooks/use-timeline";
 import { ApiError, NetworkError } from "@/lib/api/errors";
 import { saveFile, type FetchedFile } from "@/lib/api/upload";
 import type { LegalDocument } from "@/types/document";
@@ -168,18 +169,26 @@ export function useDocument(
 // --------------------------------------------------------------------------- //
 
 /**
- * Invalidate everything the document list shows.
+ * Invalidate everything the document list shows, and the timeline with it.
  *
  * Deliberately broad: a category change alters which filters a document falls
  * under, a replacement alters its size, name, and sort position, and a deletion
  * removes it entirely. Reconciling each of those by hand would be an ongoing
  * source of stale rows.
+ *
+ * The timeline goes too, because **every one of these mutations produces timeline
+ * events server-side** — an upload, a metadata edit, a replacement, and a deletion
+ * each append to the case's history. Without this, a user would upload a document
+ * and watch the activity list beside it stay silent.
  */
 function useInvalidateDocuments(): () => Promise<void> {
   const queryClient = useQueryClient();
 
   return React.useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: documentKeys.all });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: documentKeys.all }),
+      queryClient.invalidateQueries({ queryKey: timelineKeys.all }),
+    ]);
   }, [queryClient]);
 }
 
@@ -267,10 +276,19 @@ export function useDownloadDocument(): UseMutationResult<
   unknown,
   DocumentFileRequest
 > {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: ({ id, filename, version }: DocumentFileRequest) =>
       downloadDocumentFile(id, filename, version),
-    onSuccess: saveFile,
+    onSuccess: async (file) => {
+      saveFile(file);
+      // A download is recorded on the case's timeline — who took a copy of a
+      // legal document is exactly what the audit trail is for — so the history
+      // beside it is now stale. Nothing about the *document* changed, which is
+      // why this invalidates only the timeline.
+      await queryClient.invalidateQueries({ queryKey: timelineKeys.all });
+    },
   });
 }
 

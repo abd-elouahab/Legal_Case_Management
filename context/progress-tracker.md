@@ -9,13 +9,182 @@ change.
 
 ## Current Goal
 
-- **Next:** awaiting the next feature specification. Document Management is
-  complete; per its "Out of Scope" section, OCR, text extraction, embeddings,
-  vector storage, semantic search, the AI Assistant, AI report generation,
-  automatic classification, summarization, the Timeline, and Notifications are
-  each their own unit. All of them now have a Document to attach to.
+- **Next:** awaiting the next feature specification. Timeline & Audit Trail is
+  complete; per its "Out of Scope" section, notifications, real-time updates,
+  WebSockets, OCR, the AI Assistant, AI report generation, dashboard analytics,
+  and monitoring are each their own unit. Every business event on the platform
+  now has a timeline to publish to, and a future module joins it by adding one
+  registry member — no timeline code changes.
 
 ## Completed
+
+- **Timeline & Audit Trail (spec `08-timeline.md`)** — a centralized activity
+  timeline and audit trail recording the significant events the Case and Document
+  modules produce, plus the read API and the case-workspace UI. **No new
+  dependencies**, backend or frontend.
+  - **One entity** (`models/timeline.py` + migration `a3c8f5e70b14`).
+    `timeline_events` carries **exactly the fields the spec lists** — `id`,
+    `case_id`, `event_type`, `title`, `description`, `actor_id`, `actor_name`,
+    `actor_role`, `metadata`, `created_at` — and nothing else. There is **no
+    `updated_at` and no `deleted_at`**: the table is append-only, so either
+    column would be one that can never change, and their absence makes that
+    structural rather than a convention.
+  - **`TimelineEventType`** — the central registry, all fifteen types the spec
+    lists in its three groups (case, assignment, document). **`TimelineEventCategory`**
+    (case / status / priority / assignment / document) is *derived* from it in
+    `core/timeline.py`, so an event can never be filed under a family that
+    disagrees with its type, and a new type cannot arrive uncategorised.
+  - **`event_type` and `actor_role` are `VARCHAR`, deliberately not PostgreSQL
+    enums** — the only place on the platform that departs from `case_status`,
+    `document_category`, and `user_role`. Two different reasons: the spec requires
+    that *"future modules should be able to publish events without modifying the
+    Timeline implementation"*, and an `ALTER TYPE` per new event type is exactly
+    that modification; and `actor_role` is a **snapshot**, so a role retired from
+    `UserRole` in five years must still read back from a row written today. Every
+    read path is tolerant of an identifier it does not recognise, right through
+    to the frontend, where `eventType` is a `string` rather than a union.
+  - **The actor is snapshotted, not joined.** `actor_name` and `actor_role` are
+    copied onto the row at the moment of the event. A join would render the actor
+    as they are *today*, so renaming a user would silently rewrite history —
+    asserted by a test that renames the user and re-reads the event.
+  - **`metadata` is JSONB** (plain `JSON` on the SQLite test database, via
+    `with_variant`), `NOT NULL DEFAULT '{}'`. `core/timeline.py` normalises it:
+    `None` values dropped, UUIDs/dates/enums coerced to text, nesting bounded,
+    and an 8 KB ceiling. Oversized metadata **loses the specifics but keeps the
+    event** — a publisher's bug must not cost the audit trail the event itself.
+  - **Timeline utilities** (`core/timeline.py`): the category and default-title
+    mappings, `humanize` for rendering an identifier inside a sentence, and the
+    title/description/actor/metadata normalisers. Pure functions, unit-testable
+    without a database or a request. This module is the whole of the timeline's
+    "knowledge" — it knows nothing about what any event *means*.
+  - **Schemas** (`schemas/timeline.py`): `TimelineEventRead` (with a **computed**
+    `category`, so the client's icon choice cannot disagree with the server),
+    `TimelineEventPage`, `TimelineListQuery`, `TimelineSortField`. The ORM
+    attribute is `event_metadata` because `Base.metadata` is SQLAlchemy's table
+    registry; the **wire field is `metadata`**, as the spec specifies, via an
+    alias. There is deliberately **no create schema**.
+  - **Repository** (`repositories/timeline.py`): search, filtering, sorting,
+    pagination, **and the case scope** all execute in the database. LIKE
+    wildcards are escaped, the date filter covers the whole end day, and the
+    primary key is appended to every `ORDER BY` as a tiebreaker. **No update and
+    no delete methods exist** — a repository that cannot express "change this
+    event" cannot be talked into it by a future caller.
+  - **Service** (`services/timeline.py`): `record(...)` is the reusable method the
+    spec asks for — a case id, a registry event type, an actor, an optional title
+    and description, and free-form metadata. `TimelineRecorder` is the narrow
+    protocol publishers depend on, so Case and Document Management cannot reach
+    the read or authorization side; `NullTimelineRecorder` is the default for a
+    service built with no timeline, and a test asserts the *application* never
+    takes that default.
+  - **`record` never raises.** The business change is already committed by the
+    time it runs, so raising would answer a successful request with a 500 and
+    invite a duplicating retry. A failure is logged at error level, and the
+    structured application log for the underlying operation is emitted
+    independently — so the operational record survives even when the user-facing
+    entry does not.
+  - **Per-resource authorization** (`services/timeline_access.py`): owns no policy
+    of its own and **delegates every decision to `CaseAccessPolicy`**, exactly as
+    `document_access.py` does, so timeline visibility cannot drift from case
+    visibility. A caller not party to a case is refused **403**, never handed an
+    empty page — an empty timeline and an inaccessible one must not be confused.
+  - **Endpoints** (`api/v1/timeline/router.py`): `GET /cases/{case_id}/timeline`
+    (page, size, search, event type, actor, date range, sort_by, sort_order) and
+    `GET /timeline/{event_id}`, both guarded by
+    `require_permission(Permission.TIMELINE_VIEW)`. Two routers, because the two
+    paths live under different prefixes — keeping both here rather than adding the
+    first to the case router keeps every timeline endpoint in the timeline module.
+    **Read-only:** POST/PATCH/PUT/DELETE all answer 404 or 405, verified.
+  - **Errors** (`core/exceptions.py`): `TimelineEventNotFoundError` (404) and
+    `TimelineAccessDeniedError` (403, generic body). Only two, because the
+    timeline is read-only over HTTP.
+  - **Automatic event recording, wired into the existing services without moving
+    business logic into the timeline.** `services/case.py` publishes
+    `case_created` (plus an assignment event for anyone assigned at creation —
+    otherwise "who has been on this case, since when" is unanswerable),
+    `case_updated`, `status_changed`, `priority_changed`, `case_archived`,
+    `case_restored`, and the four assignment events; `services/document.py`
+    publishes `document_uploaded`, `document_updated`, `document_replaced`,
+    `document_deleted`, and `document_downloaded`. One PATCH can be several
+    events, and a **generic `case_updated` is recorded only for the descriptive
+    fields left over**, so a request that merely moved the status does not also
+    claim the case was edited. Idempotent operations record once: archiving or
+    deleting twice appends one entry.
+  - **Logging stays separate from the timeline, as the spec requires.**
+    `timeline_event_recorded`, `timeline_event_write_failed`,
+    `timeline_metadata_rejected`, `timeline_access_denied`, and the lookup
+    failures carry identifiers and the event type only. **A filename appears in a
+    timeline description and never in a log line** — the timeline is served only
+    to users already entitled to the case, while a log line goes to an operator
+    who is not.
+  - **Frontend:** `types/timeline.ts`, `types/timeline-management.ts`,
+    `lib/validation/timeline.ts` (response + query Zod schemas, deliberately
+    *tolerant* where the API's registry is open), `lib/api/timeline.ts` (typed
+    client, snake_case ↔ camelCase in one place), `hooks/use-timeline.ts` (queries
+    only — there is nothing to mutate) and `hooks/use-timeline-query.ts`. Also
+    `formatEventTime` in `lib/format.ts`: *Today • 14:32*, *Yesterday • 09:15*,
+    *24 July • 14:32*, and the year once it stops being obvious.
+  - **UI** (`components/timeline/`): `CaseTimeline` (the container),
+    `TimelineEntry`, `TimelineIcon` (the spec's five icon families),
+    `TimelineFilters`, `TimelinePagination`, and `TimelineSkeleton`. Design System
+    components only. The structured `metadata` is **never rendered raw** —
+    everything a reader needs is already in the description.
+  - **The case workspace's Timeline placeholder was replaced with the real
+    history.** `CasePlaceholderSections` now reserves three cards (Notes, AI
+    Assistant, Reports) instead of four.
+  - **Case and document mutations invalidate the timeline cache.** Every one of
+    them produces events server-side, so without it a user would archive a case
+    and watch its activity list not mention it. A download invalidates the
+    timeline *only* — nothing about the document changed.
+  - **One real defect, found by a flaky test rather than by design.** Ordering
+    relied on `created_at`, stamped with `datetime.now()`. The platform clock is
+    only so fine-grained — on Windows consecutive calls routinely return the same
+    value — and the repository's tiebreaker is a *random* UUID, so events
+    published back-to-back by one request came back **shuffled**. History arriving
+    in the wrong order is a real defect, and the first symptom was one test
+    failing roughly one run in three. `TimelineService` now issues **monotonically
+    increasing timestamps per instance** (a service instance is per request, which
+    is exactly the scope where ordering is guaranteed and needed); the adjustment
+    is at most a microsecond per event. Three regression tests cover it, including
+    one that publishes 25 events and asserts no two share a timestamp. **General
+    lesson: a random-UUID tiebreaker buys pagination stability, not insertion
+    order — anything that must read back in the order it was written needs a key
+    that actually increases.**
+  - **Validation (live Postgres + Redis + MinIO + Qdrant, real HTTP):** 1232
+    backend tests (up from 1067 — 165 of them for the timeline) and 387 frontend
+    tests (up from 341) pass, twice over to rule out the flake; `ruff` clean
+    across `apps/api` and `tests`, `mypy --strict` clean on `apps/api`; `tsc` and
+    ESLint clean; the production build succeeds and prerenders every route.
+    Migration verified on **live PostgreSQL in both directions**: the upgrade
+    creates the table and all six indexes with `metadata` as `jsonb` and both
+    foreign keys (`case_id` CASCADE, `actor_id` SET NULL); the downgrade removes
+    the table and every index, and a re-upgrade is clean. The service was
+    exercised against live PostgreSQL directly — JSONB round-trips a nested object
+    and coerces a UUID, ILIKE search is case-insensitive and treats `%` literally,
+    and every filter, both sort directions, and pagination behave. **60/60
+    end-to-end HTTP checks passed** against a running API: unauthenticated
+    requests to both routes return **401** with a `WWW-Authenticate: Bearer`
+    challenge; a case creation, three edits, an assignment, and a full document
+    lifecycle produce **exactly the nine expected events in order**, with the
+    status event carrying `{"from": "open", "to": "in_progress"}` and a
+    self-contained description, the assignment naming the person rather than a
+    UUID, and the update listing the fields changed; preview records nothing
+    (the spec defines no event for it) and a repeated delete does not duplicate;
+    the filename appears in the description and the metadata; search matches title
+    and description case-insensitively and treats `%` and `_` literally; every
+    filter combines, an unregistered event type filters rather than 422s, and
+    inverted ranges, unknown parameters, and oversized pages each return 422;
+    the default order is the exact reverse of ascending, pages do not overlap, and
+    a page past the end is empty rather than an error; an assigned lawyer reads
+    the case timeline and a single event while an **unassigned one gets 403 on
+    both, with a body naming neither permission nor role**; POST, PATCH, PUT, and
+    DELETE all answer 404 or 405; archiving records once and restoring records
+    `case_restored` rather than `status_changed`; OpenAPI documents both endpoints
+    with a summary, description, and 401/403/404 responses. **Zero 5xx responses
+    and no tracebacks in the server log**; the log shows eleven
+    `timeline_event_recorded` entries and two `timeline_access_denied` — with **no
+    filename, password, hash, or JWT anywhere**. Frontend routes: `/cases/[id]`
+    307s to `/login` anonymously (carrying `?next=`) and 200s with a session
+    cookie; no errors or warnings in the dev-server log.
 
 - **Document Management (spec `07-document-management.md`)** — secure upload,
   versioning, preview, download, metadata management, and archiving of documents
@@ -782,6 +951,47 @@ change.
   initials, which is what nearly every row shows.
 
 ## Open Questions
+
+- **Every download appends a timeline entry, and a busy document will dominate a
+  case's history.** `08-timeline.md` lists `DOCUMENT_DOWNLOADED` as a document
+  event, and who took a copy of a legal document is exactly the accountability the
+  audit trail exists for — so it is recorded, as specified. But a contract opened
+  ten times in a morning produces ten entries, which will crowd out the status
+  changes and assignments a reader is usually looking for. **The mitigations are
+  already available and none of them is this feature's call:** the type filter
+  hides them in one click, and a de-duplication window ("one entry per user per
+  document per hour") or a separate access-log view would each need a product
+  decision. Preview is deliberately *not* recorded — the spec defines no event for
+  it, and inventing one would be inventing business behaviour.
+
+- **`timeline:create` is granted to every role and used by nothing.** RBAC defined
+  it; `08-timeline.md` specifies two read endpoints and no write path, and
+  publication happens *inside* the case and document services on behalf of a
+  caller who already holds the relevant `cases:*` or `documents:*` permission —
+  gating it again on `timeline:create` would mean a legitimate case edit half
+  succeeding. The permission is therefore reserved: it is what a future "add a
+  note to the timeline" feature should require. **Flagged rather than removed**,
+  because deleting a permission the RBAC spec lists is not this feature's call.
+
+- **A timeline event is not written in the same transaction as the change that
+  caused it.** The business change commits first, then the event is appended, and
+  a failure to append is swallowed (logged at error level) rather than failing a
+  request that already succeeded — the alternative is a 500 on a completed
+  operation, and a retry that duplicates the work. The consequence is a narrow
+  window in which a crash between the two loses the *user-visible* entry; the
+  structured application log for the operation still records it, so nothing is
+  unaccounted for operationally. **The real fix is a durable outbox**, which
+  belongs with the event bus that `code-standards.md`'s "Event-Driven
+  Architecture" section anticipates and that Notifications will need anyway — not
+  with a module the spec says must contain no business logic.
+
+- **Local environment: a host PostgreSQL is listening on 5432 alongside the
+  container**, so `alembic`, `psql`, and any host process silently connect to the
+  wrong database and fail authentication. This feature's live verification went
+  through a temporary `socat` forwarder on port 55432 (started and removed during
+  the check). Nothing in the project is wrong; it will keep biting every live
+  verification until the host service is stopped or the compose service is
+  published on a different port.
 
 - **No cleanup job exists yet for archived document files — by design, but it is
   now owed.** Deleting a document is logical: the row keeps `deleted_at` and every

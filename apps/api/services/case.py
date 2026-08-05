@@ -17,6 +17,12 @@ Scope boundaries, kept deliberately sharp:
   an assignee exists and holds the matching role, that a hearing does not precede
   its filing, and that audit fields come from the authenticated caller rather
   than the request.
+* **It publishes to the timeline; it does not implement one.** Every lifecycle
+  change here is announced to :class:`~services.timeline.TimelineRecorder` after
+  the change has been committed. The timeline module owns storage, presentation,
+  and authorization of those events — this module only knows *that* something
+  happened and can describe it. Publication never fails a request: see
+  :meth:`~services.timeline.TimelineService.record`.
 """
 
 from __future__ import annotations
@@ -38,13 +44,16 @@ from core.exceptions import (
     InvalidCaseDatesError,
     InvalidCaseTransitionError,
 )
-from models.case import Case, CaseStatus
+from core.timeline import humanize
+from models.case import Case, CasePriority, CaseStatus
+from models.timeline import TimelineEventType
 from models.user import User, UserRole
 from repositories.case import CaseRepository
 from repositories.user import UserRepository
 from schemas.case import CaseCreate, CaseListQuery, CaseUpdate
 from schemas.errors import ErrorDetail
 from services.case_access import ASSIGNMENT_FIELDS, CaseAccessPolicy
+from services.timeline import NullTimelineRecorder, TimelineRecorder
 
 logger = structlog.get_logger(__name__)
 
@@ -69,6 +78,65 @@ _ASSIGNMENT_ROLES: dict[str, UserRole] = {
 
 
 @dataclass(frozen=True, slots=True)
+class _AssignmentPosition:
+    """How one assignment field is announced on the timeline.
+
+    Keyed by the *identifier* column, because that is what a ``CaseUpdate``
+    carries, but it also names the relationship — the timeline shows a person's
+    name, and a UUID would tell a reader nothing.
+    """
+
+    #: Attribute holding the assigned :class:`~models.user.User`, for the name.
+    relationship: str
+    #: What the position is called in a sentence.
+    label: str
+    assigned_event: TimelineEventType
+    removed_event: TimelineEventType
+
+
+#: Assignment field → how a change to it appears on the timeline.
+#:
+#: Derived from the same two fields :data:`_ASSIGNMENT_ROLES` governs, so a third
+#: assignment position added to a case would announce itself by adding one entry
+#: here rather than by editing the update path.
+_ASSIGNMENT_POSITIONS: dict[str, _AssignmentPosition] = {
+    "assigned_lawyer_id": _AssignmentPosition(
+        relationship="assigned_lawyer",
+        label="lawyer",
+        assigned_event=TimelineEventType.LAWYER_ASSIGNED,
+        removed_event=TimelineEventType.LAWYER_REMOVED,
+    ),
+    "assigned_court_representative_id": _AssignmentPosition(
+        relationship="assigned_court_representative",
+        label="court representative",
+        assigned_event=TimelineEventType.REPRESENTATIVE_ASSIGNED,
+        removed_event=TimelineEventType.REPRESENTATIVE_REMOVED,
+    ),
+}
+
+
+#: Case field → how it is named in a timeline description.
+#:
+#: Only the descriptive fields: status, priority, and the assignments each get
+#: their *own* event type, so they never appear in a "Case Updated" sentence.
+_FIELD_LABELS: dict[str, str] = {
+    "title": "title",
+    "description": "description",
+    "category": "category",
+    "court_name": "court",
+    "filing_date": "filing date",
+    "next_hearing_date": "next hearing date",
+}
+
+
+def _join_labels(labels: list[str]) -> str:
+    """Render a list of field names as an English list ("a, b and c")."""
+    if len(labels) == 1:
+        return labels[0]
+    return f"{', '.join(labels[:-1])} and {labels[-1]}"
+
+
+@dataclass(frozen=True, slots=True)
 class CasePageResult:
     """One page of cases together with the total matching the filters."""
 
@@ -86,10 +154,18 @@ class CaseService:
         cases: CaseRepository,
         users: UserRepository,
         access: CaseAccessPolicy | None = None,
+        *,
+        timeline: TimelineRecorder | None = None,
     ) -> None:
         self._cases = cases
         self._users = users
         self._access = access or CaseAccessPolicy()
+        # Defaults to a recorder that records nothing, so this service can be
+        # constructed in a context with no timeline (a script, a unit test about
+        # something else) without every publication site growing a guard. The
+        # application always injects the real one — see `api.deps.get_case_service`,
+        # and the test that asserts it does.
+        self._timeline: TimelineRecorder = timeline or NullTimelineRecorder()
 
     # ------------------------------------------------------------- reading #
 
@@ -161,6 +237,27 @@ class CaseService:
             ),
             actor_id=str(actor.id),
         )
+
+        self._timeline.record(
+            case_id=created.id,
+            event_type=TimelineEventType.CASE_CREATED,
+            actor=actor,
+            description=f"{actor.full_name} created case {created.case_number}.",
+            metadata={
+                "case_number": created.case_number,
+                "status": created.status.value,
+                "priority": created.priority.value,
+                "category": created.category,
+            },
+        )
+        # An assignment made at creation is still an assignment. Without these,
+        # a case opened with its lawyer already named would carry no record of who
+        # put them on it — and "who has been on this case, since when" is the
+        # question the assignment events exist to answer.
+        for field, position in _ASSIGNMENT_POSITIONS.items():
+            if getattr(created, field) is not None:
+                self._record_assignment(created, position, actor=actor, previous=None)
+
         return created
 
     # ------------------------------------------------------------ updating #
@@ -199,6 +296,15 @@ class CaseService:
         )
 
         previous_status = legal_case.status
+        previous_priority = legal_case.priority
+        # Captured *before* the write, because a removal has to name the person
+        # who was removed — after the assignment is cleared there is nobody left
+        # on the row to name.
+        previous_assignees = {
+            field: getattr(legal_case, position.relationship)
+            for field, position in _ASSIGNMENT_POSITIONS.items()
+        }
+
         for field, value in changes.items():
             setattr(legal_case, field, value)
         legal_case.updated_by = actor.id
@@ -216,6 +322,15 @@ class CaseService:
         )
         self._log_status_change(saved, previous_status, actor=actor)
         self._log_assignment_changes(saved, changes, actor=actor)
+
+        self._publish_update(
+            saved,
+            changes,
+            actor=actor,
+            previous_status=previous_status,
+            previous_priority=previous_priority,
+            previous_assignees=previous_assignees,
+        )
         return saved
 
     def archive_case(self, case_id: uuid.UUID, *, actor: User) -> Case:
@@ -237,6 +352,7 @@ class CaseService:
         self._access.require_view(actor, legal_case)
 
         already_archived = legal_case.is_archived
+        previous_status = legal_case.status
         legal_case.status = CaseStatus.ARCHIVED
         legal_case.updated_by = actor.id
 
@@ -249,6 +365,18 @@ class CaseService:
             actor_id=str(actor.id),
             already_archived=already_archived,
         )
+
+        # Only when something actually changed. Archiving is idempotent, and a
+        # repeated request must not append a second "archived" entry to a history
+        # in which nothing happened the second time.
+        if not already_archived:
+            self._timeline.record(
+                case_id=saved.id,
+                event_type=TimelineEventType.CASE_ARCHIVED,
+                actor=actor,
+                description=f"{actor.full_name} archived the case.",
+                metadata={"from": previous_status.value, "to": saved.status.value},
+            )
         return saved
 
     # ------------------------------------------------------------- helpers #
@@ -404,6 +532,159 @@ class CaseService:
                         )
                     ],
                 )
+
+    # ------------------------------------------------------- timeline events #
+    #
+    # Everything below turns a committed change into the events that describe it.
+    # None of it decides anything: by the time these run the case is already
+    # saved, and a failure to record is swallowed by the recorder rather than
+    # failing the request that succeeded.
+
+    def _publish_update(
+        self,
+        legal_case: Case,
+        changes: dict[str, Any],
+        *,
+        actor: User,
+        previous_status: CaseStatus,
+        previous_priority: CasePriority,
+        previous_assignees: dict[str, User | None],
+    ) -> None:
+        """Announce an update as the specific events it consists of.
+
+        One PATCH can be several events, because the spec gives status, priority,
+        and each assignment their own type. A generic "Case Updated" is recorded
+        **only** for the descriptive fields left over, so a request that merely
+        moved the status does not also claim the case was edited.
+        """
+        self._publish_status_change(legal_case, previous_status, actor=actor)
+        self._publish_priority_change(legal_case, previous_priority, actor=actor)
+
+        for field in sorted(ASSIGNMENT_FIELDS & changes.keys()):
+            self._record_assignment(
+                legal_case,
+                _ASSIGNMENT_POSITIONS[field],
+                actor=actor,
+                previous=previous_assignees[field],
+            )
+
+        descriptive = sorted(
+            _FIELD_LABELS[field] for field in changes if field in _FIELD_LABELS
+        )
+        if descriptive:
+            self._timeline.record(
+                case_id=legal_case.id,
+                event_type=TimelineEventType.CASE_UPDATED,
+                actor=actor,
+                description=f"{actor.full_name} updated the {_join_labels(descriptive)}.",
+                metadata={"fields": descriptive},
+            )
+
+    def _publish_status_change(
+        self, legal_case: Case, previous: CaseStatus, *, actor: User
+    ) -> None:
+        """Announce a lifecycle move, as the most specific event that fits.
+
+        Archiving and restoring are status changes, but the spec names them as
+        their own event types — and they are what a reader actually wants to see
+        called out, so they take precedence over the generic one.
+        """
+        if legal_case.status is previous:
+            return
+
+        if legal_case.status is CaseStatus.ARCHIVED:
+            event_type = TimelineEventType.CASE_ARCHIVED
+            description = f"{actor.full_name} archived the case."
+        elif previous is CaseStatus.ARCHIVED:
+            event_type = TimelineEventType.CASE_RESTORED
+            description = (
+                f"{actor.full_name} restored the case to "
+                f"{humanize(legal_case.status.value)}."
+            )
+        else:
+            event_type = TimelineEventType.STATUS_CHANGED
+            description = (
+                f"{actor.full_name} changed the status from {humanize(previous.value)} "
+                f"to {humanize(legal_case.status.value)}."
+            )
+
+        self._timeline.record(
+            case_id=legal_case.id,
+            event_type=event_type,
+            actor=actor,
+            description=description,
+            metadata={"from": previous.value, "to": legal_case.status.value},
+        )
+
+    def _publish_priority_change(
+        self, legal_case: Case, previous: CasePriority, *, actor: User
+    ) -> None:
+        """Announce a priority change."""
+        if legal_case.priority is previous:
+            return
+
+        self._timeline.record(
+            case_id=legal_case.id,
+            event_type=TimelineEventType.PRIORITY_CHANGED,
+            actor=actor,
+            description=(
+                f"{actor.full_name} changed the priority from {humanize(previous.value)} "
+                f"to {humanize(legal_case.priority.value)}."
+            ),
+            metadata={"from": previous.value, "to": legal_case.priority.value},
+        )
+
+    def _record_assignment(
+        self,
+        legal_case: Case,
+        position: _AssignmentPosition,
+        *,
+        actor: User,
+        previous: User | None,
+    ) -> None:
+        """Announce one assignment position changing.
+
+        Names the person rather than their identifier — a timeline entry reading
+        "assigned 7f3a…" would tell nobody anything. A removal names whoever was
+        there *before*, which is why the caller captures that ahead of the write.
+        """
+        assignee: User | None = getattr(legal_case, position.relationship)
+
+        if assignee is not None:
+            self._timeline.record(
+                case_id=legal_case.id,
+                event_type=position.assigned_event,
+                actor=actor,
+                description=(
+                    f"{actor.full_name} assigned {assignee.full_name} as the {position.label}."
+                ),
+                metadata={
+                    "assignee_id": assignee.id,
+                    "assignee_name": assignee.full_name,
+                    "position": position.label,
+                    "previous_assignee_name": previous.full_name if previous else None,
+                },
+            )
+            return
+
+        # Cleared. If there was nobody there to begin with, the request changed
+        # nothing worth recording.
+        if previous is None:
+            return
+
+        self._timeline.record(
+            case_id=legal_case.id,
+            event_type=position.removed_event,
+            actor=actor,
+            description=(
+                f"{actor.full_name} removed {previous.full_name} as the {position.label}."
+            ),
+            metadata={
+                "assignee_id": previous.id,
+                "assignee_name": previous.full_name,
+                "position": position.label,
+            },
+        )
 
     @staticmethod
     def _log_status_change(legal_case: Case, previous: CaseStatus, *, actor: User) -> None:

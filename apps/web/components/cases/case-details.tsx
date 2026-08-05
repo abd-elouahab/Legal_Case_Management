@@ -27,6 +27,7 @@ import { CasePriorityBadge, CaseStatusBadge } from "@/components/cases/case-badg
 import { CasePlaceholderSections } from "@/components/cases/case-placeholder-sections";
 import { EditCaseDialog } from "@/components/cases/edit-case-dialog";
 import { CaseDocuments } from "@/components/documents/case-documents";
+import { CaseTimeline } from "@/components/timeline/case-timeline";
 import { caseErrorMessage, useCase, useRestoreCase } from "@/hooks/use-cases";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { ROUTES } from "@/lib/routes";
@@ -234,6 +235,15 @@ function CaseDetailsContent({ legalCase }: { legalCase: LegalCase }) {
           is shown nothing here rather than an empty list they cannot populate. */}
       <Protected permission={PERMISSION.documentsView}>
         <CaseDocuments caseId={legalCase.id} />
+        <Separator />
+      </Protected>
+
+      {/* Same rule for the history. The API authorizes the request independently
+          and refuses a caller who is not party to the case, so this gate is
+          presentation only — it stops us rendering a section that would only ever
+          show an error. */}
+      <Protected permission={PERMISSION.timelineView}>
+        <CaseTimeline caseId={legalCase.id} />
         <Separator />
       </Protected>
 

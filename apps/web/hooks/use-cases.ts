@@ -18,6 +18,7 @@ import {
   updateCase,
   updateCaseAssignments,
 } from "@/lib/api/cases";
+import { timelineKeys } from "@/hooks/use-timeline";
 import { ApiError, NetworkError } from "@/lib/api/errors";
 import type { LegalCase } from "@/types/case";
 import type {
@@ -168,18 +169,26 @@ export function useCase(
 // --------------------------------------------------------------------------- //
 
 /**
- * Invalidate everything the case list shows.
+ * Invalidate everything the case list shows, and the timeline with it.
  *
  * Deliberately broad: a status change alters which filters a case falls under, a
  * priority change alters its sort position, and an assignment change alters who
  * can see it at all. Reconciling each of those by hand would be an ongoing
  * source of stale rows.
+ *
+ * The timeline goes too, because **every one of these mutations produces timeline
+ * events server-side** — creating, updating, assigning, and archiving each append
+ * to the case's history. Without this, a user would archive a case and watch its
+ * activity list not mention it.
  */
 function useInvalidateCases(): () => Promise<void> {
   const queryClient = useQueryClient();
 
   return React.useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: caseKeys.all });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: caseKeys.all }),
+      queryClient.invalidateQueries({ queryKey: timelineKeys.all }),
+    ]);
   }, [queryClient]);
 }
 

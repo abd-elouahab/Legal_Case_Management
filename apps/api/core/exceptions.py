@@ -410,6 +410,38 @@ class DocumentAccessDeniedError(AuthorizationError):
     """
 
 
+# --------------------------------------------------------------------------- #
+# Timeline errors
+#
+# Only two, because the timeline is read-only over HTTP: events are published by
+# the services that cause them, never by a client, so there is no create or
+# update path that could fail.
+# --------------------------------------------------------------------------- #
+
+
+class TimelineEventNotFoundError(AppException):
+    """No timeline event exists with the requested identifier.
+
+    There is no soft-deleted variant to conceal, unlike a document: the timeline
+    is append-only, so a 404 here means the event was never recorded.
+    """
+
+    status_code = status.HTTP_404_NOT_FOUND
+    error_code = "timeline_event_not_found"
+    message = "Timeline event not found."
+
+
+class TimelineAccessDeniedError(AuthorizationError):
+    """The caller holds the capability but is not party to the event's case.
+
+    A subclass of :class:`AuthorizationError`, so it answers **403** with the
+    same generic body as every other denial. Timeline access follows case access
+    exactly — see :mod:`services.timeline_access` — so the reasoning behind
+    :class:`CaseAccessDeniedError` (403 rather than a concealing 404) applies
+    unchanged.
+    """
+
+
 class TooManyLoginAttemptsError(AppException):
     """Too many consecutive failed logins; the attempt is refused outright.
 

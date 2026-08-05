@@ -1095,27 +1095,25 @@ describe("ArchiveCaseDialog", () => {
 // --------------------------------------------------------------------------- //
 
 describe("CasePlaceholderSections", () => {
-  it.each(["Timeline", "Notes", "AI Assistant", "Reports"])(
-    "reserves a card for %s",
-    (title) => {
-      render(<CasePlaceholderSections />);
-
-      expect(screen.getByText(title)).toBeInTheDocument();
-    },
-  );
-
-  it("no longer reserves a card for Documents", () => {
-    // Document Management shipped, so the case details page renders the real
-    // list in its place — a placeholder beside a working feature reads as a bug.
+  it.each(["Notes", "AI Assistant", "Reports"])("reserves a card for %s", (title) => {
     render(<CasePlaceholderSections />);
 
-    expect(screen.queryByText("Documents")).not.toBeInTheDocument();
+    expect(screen.getByText(title)).toBeInTheDocument();
+  });
+
+  it.each(["Documents", "Timeline"])("no longer reserves a card for %s", (title) => {
+    // Both modules shipped, so the case details page renders the real list and
+    // the real history in their place — a placeholder beside a working feature
+    // reads as a bug.
+    render(<CasePlaceholderSections />);
+
+    expect(screen.queryByText(title)).not.toBeInTheDocument();
   });
 
   it("says plainly that the modules are not built yet", () => {
     // So an empty card is never mistaken for a loading failure.
     render(<CasePlaceholderSections />);
 
-    expect(screen.getAllByText("Available in an upcoming release.")).toHaveLength(4);
+    expect(screen.getAllByText("Available in an upcoming release.")).toHaveLength(3);
   });
 });

@@ -72,3 +72,15 @@ export const DOCUMENT_ENDPOINTS = {
   preview: (id: string, version?: number) =>
     `/documents/${encodeURIComponent(id)}/preview${version ? `?version=${version}` : ""}`,
 } as const;
+
+/**
+ * Timeline endpoint paths, relative to the version prefix.
+ *
+ * Read-only, and the shape says so: there is no create, update, or delete path
+ * because the API exposes none — events are published by the services that cause
+ * them. `caseTimeline` sits under `/cases` because a timeline belongs to a case.
+ */
+export const TIMELINE_ENDPOINTS = {
+  caseTimeline: (caseId: string) => `/cases/${encodeURIComponent(caseId)}/timeline`,
+  detail: (eventId: string) => `/timeline/${encodeURIComponent(eventId)}`,
+} as const;

@@ -463,6 +463,73 @@ def make_document(db_session: Session, document_storage: InMemoryDocumentStorage
     return _make
 
 
+# --------------------------------------------------------------------------- #
+# Timeline fixtures
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def timeline_service(db_session: Session):  # type: ignore[no-untyped-def]
+    """A :class:`~services.timeline.TimelineService` on the test database.
+
+    The real repository against SQLite, so the search, filter, sort, pagination,
+    and scope SQL is genuinely exercised — there is nothing about the timeline
+    that would need a double.
+    """
+    from repositories.case import CaseRepository
+    from repositories.timeline import TimelineRepository
+    from services.timeline import TimelineService
+
+    return TimelineService(TimelineRepository(db_session), CaseRepository(db_session))
+
+
+@pytest.fixture
+def make_timeline_event(db_session: Session):  # type: ignore[no-untyped-def]
+    """Factory creating persisted timeline events directly.
+
+    Bypasses the service on purpose: tests about *reading* a timeline need rows
+    with controlled timestamps and actors, and going through ``record`` would tie
+    them to whatever the publishing services happen to write today.
+    """
+    from core.timeline import default_title
+    from models.timeline import TimelineEvent, TimelineEventType
+
+    counter = itertools.count(1)
+
+    def _make(
+        *,
+        case_id: uuid.UUID,
+        event_type: TimelineEventType = TimelineEventType.CASE_UPDATED,
+        title: str | None = None,
+        description: str | None = None,
+        actor: object | None = None,
+        metadata: dict[str, object] | None = None,
+        created_at: datetime | None = None,
+    ) -> TimelineEvent:
+        index = next(counter)
+        event = TimelineEvent(
+            id=uuid.uuid4(),
+            case_id=case_id,
+            event_type=event_type.value,
+            title=title or default_title(event_type.value),
+            description=description if description is not None else f"Event {index}.",
+            actor_id=getattr(actor, "id", None),
+            actor_name=getattr(actor, "full_name", None),
+            actor_role=getattr(getattr(actor, "role", None), "value", None),
+            event_metadata=metadata or {},
+        )
+        if created_at is not None:
+            # Set explicitly so ordering tests do not depend on wall-clock gaps
+            # between rows inserted in the same millisecond.
+            event.created_at = created_at
+
+        db_session.add(event)
+        db_session.commit()
+        return event
+
+    return _make
+
+
 @pytest.fixture
 def auth_service(  # type: ignore[no-untyped-def]
     db_session: Session,
