@@ -125,22 +125,36 @@ class TestDependencyWiring:
         # a unit test about something else. This asserts that the *application*
         # never takes that default, because if it did the whole feature would
         # silently be a no-op in production while every unit test still passed.
-        from api.deps import get_case_service, get_document_service
+        from api.deps import get_case_service, get_document_service, get_ocr_service
         from repositories.case import CaseRepository
         from repositories.document import DocumentRepository
+        from repositories.ocr import OcrRepository
         from repositories.timeline import TimelineRepository
         from repositories.user import UserRepository
+        from services.ocr_engine import get_ocr_engine
+        from services.ocr_queue import NullOcrJobQueue
         from services.timeline import TimelineService
 
         cases = CaseRepository(db_session)
+        documents = DocumentRepository(db_session)
         timeline = TimelineService(TimelineRepository(db_session), cases)
+        # OCR is a publisher too, and `get_document_service` now takes one — so
+        # it is built the same way the application does, through its own factory.
+        ocr = get_ocr_service(
+            OcrRepository(db_session),
+            documents,
+            document_storage,
+            get_ocr_engine(),
+            NullOcrJobQueue(),
+            timeline,
+        )
 
         case_service = get_case_service(cases, UserRepository(db_session), timeline)
         document_service = get_document_service(
-            DocumentRepository(db_session), cases, document_storage, timeline
+            documents, cases, document_storage, timeline, ocr
         )
 
-        for service in (case_service, document_service):
+        for service in (case_service, document_service, ocr):
             assert isinstance(service._timeline, TimelineService), type(service)
 
 
@@ -680,7 +694,15 @@ class TestEventsAreGeneratedAutomatically:
         deleted = api_client.delete(f"{DOCUMENTS_URL}/{document_id}", headers=admin_headers)
         assert deleted.status_code == status.HTTP_200_OK, deleted.text
 
-        assert self._timeline(api_client, str(legal_case.id), admin_headers) == [
+        # Filtered to the document module's own events. Uploading a PDF also
+        # schedules text extraction, which publishes `ocr_started` and
+        # `ocr_completed` between them — a *different* module's contribution to
+        # the same history, asserted in `tests/integration/test_ocr.py`. Pinning
+        # the whole sequence here would make this test fail whenever another
+        # module correctly joined the timeline.
+        recorded = self._timeline(api_client, str(legal_case.id), admin_headers)
+
+        assert [event for event in recorded if event.startswith("document_")] == [
             "document_uploaded",
             "document_replaced",
             "document_deleted",
@@ -697,8 +719,13 @@ class TestEventsAreGeneratedAutomatically:
             headers=admin_headers,
         )
 
+        # Addressed by type rather than by position: the upload also schedules
+        # text extraction, whose events are newer and therefore first under the
+        # default descending order.
         body = api_client.get(
-            case_timeline_url(legal_case.id), headers=admin_headers
+            case_timeline_url(legal_case.id),
+            params={"event_type": "document_uploaded"},
+            headers=admin_headers,
         ).json()
         event = body["items"][0]
 

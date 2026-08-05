@@ -23,6 +23,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     "cases:view",
     "documents:view",
     "documents:upload",
+    "ocr:view",
+    "ocr:retry",
     "timeline:view",
     "timeline:create",
     "reports:view",
@@ -37,6 +39,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     "cases:update",
     "documents:view",
     "documents:upload",
+    // Read the extracted text of documents they can already read, but not
+    // re-run extraction: `ocr:retry` consumes processing capacity, and the
+    // court role's description does not extend to operating the pipeline.
+    "ocr:view",
     "timeline:view",
     "timeline:create",
     "notifications:view",
@@ -292,6 +298,118 @@ export function documentPagePayload(
     page: 1,
     page_size: 20,
     total_pages: 1,
+    ...overrides,
+  };
+}
+
+// --------------------------------------------------------------------------- //
+// OCR fixtures
+// --------------------------------------------------------------------------- //
+
+/**
+ * An extraction run in the API's wire format, as `GET /documents/{id}/ocr`
+ * returns it.
+ *
+ * Defaults to a completed run over the default document. The computed flags
+ * (`is_terminal`, `is_active`, `can_retry`) are included because the API computes
+ * and serves them — a fixture that omitted them would be asserting against a
+ * payload the server never sends, and the client deliberately reads them rather
+ * than deriving them itself.
+ */
+export function ocrResultPayload(overrides: Record<string, unknown> = {}) {
+  const status = (overrides.status as string | undefined) ?? "completed";
+  const terminal = status === "completed" || status === "failed";
+
+  return {
+    id: "66666666-6666-4666-8666-666666666666",
+    document_id: legalDocumentPayload().id,
+    document_version: 1,
+    document: {
+      id: legalDocumentPayload().id,
+      case_id: legalCasePayload().id,
+      original_filename: "contrat-de-bail.pdf",
+      file_extension: "pdf",
+    },
+    status,
+    engine: "tesseract",
+    engine_version: "5.3.4",
+    detected_language: "eng+fra+ara",
+    page_count: terminal ? 2 : null,
+    confidence: status === "completed" ? 92.4 : null,
+    started_at: status === "pending" ? null : "2026-07-20T09:00:01Z",
+    finished_at: terminal ? "2026-07-20T09:00:04Z" : null,
+    duration_ms: terminal ? 3120 : null,
+    duration_seconds: terminal ? 3.12 : null,
+    attempt_count: 1,
+    error_code: null,
+    error_message: null,
+    requested_by: null,
+    created_at: "2026-07-20T09:00:00Z",
+    updated_at: "2026-07-20T09:00:04Z",
+    is_terminal: terminal,
+    is_active: !terminal,
+    can_retry: terminal,
+    ...overrides,
+  };
+}
+
+/** Extracted text in the API's wire format, as `GET /documents/{id}/ocr/text` returns it. */
+export function ocrTextPayload(overrides: Record<string, unknown> = {}) {
+  const pages = (overrides.pages as Array<Record<string, unknown>> | undefined) ?? [
+    {
+      page_number: 1,
+      text: "Contrat de bail commercial.",
+      confidence: 94.1,
+      character_count: 27,
+      is_empty: false,
+    },
+    {
+      page_number: 2,
+      text: "محضر الجلسة",
+      confidence: 88.0,
+      character_count: 11,
+      is_empty: false,
+    },
+  ];
+
+  return {
+    ocr_result_id: ocrResultPayload().id,
+    document_id: legalDocumentPayload().id,
+    document_version: 1,
+    status: "completed",
+    detected_language: "eng+fra+ara",
+    page_count: pages.length,
+    character_count: pages.reduce(
+      (total, page) => total + String(page.text ?? "").length,
+      0,
+    ),
+    // U+000C FORM FEED, exactly as the API joins and publishes it.
+    full_text: pages.map((page) => String(page.text ?? "")).join("\f"),
+    page_separator: "\f",
+    ...overrides,
+    pages,
+  };
+}
+
+/** Platform-wide extraction metrics in the API's wire format. */
+export function ocrMetricsPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    window_days: null,
+    total_runs: 12,
+    pending: 1,
+    processing: 1,
+    completed: 8,
+    failed: 2,
+    finished_runs: 10,
+    success_rate: 80.0,
+    failure_rate: 20.0,
+    average_duration_ms: 3120,
+    average_duration_seconds: 3.12,
+    failures_by_code: { timeout: 1, engine_failure: 1 },
+    engine: "tesseract",
+    engine_available: true,
+    enabled: true,
+    supported_extensions: ["jpeg", "jpg", "pdf", "png"],
     ...overrides,
   };
 }

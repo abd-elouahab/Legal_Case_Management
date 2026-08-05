@@ -19,6 +19,7 @@ from core.logging import configure_logging
 from core.readiness import probe_dependencies
 from core.vector import close_qdrant
 from db.session import dispose_engine
+from services.ocr_worker import start_ocr_workers, stop_ocr_workers
 
 logger = structlog.get_logger(__name__)
 
@@ -47,10 +48,17 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         environment=settings.ENVIRONMENT.value,
     )
     await _log_dependency_status()
+    # Starts the OCR worker pool and re-queues runs left `pending` by a previous
+    # process. Never aborts startup: an API that refuses to come up because a
+    # background pool could not be created would take authentication, cases, and
+    # documents down over a background feature.
+    start_ocr_workers()
 
     yield
 
     logger.info("application_shutdown")
+    # Before the engine is disposed: draining workers still need their sessions.
+    stop_ocr_workers()
     close_redis()
     close_qdrant()
     dispose_engine()

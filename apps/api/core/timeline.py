@@ -84,6 +84,15 @@ EVENT_CATEGORIES: Mapping[TimelineEventType, TimelineEventCategory] = MappingPro
         TimelineEventType.DOCUMENT_REPLACED: TimelineEventCategory.DOCUMENT,
         TimelineEventType.DOCUMENT_DELETED: TimelineEventCategory.DOCUMENT,
         TimelineEventType.DOCUMENT_DOWNLOADED: TimelineEventCategory.DOCUMENT,
+        # OCR happens *to* a document, so it belongs to the document family and
+        # reuses its icon. A sixth category would have meant a new icon, a new
+        # filter option, and a change to the timeline's presentation — the exact
+        # "modifying the Timeline implementation" the spec asks publishers to
+        # avoid, in exchange for nothing a reader needs.
+        TimelineEventType.OCR_STARTED: TimelineEventCategory.DOCUMENT,
+        TimelineEventType.OCR_COMPLETED: TimelineEventCategory.DOCUMENT,
+        TimelineEventType.OCR_FAILED: TimelineEventCategory.DOCUMENT,
+        TimelineEventType.OCR_RETRIED: TimelineEventCategory.DOCUMENT,
     }
 )
 
@@ -110,6 +119,13 @@ DEFAULT_TITLES: Mapping[TimelineEventType, str] = MappingProxyType(
         TimelineEventType.DOCUMENT_REPLACED: "Document Replaced",
         TimelineEventType.DOCUMENT_DELETED: "Document Deleted",
         TimelineEventType.DOCUMENT_DOWNLOADED: "Document Downloaded",
+        # "Text Extraction" rather than "OCR": the timeline is read by lawyers
+        # and court staff, and a headline in a case history should not be an
+        # acronym from the platform's implementation.
+        TimelineEventType.OCR_STARTED: "Text Extraction Started",
+        TimelineEventType.OCR_COMPLETED: "Text Extraction Completed",
+        TimelineEventType.OCR_FAILED: "Text Extraction Failed",
+        TimelineEventType.OCR_RETRIED: "Text Extraction Retried",
     }
 )
 

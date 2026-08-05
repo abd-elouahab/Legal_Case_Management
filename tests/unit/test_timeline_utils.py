@@ -41,8 +41,14 @@ class TestRegistryCoverage:
     def test_every_event_type_has_a_default_title(self) -> None:
         assert set(DEFAULT_TITLES) == set(TimelineEventType)
 
-    def test_the_spec_s_fifteen_event_types_are_all_present(self) -> None:
-        assert known_event_types() == [
+    def test_the_spec_s_fifteen_event_types_lead_the_registry(self) -> None:
+        # A *prefix* assertion, not an equality one, and deliberately so: the
+        # registry is an open set that later modules extend — OCR Processing was
+        # the first to do it — and a test that pinned the whole list would fail
+        # every time the design worked as intended. What must not change is that
+        # `08-timeline.md`'s own fifteen are all still there, in its order,
+        # because they are the identifiers already written into stored rows.
+        assert known_event_types()[:15] == [
             "case_created",
             "case_updated",
             "case_archived",
@@ -59,6 +65,14 @@ class TestRegistryCoverage:
             "document_deleted",
             "document_downloaded",
         ]
+
+    def test_a_later_module_extends_the_registry_without_changing_it(self) -> None:
+        # The spec's "future modules should be able to publish events without
+        # modifying the Timeline implementation", asserted rather than assumed:
+        # OCR added four types, and each got a category and a title through the
+        # documented extension point — no migration, no new icon family.
+        for event_type in ("ocr_started", "ocr_completed", "ocr_failed", "ocr_retried"):
+            assert event_type in known_event_types()
 
     def test_the_five_icon_families_are_all_used(self) -> None:
         # `08-timeline.md` names five icon groups; an unused one would mean an

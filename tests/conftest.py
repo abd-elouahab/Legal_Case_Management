@@ -22,6 +22,7 @@ os.environ.setdefault("BCRYPT_ROUNDS", "4")
 import itertools
 import uuid
 from collections.abc import Callable, Iterator
+from contextlib import suppress
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -464,6 +465,253 @@ def make_document(db_session: Session, document_storage: InMemoryDocumentStorage
 
 
 # --------------------------------------------------------------------------- #
+# OCR fixtures
+# --------------------------------------------------------------------------- #
+
+
+class FakeOcrEngine:
+    """Test double for an :class:`~services.ocr_engine.OcrEngine`.
+
+    A real Tesseract install is a *system* dependency — a binary, plus a language
+    pack per language — so a suite that needed one would only run on machines
+    that had it. This double keeps the contract (a name, a version, an
+    availability probe, a format policy, and one ``extract`` call) and lets a test
+    choose the outcome, which is what makes the failure paths testable at all: an
+    engine timeout and a corrupted PDF are not things a fixture can produce on
+    demand from a real binary.
+    """
+
+    name = "fake"
+
+    def __init__(self) -> None:
+        from services.ocr_engine import ExtractedPage
+
+        self.available = True
+        self.engine_version = "5.0.0-fake"
+        self.detected_language = "eng+fra"
+        #: Pages the next extraction returns. Replace to change the outcome.
+        self.pages: list[ExtractedPage] = [
+            ExtractedPage(page_number=1, text="Contrat de bail commercial.", confidence=91.5)
+        ]
+        #: Set to an exception instance to make the next extraction raise it.
+        self.raises: Exception | None = None
+        #: Every (content length, extension) pair the engine was asked to read.
+        self.calls: list[tuple[int, str]] = []
+
+    def version(self) -> str | None:
+        return self.engine_version if self.available else None
+
+    def is_available(self) -> bool:
+        return self.available
+
+    def supports(self, extension: str) -> bool:
+        from core.ocr import is_supported
+
+        return is_supported(extension)
+
+    def extract(self, content: bytes, *, extension: str):  # type: ignore[no-untyped-def]
+        from core.ocr import mean_confidence
+        from services.ocr_engine import Extraction, OcrUnsupportedFormatError
+
+        self.calls.append((len(content), extension))
+
+        if self.raises is not None:
+            raise self.raises
+        if not self.supports(extension):
+            raise OcrUnsupportedFormatError(f"OCR does not support {extension!r} files.")
+
+        return Extraction(
+            pages=list(self.pages),
+            engine=self.name,
+            engine_version=self.engine_version,
+            detected_language=self.detected_language,
+            confidence=mean_confidence(page.confidence for page in self.pages),
+        )
+
+
+class RecordingOcrQueue:
+    """Test double for :class:`~services.ocr_queue.OcrJobQueue`.
+
+    Records every job **and** runs it on the calling thread. Both halves matter:
+    recording is how a test asserts that an upload scheduled work without waiting
+    for it, and running inline is how the rest of the pipeline becomes testable
+    without a thread — a test that has to wait for a worker is a test that will
+    eventually be flaky.
+
+    It keeps the contract that a failing job must not fail the caller, so a test
+    passing against this double exercises the same error handling production
+    does. ``run_inline`` can be switched off to observe a run in its ``pending``
+    state.
+    """
+
+    def __init__(self, runner=None) -> None:  # type: ignore[no-untyped-def]
+        self.jobs: list[object] = []
+        self.run_inline = True
+        self._runner = runner
+
+    def enqueue(self, job: object) -> None:
+        self.jobs.append(job)
+        if self.run_inline and self._runner is not None:
+            # Swallowed, exactly as the real queues do: a failing job must never
+            # fail the caller that scheduled it.
+            with suppress(Exception):
+                self._runner(job)
+
+
+@pytest.fixture
+def ocr_engine() -> FakeOcrEngine:
+    """A fresh, controllable OCR engine per test."""
+    return FakeOcrEngine()
+
+
+@pytest.fixture
+def ocr_queue(  # type: ignore[no-untyped-def]
+    db_session: Session,
+    document_storage: InMemoryDocumentStorage,
+    ocr_engine: FakeOcrEngine,
+):
+    """A queue that records jobs and runs them against the test doubles.
+
+    The runner builds an :class:`~services.ocr.OcrService` the same way
+    :func:`services.ocr_worker.run_ocr_job` does — real repositories, real
+    timeline, real access policy — but on the test session with the fake storage
+    and engine. So the pipeline under test is the production one; only the two
+    genuinely external things are substituted.
+    """
+    from typing import cast
+
+    from repositories.case import CaseRepository
+    from repositories.document import DocumentRepository
+    from repositories.ocr import OcrRepository
+    from repositories.timeline import TimelineRepository
+    from services.document_storage import DocumentStorageService
+    from services.ocr import OcrService
+    from services.ocr_engine import OcrEngine
+    from services.ocr_queue import NullOcrJobQueue, OcrJob
+    from services.timeline import TimelineService
+
+    def run(job: OcrJob) -> None:
+        OcrService(
+            OcrRepository(db_session),
+            DocumentRepository(db_session),
+            cast(DocumentStorageService, document_storage),
+            cast(OcrEngine, ocr_engine),
+            # A worker may not queue more work, exactly as in production.
+            NullOcrJobQueue(),
+            timeline=TimelineService(TimelineRepository(db_session), CaseRepository(db_session)),
+        ).process(job)
+
+    return RecordingOcrQueue(run)
+
+
+@pytest.fixture
+def ocr_service(  # type: ignore[no-untyped-def]
+    db_session: Session,
+    document_storage: InMemoryDocumentStorage,
+    ocr_engine: FakeOcrEngine,
+    ocr_queue: RecordingOcrQueue,
+):
+    """An :class:`~services.ocr.OcrService` wired to the test doubles."""
+    from typing import cast
+
+    from repositories.case import CaseRepository
+    from repositories.document import DocumentRepository
+    from repositories.ocr import OcrRepository
+    from repositories.timeline import TimelineRepository
+    from services.document_storage import DocumentStorageService
+    from services.ocr import OcrService
+    from services.ocr_engine import OcrEngine
+    from services.ocr_queue import OcrJobQueue
+    from services.timeline import TimelineService
+
+    return OcrService(
+        OcrRepository(db_session),
+        DocumentRepository(db_session),
+        cast(DocumentStorageService, document_storage),
+        cast(OcrEngine, ocr_engine),
+        cast(OcrJobQueue, ocr_queue),
+        timeline=TimelineService(TimelineRepository(db_session), CaseRepository(db_session)),
+    )
+
+
+@pytest.fixture
+def make_ocr_result(db_session: Session):  # type: ignore[no-untyped-def]
+    """Factory creating persisted OCR runs, with their pages.
+
+    Bypasses the service on purpose: tests about *reading* a run need rows in
+    controlled states — a run that failed three days ago, a run mid-processing —
+    and going through the pipeline would tie them to whatever the engine happens
+    to return today.
+    """
+    from models.ocr import OcrPage, OcrResult, OcrStatus
+
+    def _make(
+        *,
+        document_id: uuid.UUID,
+        document_version: int = 1,
+        status: OcrStatus = OcrStatus.COMPLETED,
+        pages: list[str] | None = None,
+        engine: str | None = "fake",
+        engine_version: str | None = "5.0.0-fake",
+        detected_language: str | None = "eng+fra",
+        confidence: float | None = 92.0,
+        duration_ms: int | None = 1250,
+        attempt_count: int = 1,
+        error_code: str | None = None,
+        error_message: str | None = None,
+        requested_by: uuid.UUID | None = None,
+        started_at: datetime | None = None,
+        finished_at: datetime | None = None,
+        created_at: datetime | None = None,
+    ) -> OcrResult:
+        texts = ["Page one text." ] if pages is None else pages
+        terminal = status in {OcrStatus.COMPLETED, OcrStatus.FAILED}
+
+        result = OcrResult(
+            id=uuid.uuid4(),
+            document_id=document_id,
+            document_version=document_version,
+            status=status,
+            engine=engine,
+            engine_version=engine_version,
+            detected_language=detected_language,
+            page_count=len(texts) if status is OcrStatus.COMPLETED else None,
+            confidence=confidence if status is OcrStatus.COMPLETED else None,
+            started_at=started_at
+            or (datetime.now(UTC) if status is not OcrStatus.PENDING else None),
+            finished_at=finished_at or (datetime.now(UTC) if terminal else None),
+            duration_ms=duration_ms if terminal else None,
+            attempt_count=attempt_count,
+            error_code=error_code,
+            error_message=error_message,
+            requested_by=requested_by,
+        )
+
+        if status is OcrStatus.COMPLETED:
+            for number, text in enumerate(texts, start=1):
+                result.pages.append(
+                    OcrPage(
+                        id=uuid.uuid4(),
+                        ocr_result_id=result.id,
+                        page_number=number,
+                        text=text,
+                        confidence=confidence,
+                    )
+                )
+
+        if created_at is not None:
+            # Set explicitly so ordering and window tests do not depend on
+            # wall-clock gaps between rows inserted in the same millisecond.
+            result.created_at = created_at
+
+        db_session.add(result)
+        db_session.commit()
+        return result
+
+    return _make
+
+
+# --------------------------------------------------------------------------- #
 # Timeline fixtures
 # --------------------------------------------------------------------------- #
 
@@ -557,9 +805,22 @@ def api_client(
     revocations: InMemoryRevocationStore,
     throttle: InMemoryLoginThrottle,
     document_storage: InMemoryDocumentStorage,
+    ocr_engine: FakeOcrEngine,
+    ocr_queue: RecordingOcrQueue,
 ) -> Iterator[TestClient]:
-    """A TestClient whose database, denylist, throttle, and object store are doubles."""
-    from api.deps import get_document_storage, get_login_throttle, get_token_revocation_store
+    """A TestClient whose external collaborators are all doubles.
+
+    The database, the token denylist, the login throttle, the object store, the
+    OCR engine, and the OCR queue. Everything else — routers, services,
+    repositories, access policies — is the application's own.
+    """
+    from api.deps import (
+        get_document_storage,
+        get_login_throttle,
+        get_ocr_engine_dependency,
+        get_ocr_job_queue,
+        get_token_revocation_store,
+    )
     from db.session import get_db
     from main import app
 
@@ -567,6 +828,8 @@ def api_client(
     app.dependency_overrides[get_token_revocation_store] = lambda: revocations
     app.dependency_overrides[get_login_throttle] = lambda: throttle
     app.dependency_overrides[get_document_storage] = lambda: document_storage
+    app.dependency_overrides[get_ocr_engine_dependency] = lambda: ocr_engine
+    app.dependency_overrides[get_ocr_job_queue] = lambda: ocr_queue
     try:
         with TestClient(app) as test_client:
             yield test_client

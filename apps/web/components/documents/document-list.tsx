@@ -17,6 +17,7 @@ import { DocumentTable } from "@/components/documents/document-table";
 import { DocumentTableSkeleton } from "@/components/documents/document-table-skeleton";
 import { ReplaceDocumentDialog } from "@/components/documents/replace-document-dialog";
 import { UploadDocumentDialog } from "@/components/documents/upload-document-dialog";
+import { OcrMetricsPanel } from "@/components/ocr/ocr-metrics-panel";
 import { useDocumentListQuery } from "@/hooks/use-document-list-query";
 import { documentErrorMessage, useDocuments, useDownloadDocument } from "@/hooks/use-documents";
 import { PERMISSION } from "@/types/authorization";
@@ -74,6 +75,16 @@ export function DocumentList({ caseId }: { caseId?: string } = {}) {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Pipeline health, for whoever operates it. Shown only on the platform-wide
+          list: pinned to one case it would report figures that have nothing to do
+          with the case being read. Gated on `ocr:monitor`, which the API requires
+          independently — the panel is an operational view, not a case view. */}
+      {!caseId ? (
+        <Protected permission={PERMISSION.ocrMonitor}>
+          <OcrMetricsPanel />
+        </Protected>
+      ) : null}
+
       <div className="flex flex-col gap-4">
         <div className="flex justify-end">
           <Protected permission={PERMISSION.documentsUpload}>

@@ -34,6 +34,7 @@ class PermissionGroup(StrEnum):
     USERS = "users"
     CASES = "cases"
     DOCUMENTS = "documents"
+    OCR = "ocr"
     TIMELINE = "timeline"
     REPORTS = "reports"
     NOTIFICATIONS = "notifications"
@@ -79,6 +80,23 @@ class Permission(StrEnum):
     DOCUMENTS_VIEW = "documents:view"
     DOCUMENTS_UPDATE = "documents:update"
     DOCUMENTS_DELETE = "documents:delete"
+
+    # --- OCR processing ------------------------------------------------------ #
+    #: Read a document's OCR status, metadata, and extracted text. Separate from
+    #: ``documents:view`` because the extracted text is a *derived* artefact with
+    #: its own endpoints — but note that holding this grants nothing on its own:
+    #: OCR access follows the document, which follows its case (see
+    #: :mod:`services.ocr_access`).
+    OCR_VIEW = "ocr:view"
+    #: Re-run extraction for a document already uploaded. Narrower than
+    #: ``ocr:view`` because a retry consumes real processing capacity, which is
+    #: the only reason reading and re-running are two permissions rather than one.
+    OCR_RETRY = "ocr:retry"
+    #: Read platform-wide OCR metrics — success rate, failure rate, average
+    #: processing time. Not scoped to a case, so it is deliberately an
+    #: administrative capability rather than something every document reader
+    #: holds.
+    OCR_MONITOR = "ocr:monitor"
 
     # --- Timeline ----------------------------------------------------------- #
     TIMELINE_VIEW = "timeline:view"

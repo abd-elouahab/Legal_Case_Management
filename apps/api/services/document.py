@@ -28,6 +28,12 @@ It also **publishes to the timeline** — uploads, metadata edits, replacements,
 deletions, and downloads are the document half of a case's history. As with the
 case service, publication happens after the change is committed, describes rather
 than decides, and can never fail the request that caused it.
+
+And it **schedules OCR**, through the same kind of narrow protocol: a stored file
+is announced to :class:`~services.ocr.OcrScheduler`, which queues extraction and
+returns. This module knows nothing about engines, queues, or extracted text, and
+the call cannot fail the upload — ``09-ocr-processing.md`` is explicit that *"the
+upload request must never wait for OCR to complete"*.
 """
 
 from __future__ import annotations
@@ -56,6 +62,7 @@ from schemas.document import DocumentListQuery, DocumentUpdate, DocumentUploadFo
 from services.document_access import DocumentAccessPolicy
 from services.document_storage import DocumentStorageService, ObjectStream
 from services.document_validation import ValidatedUpload
+from services.ocr import NullOcrScheduler, OcrScheduler
 from services.timeline import NullTimelineRecorder, TimelineRecorder
 
 logger = structlog.get_logger(__name__)
@@ -93,6 +100,7 @@ class DocumentService:
         access: DocumentAccessPolicy | None = None,
         *,
         timeline: TimelineRecorder | None = None,
+        ocr: OcrScheduler | None = None,
     ) -> None:
         self._documents = documents
         self._cases = cases
@@ -101,6 +109,10 @@ class DocumentService:
         # See `CaseService.__init__` for why the default records nothing; the
         # application wires the real recorder in `api.deps.get_document_service`.
         self._timeline: TimelineRecorder = timeline or NullTimelineRecorder()
+        # Same pattern, same reason: a document service built without OCR (a
+        # script, a unit test that is not about extraction) schedules nothing
+        # rather than needing a guard at each call site.
+        self._ocr: OcrScheduler = ocr or NullOcrScheduler()
 
     # ------------------------------------------------------------- reading #
 
@@ -186,6 +198,11 @@ class DocumentService:
             actor=actor,
             description=f'{actor.full_name} uploaded "{saved.original_filename}".',
         )
+        # Last, and after the commit: the file is stored and the response is
+        # earned, so scheduling extraction must not be able to undo either. The
+        # scheduler returns immediately — the work happens on a background
+        # worker — and swallows its own failures for exactly that reason.
+        self._ocr.schedule_for_document(saved, actor=actor)
         return saved
 
     # ------------------------------------------------------------ updating #
@@ -300,6 +317,11 @@ class DocumentService:
             ),
             extra={"previous_version": previous_version},
         )
+        # A replacement is new bytes, so it needs its own extraction. The
+        # previous version keeps the text that was read from *it* — the run is
+        # keyed by version precisely so replacing a document does not invalidate
+        # the record of what its earlier files said.
+        self._ocr.schedule_for_document(saved, actor=actor)
         return saved
 
     def delete_document(self, document_id: uuid.UUID, *, actor: User) -> Document:

@@ -19,8 +19,8 @@
 | AI Framework | LangGraph | Multi-agent orchestration |
 | LLM Gateway | LiteLLM | Unified interface for OpenAI, Ollama, and future models |
 | Embeddings | BAAI bge-m3 | Generate document embeddings |
-| OCR | Tesseract OCR + OCRmyPDF | Text extraction from scanned documents |
-| Background Jobs | Trigger.dev (or Celery + Redis) | OCR, indexing, notifications, and scheduled tasks |
+| OCR | Tesseract OCR + pytesseract + pdf2image (Poppler) + Pillow | Text extraction from PDFs, scanned PDFs, and images. OCRmyPDF was not needed: pdf2image renders pages and pytesseract reads them, which is the same pipeline with one fewer dependency. Behind the `OcrEngine` protocol, so it is replaceable |
+| Background Jobs | Bounded thread pool in the API process (`services/ocr_queue.py`); Trigger.dev or Celery + Redis when a second consumer arrives | OCR today; indexing, notifications, and scheduled tasks later. The job's identity, state, and concurrency control live in PostgreSQL rather than in the queue, so the runner is one file to replace |
 | Email Service | SMTP / Mailpit | Email notifications |
 | WhatsApp Integration | WhatsApp Business API | Real-time WhatsApp alerts |
 | Authentication | JWT + OAuth2 | Secure authentication and authorization |
@@ -61,8 +61,12 @@
   `services/document_storage.py`, `services/document_validation.py`,
   `services/document_access.py`, `api/v1/documents/`) and `apps/web`
   (`components/documents/`, `app/(protected)/documents/`), following the same
-  layering as Cases and Users rather than introducing a separate deployable. OCR,
-  indexing, and embeddings are later features that attach to the Document entity.
+  layering as Cases and Users rather than introducing a separate deployable.
+  **OCR** attaches to the Document entity as its own layer (`models/ocr.py`,
+  `core/ocr.py`, `repositories/ocr.py`, `services/ocr.py`,
+  `services/ocr_engine.py`, `services/ocr_queue.py`, `services/ocr_worker.py`,
+  `services/ocr_access.py`, `api/v1/ocr/`, plus `apps/web/components/ocr/`).
+  Indexing and embeddings are later features that consume the text OCR persists.
 - `modules/reports` — AI-generated reports, legal summaries, exports, and report history.
 - `modules/notifications` — Real-time notifications, email notifications, WhatsApp alerts, and reminder scheduling.
 - `modules/users` — Administrator, lawyer, and court representative management.
@@ -73,6 +77,13 @@
 - `modules/localization` — Arabic and French translations, language switching, and RTL support.
 - `services/ai` — Retrieval-Augmented Generation (RAG), semantic search, summarization, information extraction, report generation, compliance checking, and multilingual AI services.
 - `services/workers` — Background workers responsible for OCR, embeddings, indexing, notifications, and scheduled tasks.
+  The OCR worker is implemented inside `apps/api` (`services/ocr_queue.py`,
+  `services/ocr_worker.py`, started and drained by `core/lifespan.py`), following
+  the same "no separate deployable until one is needed" reasoning as Cases,
+  Documents, and Timeline. It is a bounded thread pool today; the queue sits
+  behind the `OcrJobQueue` protocol, and the job's identity, state, and
+  concurrency control live in PostgreSQL, so promoting it to a standalone Celery
+  or Trigger.dev worker replaces one file rather than the feature.
 - `packages/shared` — Shared DTOs, schemas, utilities, constants, and API contracts.
 - `infrastructure` — Docker Compose, Nginx, monitoring, deployment scripts, CI/CD, and environment configuration.
 
@@ -93,6 +104,8 @@ Stores structured business data:
 - Legal Cases
 - Documents (metadata only)
 - Document Versions
+- OCR Results (one per document version)
+- OCR Pages (extracted text, one row per page)
 - Lawyer Assignments
 - Clients
 - Hearings
@@ -267,6 +280,14 @@ Role-Based Access Control, implemented per
     `cases:update-hearing` the court fields, `cases:assign` the two assignment
     fields. A request touching a field the caller cannot reach is refused *in
     full* — never applied in part.
+  - `ocr:view` / `ocr:retry` / `ocr:monitor` follow the same shape. Reading a
+    document's extracted text is scoped **per resource** by
+    `services/ocr_access.py`, which delegates to `DocumentAccessPolicy`, which
+    delegates to `CaseAccessPolicy` — so extracted text can never be more visible
+    than the file it was read from. `ocr:retry` is narrower than `ocr:view`
+    because a retry consumes real processing capacity: lawyers hold it, court
+    representatives do not. `ocr:monitor` gates the platform-wide metrics view,
+    which is administrative and deliberately not scoped to a case.
 - **`AuthorizationService`** (`services/authorization.py`) evaluates every
   access decision — require role / permission / any / all — in both a boolean
   (`has_*`) and a raising (`require_*`) form. It is stateless and pure.
@@ -357,6 +378,67 @@ Implemented per `context/feature-specs/07-document-management.md`:
   advance, so a client never offers a preview the API will refuse.
 - **Deletion is logical.** `DELETE /documents/{id}` sets `deleted_at`; the row and
   every stored file are kept, and the operation is idempotent.
+
+### OCR Processing
+
+Implemented per `context/feature-specs/09-ocr-processing.md`. The first stage of
+the AI pipeline: it ends at **persisted text**, and deliberately contains nothing
+about embeddings, vectors, retrieval, or an LLM.
+
+- **A run belongs to a document *version*, not to a document.** `ocr_results` is
+  keyed `(document_id, document_version)` by a unique constraint, which is the
+  whole of the spec's idempotency requirement: retrying re-uses the row, and a
+  replacement gets its own run while the previous version keeps the text that was
+  read from *it*.
+- **Concurrency is a conditional `UPDATE`, not a lock.**
+  `OcrRepository.claim` moves a run `pending → processing` with
+  `WHERE status = 'pending'`, so exactly one worker updates a row and any other
+  updates none. No Redis key, nothing to expire or leak — the row *is* the lock,
+  held for exactly as long as its state says.
+- **The extracted text is one row per page** (`ocr_pages`), not one blob. Page
+  order and page boundaries are what a lawyer cites and what a later chunker will
+  split on; a separator inside a single string is a convention every future reader
+  would have to know. `OcrTextRead.full_text` joins them with U+000C FORM FEED and
+  publishes the separator, so the convenience shape loses no boundary.
+- **Recognition accuracy is the engine's, and the seam is the lever.** Measured
+  against the live engine on a realistic Arabic filing: **94 % line recall, 100 %
+  precision** — every line returned is character-exact at 91–93 % confidence.
+  The residual loss is Tesseract's layout analysis discarding text on *sparse*
+  pages (a single line alone on a blank page reads as nothing; the same line with
+  neighbours reads perfectly), and it is invariant across language sets, page
+  segmentation modes, spacing, fonts, and 150–600 DPI. No configuration improves
+  it, so none was added. Raising it means changing engines, which is one class
+  behind `OcrEngine`.
+- **Two seams keep the feature replaceable.** `services/ocr_engine.py` is the only
+  module that imports Tesseract, pytesseract, pdf2image, or Pillow, and every
+  library failure is translated into an `OcrFailureCode` at that boundary;
+  `services/ocr_queue.py` is the only module that knows how a job is scheduled.
+  The job's *identity*, *state*, and *concurrency control* are all in PostgreSQL,
+  so replacing the in-process thread pool with Celery or Trigger.dev replaces one
+  file.
+- **The upload never waits.** `DocumentService` publishes to an `OcrScheduler`
+  after its commit; scheduling returns immediately and swallows its own failures,
+  because the file is stored and the response is already earned.
+- **A failure is a recorded state, not a failed request.** Every way extraction
+  can go wrong becomes a `failed` run with a machine-readable `error_code`; the
+  uploaded file, its metadata, and its version history are untouched, and the run
+  stays retryable. The service writes only to `ocr_results` and `ocr_pages`, so
+  that guarantee is structural rather than a matter of care.
+- **Extracted text inherits document permissions**, which inherit case
+  permissions — `services/ocr_access.py` owns no policy of its own, exactly as
+  `document_access.py` and `timeline_access.py` do not.
+- **The text never reaches a log.** A filename appears in a timeline description
+  and nowhere in the application log; the extracted text appears in neither. The
+  logs carry identifiers, statuses, page counts, and character counts only.
+- Extraction requires two **system** binaries that pip does not install —
+  **Tesseract** (the recogniser, with a language pack per language in
+  `OCR_LANGUAGES`) and **Poppler** (`pdfinfo`/`pdftoppm`, which render PDF pages).
+  They belong in the API's container image. Point `TESSERACT_CMD` and
+  `POPPLER_PATH` at them when they are not on `PATH`, which is the default on
+  Windows. Their absence is handled rather than fatal: the run fails with
+  `engine_failure`, `GET /ocr/metrics` reports `engine_available: false`, the
+  uploaded document is untouched, and every run can be retried once they are
+  installed.
 
 ### Timeline & Audit Trail
 

@@ -32,6 +32,12 @@ export const TIMELINE_EVENT_TYPES = [
   "document_replaced",
   "document_deleted",
   "document_downloaded",
+  // OCR processing. Added by a later module without any change to the timeline
+  // itself, which is exactly what the open registry above is for.
+  "ocr_started",
+  "ocr_completed",
+  "ocr_failed",
+  "ocr_retried",
 ] as const;
 
 /** A type the platform is known to record. Not the full domain of `eventType`. */
@@ -54,6 +60,12 @@ export const TIMELINE_EVENT_TYPE_LABELS: Record<KnownTimelineEventType, string> 
   document_replaced: "Document replaced",
   document_deleted: "Document deleted",
   document_downloaded: "Document downloaded",
+  // "Text extraction" rather than "OCR": a case history is read by lawyers and
+  // court staff, not by the people who built the pipeline.
+  ocr_started: "Text extraction started",
+  ocr_completed: "Text extraction completed",
+  ocr_failed: "Text extraction failed",
+  ocr_retried: "Text extraction retried",
 };
 
 /**

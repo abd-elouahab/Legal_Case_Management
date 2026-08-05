@@ -32,6 +32,7 @@ import { LoadingState } from "@/components/shared/loading-state";
 import { Spinner } from "@/components/shared/spinner";
 import { DocumentCategoryBadge } from "@/components/documents/document-badges";
 import { DocumentVersionHistory } from "@/components/documents/document-version-history";
+import { DocumentOcrPanel } from "@/components/ocr/document-ocr-panel";
 import {
   documentErrorMessage,
   useDocument,
@@ -283,6 +284,14 @@ function DocumentDetailsContent({
       <Protected permission={PERMISSION.documentsUpdate}>
         <Separator />
         <DocumentMetadataForm document={document} />
+      </Protected>
+
+      <Protected permission={PERMISSION.ocrView}>
+        <Separator />
+        {/* Extraction is a property of the document, so it belongs beside the
+            document rather than on a screen of its own. Gated on `ocr:view`,
+            which the API requires independently. */}
+        <DocumentOcrPanel document={document} />
       </Protected>
 
       <Separator />

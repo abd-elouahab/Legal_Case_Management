@@ -23,6 +23,23 @@ redis==8.0.1
 minio==7.2.20
 qdrant-client==1.18.0
 
+# --- OCR (document text extraction) ---
+# pytesseract and pdf2image are thin wrappers around two *system* binaries that
+# are NOT installed by pip and must be present on the host (or in the API image):
+#   * Tesseract OCR  — the recogniser. Point TESSERACT_CMD at it if it is not on
+#     PATH, which it is not on a default Windows install.
+#     Debian/Ubuntu: apt-get install tesseract-ocr tesseract-ocr-fra tesseract-ocr-ara
+#     Windows:       https://github.com/UB-Mannheim/tesseract/wiki
+#   * Poppler        — pdftoppm/pdfinfo, which render PDF pages to images. Point
+#     POPPLER_PATH at the directory holding them if it is not on PATH.
+#     Debian/Ubuntu: apt-get install poppler-utils
+# Their absence is handled rather than fatal: extraction records a `failed` run
+# with error_code `engine_failure`, the uploaded document is untouched, and the
+# run stays retryable once the binary is installed.
+pytesseract==0.3.13
+pdf2image==1.17.0
+pillow==12.1.0
+
 # --- Logging ---
 structlog==26.1.0
 

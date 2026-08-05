@@ -9,14 +9,375 @@ change.
 
 ## Current Goal
 
-- **Next:** awaiting the next feature specification. Timeline & Audit Trail is
-  complete; per its "Out of Scope" section, notifications, real-time updates,
-  WebSockets, OCR, the AI Assistant, AI report generation, dashboard analytics,
-  and monitoring are each their own unit. Every business event on the platform
-  now has a timeline to publish to, and a future module joins it by adding one
-  registry member — no timeline code changes.
+- **Next:** AI Document Indexing (spec `10-document-indexing.md`). OCR Processing
+  is complete, and the text it persists — one row per page, in reading order,
+  NFC-normalised — is the canonical input that feature consumes. Nothing about
+  embeddings, vectors, chunking, retrieval, or an LLM was built here, as the OCR
+  spec requires.
+
+## Open Questions
+
+- **None outstanding.** Both questions raised during OCR Processing are closed:
+  Tesseract is installed and verified (see the live-engine validation below), and
+  the Arabic recognition question was investigated to root cause and resolved as
+  **no change required** — the evidence is recorded under "Arabic recognition,
+  investigated and closed" below.
 
 ## Completed
+
+- **OCR Processing (spec `09-ocr-processing.md`)** — the first stage of the AI
+  pipeline: machine-readable text extracted from uploaded documents in the
+  background, tracked through a lifecycle, and persisted as the canonical source
+  for future indexing. **Nothing about embeddings, vector databases, semantic
+  search, RAG, the AI assistant, or report generation was implemented** — the spec
+  puts all six out of scope, and the feature ends at persisted text.
+  - **New dependencies (backend only):** `pytesseract`, `pdf2image`, and `pillow`,
+    added to `requirements.txt`. They are thin wrappers around two **system**
+    binaries that pip does not install — **Tesseract** (the recogniser) and
+    **Poppler** (`pdftoppm`/`pdfinfo`, which render PDF pages). `TESSERACT_CMD`
+    and `POPPLER_PATH` exist because neither is on `PATH` by default on Windows.
+    **OCRmyPDF, which `architecture.md` originally named, was not needed**:
+    pdf2image renders and pytesseract reads, which is the same pipeline with one
+    fewer dependency and one fewer subprocess. No new frontend dependencies.
+  - **Two entities** (`models/ocr.py` + migration `d5b91c37ea48`). `ocr_results`
+    is the *run* — status, start/finish, duration, attempt count, engine, engine
+    version, detected language, page count, confidence, failure code and message,
+    who asked. `ocr_pages` is the *text*, one immutable row per page. Both carry
+    exactly what the spec's "OCR Metadata" and "Extracted Text" sections list.
+  - **A run belongs to a document *version*, not to a document.** The unique
+    `(document_id, document_version)` constraint is the whole of the spec's
+    idempotency requirement: a retry updates that row, so retrying the same bytes
+    can never produce a second, contradictory verdict — and a replacement gets its
+    own run while version 1 keeps the text that was read from *it*. Enforced by
+    the database rather than only by the service, because the check-then-insert in
+    between is exactly where a race lives.
+  - **Concurrency is a conditional `UPDATE`, not a lock.**
+    `OcrRepository.claim` moves a run `pending → processing` with
+    `WHERE status = 'pending'` and reads the row count. Two workers reading "it is
+    pending" and both writing "processing" is a race no amount of care in Python
+    closes; `WHERE` is evaluated by the database under a row lock, so exactly one
+    of them updates a row. **No Redis key, no distributed lock, nothing to expire
+    or leak** — the row *is* the lock, held for exactly as long as its state says.
+  - **The text is stored one row per page, not as one blob.** Page order and page
+    boundaries are what a lawyer cites and what a later chunker will split on, and
+    a separator encoded inside a single string is a convention every future reader
+    would have to know. The API offers both: `pages` is canonical, `full_text`
+    joins them with **U+000C FORM FEED** and *publishes the separator*, so
+    splitting the joined form recovers exactly the array — asserted, not assumed.
+  - **OCR utilities** (`core/ocr.py`): `STATUS_TRANSITIONS` (read-only, so the
+    lifecycle cannot be widened by mutation), `can_transition`, `can_retry` and
+    `RETRYABLE_STATUSES` **derived** from the table rather than restated, the
+    supported-format policy, `OcrFailureCode` with a message per code, and the
+    normalisation every page passes through — NFC (so Arabic and French recognised
+    on two platforms compare equal), unified line endings, control characters
+    stripped while tab and newline survive, blank-line runs collapsed, and a
+    length ceiling. Pure functions, unit-testable without a database, a request,
+    a running MinIO, or an installed Tesseract.
+  - **A status may only move along the transition table**, and a move to the state
+    a run is already in is **refused** rather than treated as a no-op — "start
+    processing" arriving twice is a concurrency bug, and treating it as harmless
+    is what would let two workers believe they own the same run.
+  - **Two seams, and they are the point of the design.**
+    `services/ocr_engine.py` is the **only** module in the platform that imports
+    Tesseract, pytesseract, pdf2image, or Pillow: it exposes an `OcrEngine`
+    protocol (name, version, availability, format policy, one `extract` call) and
+    translates every library failure into an `OcrFailureCode` at the boundary, so
+    the service above records a *cause* without knowing what a
+    `PDFPageCountError` is — **and so the engine's raw message, which can echo the
+    page it was reading, never leaves that module**. `ENGINE_FACTORIES` makes a
+    second engine one class plus one entry, which is the spec's "multiple OCR
+    engines" enhancement.
+  - **`services/ocr_queue.py` is the only module that knows how a job is
+    scheduled.** `OcrJobQueue` has one method; `ThreadPoolOcrJobQueue` is what
+    ships, `InlineOcrJobQueue` is what tests use, `NullOcrJobQueue` is the default
+    for a service built without one. **Threads rather than Celery, deliberately:**
+    `architecture.md` names Trigger.dev or Celery and neither exists yet, and
+    introducing one would mean a new deployable and new infrastructure inside a
+    feature about extracting text. What the spec actually requires — the upload
+    returns immediately, a job is created, only one runs per document — all holds,
+    and the *durable* half of it is in PostgreSQL rather than in the queue. The
+    class docstring states the in-process pool's limits plainly (no cross-instance
+    distribution, no backoff, an interrupted run left at `processing` until
+    retried), because those are what decide when it should be replaced.
+  - **`services/ocr_worker.py`** is the one module that knows both halves, which
+    is what lets neither import the other — no cycle to work around. Each job gets
+    **its own database session**, opened and closed there, because a worker runs
+    on a background thread long after its request returned and a `Session` is not
+    thread-safe. The service it builds is given a `NullOcrJobQueue`: a job must
+    not be able to enqueue more work.
+  - **The upload never waits.** `DocumentService` gained an `OcrScheduler` — the
+    same narrow-protocol shape as `TimelineRecorder`, so it cannot reach the read,
+    retry, or monitoring side — and publishes to it *after* its commit. Scheduling
+    returns immediately and swallows its own failures: the file is stored and the
+    response is earned, so a queueing problem must not turn a successful upload
+    into a 500 that invites a duplicating retry.
+  - **A failure is a recorded state, not a failed request.** There is deliberately
+    **no exception for "extraction failed"**: the caller asking for status gets a
+    200 describing a `failed` run with its cause. Every way it can go wrong —
+    corrupted document, unreadable image, timeout, unsupported format, engine
+    failure, storage failure, and an `unknown` catch-all — becomes an
+    `error_code`, and an unexpected fault is caught, logged with a traceback, and
+    recorded as an ordinary failed run: **`processing` forever is the one state
+    nothing can recover from without an operator.**
+  - **A failure cannot touch the document.** `_fail` writes to `ocr_results` and
+    `ocr_pages` only — it holds no reference to the file or its metadata — so
+    "never delete uploaded files, never corrupt metadata" is structural rather
+    than a matter of care. Verified over HTTP: after a failed run the document
+    reads back unchanged and downloads byte-for-byte.
+  - **A blank page is a result, not a failure.** Pages that yield no text complete
+    normally (a separator sheet has nothing to say, and failing it would invite
+    retries that can never succeed); *zero pages at all* is
+    `unreadable_document`. That distinction is the one place the spec's "unreadable
+    images" needed a judgement call, and it is recorded here.
+  - **Retry re-uses the row**: same identifier, status back to `pending`, timing
+    and failure fields cleared, pages replaced wholesale, **`attempt_count`
+    preserved and incremented**. A run already queued or extracting answers **409**
+    rather than silently queueing a duplicate, and `can_retry` on the payload is
+    computed from the same transition table the API enforces — so a client never
+    offers a Retry the server would refuse. A version never processed at all is
+    *bootstrapped* by a retry rather than refused, which is exactly the recovery
+    path for a document uploaded while OCR was disabled.
+  - **Startup re-queues stranded work.** A job's schedule lives in memory but its
+    record lives in the database, so a restart would otherwise leave `pending` rows
+    nothing would ever pick up. `requeue_pending` runs in the lifespan and is safe
+    to repeat — the claim is atomic, so a double-queued job processes once. Neither
+    it nor the pool is allowed to abort startup: an API that refuses to come up
+    over a background feature would take authentication, cases, and documents down
+    with it.
+  - **Repository** (`repositories/ocr.py`): the claim, the natural-key lookup, the
+    version history, and the list — with filtering, sorting, pagination, **and the
+    case scope** all executing in the database. The monitoring aggregate is **one
+    grouped query**, not a load-and-count, so its cost does not grow with the
+    platform's history. `replace_pages` issues a bulk delete rather than emptying
+    a loaded collection, so re-running a 100-page document is one statement.
+  - **Schemas** (`schemas/ocr.py`): `OcrResultRead` (with computed `is_terminal`,
+    `is_active`, `can_retry`, `duration_seconds`) carries **no text at all** — a
+    client polling for completion must not drag a hundred pages of prose across
+    the wire on every tick — and `OcrTextRead` is the separate, explicit request
+    for it, with computed `page_count`, `character_count`, `full_text`, and
+    `page_separator`. Plus `OcrPageRead`, `OcrResultPage`, `OcrMetricsRead`,
+    `OcrListQuery`, `OcrMetricsQuery`.
+  - **Per-resource authorization** (`services/ocr_access.py`): owns no policy of
+    its own and **delegates to `DocumentAccessPolicy`, which delegates to
+    `CaseAccessPolicy`** — so extracted text can never be more visible than the
+    file it was read from. Asserted as the identity it is: a unit test compares
+    the two policies' verdicts for every role, and an HTTP test asserts the
+    document endpoint and the text endpoint return **the same status code** for an
+    unassigned lawyer.
+  - **Three permissions** (`core/permissions.py`, `core/roles.py`): `ocr:view`,
+    `ocr:retry`, `ocr:monitor`. Lawyers hold view and retry; **court
+    representatives hold view only** — a retry consumes real processing capacity,
+    and their role description does not extend to operating the pipeline, which is
+    the same reasoning that withholds `documents:update` from them. `ocr:monitor`
+    is administrative, so administrators hold it by reference like every other.
+  - **Endpoints** (`api/v1/ocr/router.py`, two routers):
+    `GET /documents/{id}/ocr`, `GET /documents/{id}/ocr/text`,
+    `GET /documents/{id}/ocr/history`, `POST /documents/{id}/ocr/retry` (**202**,
+    because the work is accepted rather than done), `GET /ocr` (status, document,
+    case, and failure-cause filters, scoped in SQL), and `GET /ocr/metrics`. The
+    per-document routes live under the `/documents` prefix but are registered from
+    the OCR module and tagged `ocr`, exactly as the timeline registers
+    `GET /cases/{id}/timeline`.
+  - **Monitoring** (`GET /ocr/metrics`, gated on `ocr:monitor`): success rate,
+    failure rate, average processing time, the counts behind them, and a
+    **breakdown of failures by cause** — because a failure rate says something is
+    wrong and only the breakdown says *what*: a missing Tesseract install and a
+    stack of unreadable scans read identically otherwise. It also reports whether
+    the configured engine is actually reachable, for the same reason. Rates are
+    computed over **finished** runs only; counting queued work would make the
+    success rate dip on every upload and recover as it processed, which measures
+    traffic rather than quality. The average excludes failures — a timeout answers
+    a different question. It reports **counts and timings only**: verified over
+    HTTP that no document id, case, or filename appears in the payload.
+  - **Errors** (`core/exceptions.py`): `OcrResultNotFoundError` (404, and it says
+    *why* — a Word file will never have a run), `OcrUnsupportedFormatError` (422,
+    naming the types that are supported), `OcrAlreadyRunningError` (409, naming
+    the current state), `InvalidOcrTransitionError` (409), `OcrDisabledError`
+    (503), and `OcrAccessDeniedError` (403, generic body).
+  - **Timeline: four new event types, and no timeline code changed.**
+    `ocr_started` / `ocr_completed` / `ocr_failed` / `ocr_retried` were added to
+    the registry with **no migration** — which is precisely why
+    `timeline_events.event_type` was made a `VARCHAR` rather than a PostgreSQL
+    enum in spec 08. They are categorised as **document** events, reusing the five
+    icon families rather than forcing a sixth into the timeline's presentation.
+    This is the first time the registry's promise was exercised, and a test now
+    asserts it directly.
+  - **Configuration:** `OCR_ENABLED`, `OCR_ENGINE`, `OCR_LANGUAGES` (`eng+fra+ara`
+    by default, accepting `+` or `,`), `OCR_DPI` (300 — Tesseract's own
+    recommended floor), `OCR_TIMEOUT_SECONDS` (180, covering rendering *and*
+    recognition), `OCR_MAX_PAGES` (100, so a large bundle yields a partial result
+    rather than a guaranteed timeout), `OCR_WORKER_CONCURRENCY` (2, so OCR cannot
+    starve the request handlers), `TESSERACT_CMD`, and `POPPLER_PATH`. All
+    documented in `.env.example`.
+  - **The deadline covers the whole run, not each page.** A fresh allowance per
+    page would let a 100-page document run for over three hours under a
+    120-second limit. The remaining budget has a one-second floor, because `0`
+    means "no timeout at all" to pytesseract — the opposite of what a
+    nearly-exhausted budget should mean.
+  - **Temporary resources are always released**, as the spec requires: page
+    rendering happens inside a `TemporaryDirectory` with `output_folder` set (so a
+    100-page render at 300 DPI is file-backed rather than several gigabytes of
+    decoded bitmap held at once), and every Pillow image is closed in a `finally`
+    — on Windows the directory cannot be removed until they are.
+  - **Logging:** `ocr_requested`, `ocr_job_enqueued`, `ocr_started`,
+    `ocr_completed`, `ocr_failed`, `ocr_retried`, plus `ocr_not_scheduled`,
+    `ocr_job_skipped`, `ocr_retry_rejected`, `ocr_access_denied`, and every lookup
+    failure. Identifiers, statuses, page counts, **character counts** — and
+    **never a filename, never a description, and never a character of extracted
+    text**. The filename appears in a timeline description and nowhere else,
+    because the timeline is served only to users already entitled to the case
+    while a log line goes to an operator who is not.
+  - **Frontend:** `types/ocr.ts` (a **closed** status union, because the lifecycle
+    is a database enum on the server, alongside an **open** failure-code set,
+    because a future engine may report a new cause), `types/ocr-management.ts`,
+    `lib/validation/ocr.ts` (response schemas only — there is no OCR *form*),
+    `lib/api/ocr.ts` (typed client, snake_case ↔ camelCase in one place), and
+    `hooks/use-ocr.ts`.
+  - **The client polls, and stops polling on the server's word.** A run finishes
+    on a background worker with nothing on the client causing it, so
+    `useOcrResult` re-checks every 3 s — and the decision to keep going reads the
+    server's computed `isActive` rather than testing the status against a
+    client-side list, which is the copy that would keep polling forever after a
+    status was renamed. `useOcrCompletionSync` invalidates the text, the history,
+    and the case timeline once per *transition*, because a completed run appends
+    two timeline events and produces the pages the text endpoint serves.
+  - **UI** (`components/ocr/`): `OcrStatusBadge` (state as text, never colour
+    alone; the spinner turns only while the run is actually moving — an animation
+    that never stops makes a stalled pipeline look busy), `OcrTextView` (pages
+    rendered *as pages* with their numbers, `whitespace-pre-wrap` and a monospace
+    face to keep the recognised layout, and `dir="auto"` so an Arabic page renders
+    right-to-left beside a French one), `DocumentOcrPanel` (embedded in the
+    document details dialog, because extraction is a property of a document), and
+    `OcrMetricsPanel` (on `/documents`, gated on `ocr:monitor`).
+  - **The text is loaded only when the reader asks for it** — a details dialog
+    that fetched a 100-page extraction on open would pay for it every time someone
+    checked a file size. Asserted by a test that watches the request log.
+  - **Every UI gate names a permission, never a role**, and no action the API would
+    refuse is offered: Retry is hidden without `ocr:retry` (so a court
+    representative never sees it) and disabled while `canRetry` is false (so it
+    never produces a 409 the user could not have predicted). A missing record is
+    rendered as "not processed yet" with an Extract action, not as an error.
+  - **One real defect, found by the live migration run rather than by tests.**
+    The migration created the `ocr_status` enum explicitly *and* declared it on the
+    column, and `create_table` emits `CREATE TYPE` ahead of `CREATE TABLE` for
+    every enum column — so the very first upgrade died on `type "ocr_status"
+    already exists`. Nothing in the suite could catch it: the test database is
+    SQLite, which has no `CREATE TYPE` at all. Rewritten to the shape the case and
+    document migrations already use — let `create_table` emit it, drop it
+    explicitly in the downgrade. **General lesson, and the second of its kind in
+    this codebase: anything a migration does with a PostgreSQL type is invisible to
+    the SQLite test database and needs a live run.**
+  - **Two pre-existing tests were updated, both because the design worked.**
+    `test_the_spec_s_fifteen_event_types_are_all_present` pinned the whole timeline
+    registry by equality, which would fail every time a later module correctly
+    extended it — it now asserts the spec's fifteen as a *prefix*, with a second
+    test asserting that OCR's four joined through the documented extension point.
+    And two timeline integration tests read `items[0]` or the full event sequence
+    after an upload, which now legitimately includes `ocr_started` /
+    `ocr_completed`; they now address events by type.
+  - **Validation (live Postgres + Redis + MinIO + Qdrant, real HTTP):** 1524
+    backend tests (up from 1232 — 291 of them for OCR) and 422 frontend tests (up
+    from 387) pass; `ruff` clean across `apps/api` and `tests`, `mypy --strict`
+    clean on `apps/api`; `tsc` and ESLint clean; the production build succeeds and
+    prerenders every route. Migration verified on **live PostgreSQL in both
+    directions**: the upgrade creates the `ocr_status` type with its four labels in
+    order, both tables, all four indexes, both unique constraints, and all three
+    foreign keys (`document_id` CASCADE, `ocr_result_id` CASCADE, `requested_by`
+    SET NULL); the downgrade drops both tables **and the type** (confirmed absent
+    from `pg_type`), and a re-upgrade is clean. **96/96 end-to-end HTTP checks
+    passed** against a running API with real MinIO: all six routes return **401**
+    with a `WWW-Authenticate: Bearer` challenge unauthenticated; an upload returns
+    **201 in well under a second** and its OCR record is `pending` while the
+    response is already in hand; the run reaches a terminal state on a background
+    worker, records the engine, the duration, and the attempt, and is keyed to
+    version 1; the status payload carries **no text**; the document and its bytes
+    are unchanged by a failure and still download byte-for-byte; a `.docx` gets
+    **no run at all** and answers 404 `ocr_result_not_found`, while retrying it is
+    422 naming the supported types; a retry answers **202**, returns the *same*
+    run, increments the attempt, and leaves the history at one record; a
+    replacement produces a second run so the history is `[v1, v2]`, and version 1's
+    run stays readable; an unknown version is 404 and `version=0` is 422; the
+    assigned lawyer reads and retries, the **court representative reads but is
+    refused a retry with 403**, and an unassigned lawyer is refused status, text,
+    and history — with a body naming **neither permission nor role**; the document
+    endpoint and the text endpoint return the **same** status code for that
+    caller; the list is scoped in SQL (4 / 2 / 0 for administrator / assigned
+    lawyer / unassigned lawyer), rejects an unknown parameter and an oversized
+    page with 422, and answers a page past the end with an empty list; metrics
+    report the rates (summing to 100), the average, the failure breakdown, and the
+    engine's availability, are **refused to both restricted roles**, reject
+    `window_days=0`, and contain **no document id and no filename**; the case
+    timeline carries `ocr_started`, `ocr_retried`, and a terminal event, all
+    categorised `document`, titled "Text Extraction …" rather than with the
+    acronym, and naming the file for an entitled reader; a deleted document's text
+    answers 404; and OpenAPI documents all six routes, with the retry endpoint
+    carrying a summary and 401/403/404/409/422/503, both prefixes tagged `ocr`.
+    **Zero 5xx responses and no tracebacks in the server log**; the log shows all
+    the OCR events with **no filename, no extracted text, no password, no hash,
+    and no JWT anywhere**. Frontend routes: `/documents` and `/cases/[id]` 307 to
+    `/login` anonymously and 200 with a session cookie; no errors or warnings in
+    the dev-server log.
+  - **Validation with a live engine (Tesseract 5.5.3 at `D:\Apps\TesseractOCR`,
+    161 language packs including `eng`/`fra`/`ara`; Poppler already on `PATH` via
+    MiKTeX).** `TESSERACT_CMD` was added to `.env` and `get_ocr_engine()` reports
+    `available: True`. Real documents uploaded and read back **over HTTP**:
+    - a **two-page bilingual PDF** completed in **22.1 s** — and the upload that
+      scheduled it **returned in 62 ms**, which is the spec's headline requirement
+      measured rather than asserted. Page order and boundaries survived, and
+      `full_text.split(page_separator)` round-tripped to exactly the `pages`
+      array. French came back character-perfect at 94.36 % confidence;
+    - a **French PNG** completed in **0.64 s** at 93.6 % — `CONTRAT DE BAIL
+      COMMERCIAL / Article 4 : Loyer et charges`, exact;
+    - **mixed Arabic and French on one page** read both scripts correctly through
+      the engine wrapper at 93.78 %;
+    - a **dense Arabic page** completed at 92.19 %, every recognised line exact.
+    - `ocr_completed` appears 7 times in the log with `page_count`,
+      `character_count`, `confidence`, and `duration_ms` — and **zero 5xx, zero
+      tracebacks, and no filename, no extracted text, no password, no hash, and no
+      JWT anywhere in it**, re-confirmed with the engine actually running.
+  - **Arabic recognition, investigated and closed: no platform change required,
+    and none made.** An early manual run read 6 of 8 lines on a synthetic Arabic
+    page, which looked like it might need engine tuning. It does not. The
+    investigation, and why each hypothesis died:
+    - **Not recognition.** Every line Tesseract returns is **character-exact at
+      91–93 % confidence**. Precision is 100 %; nothing comes back garbled.
+    - **Not the language set.** `ara`, `ara+fra`, and the shipped
+      `eng+fra+ara` give **identical** results — 94 % recall, 100 % precision on a
+      realistic filing. The default is validated rather than merely assumed.
+    - **Not page segmentation.** All of PSM 3 / 4 / 6 / 11 / 12 give the same
+      output. PSM 13 is the only one that behaves differently and it returns
+      **garbage**, so a "retry with another mode" fallback would inject noise
+      rather than recover text — which is why one was **not** added.
+    - **Not line spacing, font, or resolution.** Swept 6 spacings, 5 fonts
+      (Arial / Dubai / Arabic Typesetting / Segoe UI / Tahoma), and DPI from 150
+      to 600. Nothing reaches full recall; 300 DPI is the best of them, which
+      independently confirms the `OCR_DPI=300` default.
+    - **Root cause, isolated.** The dropped lines **never enter layout analysis**
+      — `image_to_data` shows no low-confidence candidate for them, so there is
+      nothing to recover. Tesseract's Arabic layout analysis rejects *sparse*
+      pages: one short line alone on a blank page reads as **zero** lines, and
+      the **same line with two neighbours reads perfectly**. It needs inter-line
+      context to establish a baseline model.
+    - **Therefore it does not apply to the documents this platform handles.** On a
+      realistic 16-line filing the engine reads **15 of 16 lines — 94 % recall,
+      100 % precision, zero garbled output**. Real legal filings are dense; the
+      failing case is three isolated lines on an otherwise blank A4, which is a
+      property of the synthetic fixtures rather than of the corpus.
+    - **Conclusion:** not a defect, not a tuning gap, and not addressable by
+      configuration — no setting changes the outcome, and the one that does makes
+      it worse. **No code was changed.** If Arabic accuracy ever needs to exceed
+      what Tesseract delivers, the answer is the `OcrEngine` seam — swap the
+      engine, and the service, queue, schema, and API are untouched. That is
+      precisely the extensibility the spec asked for, now with a concrete reason
+      it might one day be used.
+  - **One thing worth recording for whoever writes the next OCR fixtures:** a PDF
+    built by `PIL.Image.save(..., "PDF")` from an **RGB** image is encoded as
+    **JPEG**, and that lossy step — not the platform — is what garbled Arabic in
+    the first round of manual testing (63 % confidence, mangled glyphs). Converting
+    the page to mode `"1"` makes Pillow write lossless CCITT G4, and confidence
+    returned to 93.67 %, matching the same bitmap uploaded as a PNG. The platform's
+    PDF path renders 1:1 at `OCR_DPI` with no resampling when the PDF declares a
+    matching resolution.
 
 - **Timeline & Audit Trail (spec `08-timeline.md`)** — a centralized activity
   timeline and audit trail recording the significant events the Case and Document

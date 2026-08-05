@@ -411,6 +411,116 @@ class DocumentAccessDeniedError(AuthorizationError):
 
 
 # --------------------------------------------------------------------------- #
+# OCR processing errors
+#
+# Same posture as the document errors above: a caller who has proved both who
+# they are and that they hold the matching ``ocr:*`` capability is told what is
+# wrong. :class:`OcrAccessDeniedError` is the exception, being a per-resource
+# denial.
+#
+# There is deliberately **no error for a failed extraction**. A failure is a
+# recorded *state* of the run, not a failed request: the caller asking for the
+# status gets a 200 describing a run whose status is ``failed``, with the reason
+# on it. Answering 5xx would say the platform is broken when what happened is
+# that a scan was unreadable.
+# --------------------------------------------------------------------------- #
+
+
+class OcrResultNotFoundError(AppException):
+    """No OCR run exists for the requested document, or for that version.
+
+    Distinct from "the document does not exist": a document of a type OCR does
+    not apply to — a Word file, a plain-text note — has no run and never will,
+    and the message says so rather than implying something went missing.
+    """
+
+    status_code = status.HTTP_404_NOT_FOUND
+    error_code = "ocr_result_not_found"
+    message = "No text extraction record exists for this document."
+
+
+class OcrUnsupportedFormatError(AppException):
+    """OCR was requested for a file type it does not apply to.
+
+    422 rather than 415: the request is well-formed and the endpoint's response
+    type is not in question — what cannot be satisfied is the *operation*, for a
+    reason that is a property of the resource the URL names.
+    """
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    error_code = "ocr_unsupported_format"
+    message = "Text extraction is not available for this file type."
+
+    def __init__(self, extension: str, supported: list[str]) -> None:
+        super().__init__(
+            f"Text extraction is not available for {extension!r} files. "
+            f"Supported types: {', '.join(supported)}."
+        )
+
+
+class OcrAlreadyRunningError(AppException):
+    """A retry was requested while extraction is queued or already running.
+
+    409 rather than 202-and-ignore: the caller asked for a *new* run, and
+    silently answering "done" for one already in flight would make the button
+    they pressed indistinguishable from one that worked. Whether the run is
+    queued or mid-extraction is stated, because it is the difference between
+    "wait a moment" and "wait a while".
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "ocr_already_running"
+    message = "Text extraction is already in progress for this document."
+
+    def __init__(self, current: str) -> None:
+        super().__init__(f"Text extraction for this document is already {current!r}.")
+
+
+class InvalidOcrTransitionError(AppException):
+    """A run was asked to move to a state that is not reachable from its own.
+
+    Only provokable through the service's own API, not by a client: every HTTP
+    path checks first. It exists so that a future caller — a scheduled
+    re-processing job, a bulk import — cannot corrupt a run's lifecycle by
+    writing a status directly, and so that the attempt is visible rather than
+    silent.
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "invalid_ocr_transition"
+    message = "This text extraction cannot move to that state."
+
+    def __init__(self, current: str, target: str) -> None:
+        super().__init__(
+            f"A text extraction that is {current!r} cannot move to {target!r}."
+        )
+
+
+class OcrDisabledError(AppException):
+    """OCR is switched off for this deployment.
+
+    503 rather than 404: the capability exists and the request is valid — the
+    deployment has turned the pipeline off, which is a temporary condition an
+    operator controls. Existing results stay readable; only new work is refused.
+    """
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    error_code = "ocr_disabled"
+    message = "Text extraction is currently disabled on this platform."
+
+
+class OcrAccessDeniedError(AuthorizationError):
+    """The caller holds the capability but is not party to the document's case.
+
+    A subclass of :class:`AuthorizationError`, so it answers **403** with the
+    same generic body as every other denial. OCR access follows document access,
+    which follows case access — see :mod:`services.ocr_access` — so the reasoning
+    behind :class:`CaseAccessDeniedError` (403 rather than a concealing 404)
+    applies unchanged.
+    """
+
+
+# --------------------------------------------------------------------------- #
 # Timeline errors
 #
 # Only two, because the timeline is read-only over HTTP: events are published by

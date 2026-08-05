@@ -19,6 +19,7 @@ from db.session import get_db
 from models.user import User
 from repositories.case import CaseRepository
 from repositories.document import DocumentRepository
+from repositories.ocr import OcrRepository
 from repositories.timeline import TimelineRepository
 from repositories.user import UserRepository
 from services.auth import AuthService
@@ -26,6 +27,10 @@ from services.case import CaseService
 from services.document import DocumentService
 from services.document_storage import DocumentStorageService
 from services.login_throttle import LoginThrottle
+from services.ocr import OcrService
+from services.ocr_engine import OcrEngine, get_ocr_engine
+from services.ocr_queue import OcrJobQueue
+from services.ocr_worker import ocr_queue
 from services.timeline import TimelineService
 from services.token_revocation import TokenRevocationStore
 from services.user import UserService
@@ -139,11 +144,65 @@ def get_document_storage() -> DocumentStorageService:
     return DocumentStorageService()
 
 
+def get_ocr_repository(session: DbSession) -> OcrRepository:
+    """Provide a request-scoped OCR repository."""
+    return OcrRepository(session)
+
+
+def get_ocr_engine_dependency() -> OcrEngine:
+    """Provide the configured OCR engine.
+
+    A dependency rather than a module-level singleton so an integration test can
+    override it with a fake and exercise the endpoints without an installed
+    Tesseract — the same reason ``get_document_storage`` is one.
+    """
+    return get_ocr_engine()
+
+
+def get_ocr_job_queue() -> OcrJobQueue:
+    """Provide the application's background OCR queue.
+
+    The process-wide pool from :mod:`services.ocr_worker`, not a fresh one per
+    request: bounding concurrency is the whole point of it, and a pool per
+    request would bound nothing. A test overrides this with an inline queue so
+    the work happens synchronously and the assertion does not race a thread.
+    """
+    return ocr_queue
+
+
+def get_ocr_service(
+    results: Annotated[OcrRepository, Depends(get_ocr_repository)],
+    documents: Annotated[DocumentRepository, Depends(get_document_repository)],
+    storage: Annotated[DocumentStorageService, Depends(get_document_storage)],
+    engine: Annotated[OcrEngine, Depends(get_ocr_engine_dependency)],
+    queue: Annotated[OcrJobQueue, Depends(get_ocr_job_queue)],
+    timeline: Annotated[TimelineService, Depends(get_timeline_service)],
+) -> OcrService:
+    """Provide the OCR service with its collaborators injected.
+
+    The document repository is injected because every OCR path starts from a
+    document — a status read, a text read, and a retry all name one — and because
+    OCR access follows document access, which follows case access. None of those
+    rules may be re-implemented against a second copy of the document query.
+
+    The timeline service is injected because the OCR service *publishes* to it:
+    started, completed, failed, and retried are the OCR half of a document's
+    history. As with the case and document services, this is one of only two
+    places the real recorder is wired in — the other being the background worker,
+    which has no request to take one from.
+    """
+    return OcrService(results, documents, storage, engine, queue, timeline=timeline)
+
+
+OcrServiceDep = Annotated[OcrService, Depends(get_ocr_service)]
+
+
 def get_document_service(
     documents: Annotated[DocumentRepository, Depends(get_document_repository)],
     cases: Annotated[CaseRepository, Depends(get_case_repository)],
     storage: Annotated[DocumentStorageService, Depends(get_document_storage)],
     timeline: Annotated[TimelineService, Depends(get_timeline_service)],
+    ocr: Annotated[OcrService, Depends(get_ocr_service)],
 ) -> DocumentService:
     """Provide the document management service with its collaborators injected.
 
@@ -156,8 +215,13 @@ def get_document_service(
     it: uploads, metadata edits, replacements, deletions, and downloads are the
     document half of a case's history. As with the case service, this is the only
     place the real recorder is wired in.
+
+    The OCR service is injected for the same shape of reason: storing a file is
+    what schedules its text extraction. The document service depends on the
+    narrow :class:`~services.ocr.OcrScheduler` protocol rather than on this
+    class, so it cannot reach the read, retry, or monitoring side.
     """
-    return DocumentService(documents, cases, storage, timeline=timeline)
+    return DocumentService(documents, cases, storage, timeline=timeline, ocr=ocr)
 
 
 DocumentServiceDep = Annotated[DocumentService, Depends(get_document_service)]

@@ -32,6 +32,11 @@ export const PERMISSIONS = [
   "documents:update",
   "documents:delete",
 
+  // OCR processing
+  "ocr:view",
+  "ocr:retry",
+  "ocr:monitor",
+
   // Timeline
   "timeline:view",
   "timeline:create",
@@ -79,6 +84,10 @@ export const PERMISSION = {
   documentsView: "documents:view",
   documentsUpdate: "documents:update",
   documentsDelete: "documents:delete",
+
+  ocrView: "ocr:view",
+  ocrRetry: "ocr:retry",
+  ocrMonitor: "ocr:monitor",
 
   timelineView: "timeline:view",
   timelineCreate: "timeline:create",

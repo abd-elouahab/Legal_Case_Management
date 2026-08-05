@@ -11,6 +11,8 @@ from api.v1.auth.router import router as auth_router
 from api.v1.authorization.router import router as authorization_router
 from api.v1.cases.router import router as cases_router
 from api.v1.documents.router import router as documents_router
+from api.v1.ocr.router import document_ocr_router
+from api.v1.ocr.router import router as ocr_router
 from api.v1.timeline.router import case_timeline_router
 from api.v1.timeline.router import router as timeline_router
 from api.v1.users.router import router as users_router
@@ -22,6 +24,14 @@ api_router.include_router(authorization_router, prefix="/authorization", tags=["
 api_router.include_router(users_router, prefix="/users", tags=["users"])
 api_router.include_router(cases_router, prefix="/cases", tags=["cases"])
 api_router.include_router(documents_router, prefix="/documents", tags=["documents"])
+
+# `GET|POST /documents/{document_id}/ocr*` live under the document prefix but
+# belong to the OCR module, so they are registered from there rather than added
+# to the document router. Tagged `ocr`, so OpenAPI groups them with the module
+# that owns them. Registered *after* the document router so that `/documents/{id}`
+# and its siblings keep their place in the route table.
+api_router.include_router(document_ocr_router, prefix="/documents", tags=["ocr"])
+api_router.include_router(ocr_router, prefix="/ocr", tags=["ocr"])
 
 # `GET /cases/{case_id}/timeline` lives under the case prefix but belongs to the
 # timeline module, so it is registered from there rather than added to the case

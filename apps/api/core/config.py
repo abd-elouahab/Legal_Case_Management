@@ -115,6 +115,39 @@ class Settings(BaseSettings):
         default_factory=lambda: ["pdf", "docx", "doc", "txt", "jpg", "jpeg", "png"]
     )
 
+    # --- OCR processing ---
+    # OCR is the first stage of the AI pipeline: it extracts machine-readable
+    # text from uploaded documents in the background. Disabling it stops new work
+    # from being scheduled; existing results stay readable and retryable.
+    OCR_ENABLED: bool = True
+    # Which engine implementation to use (see `services/ocr_engine.py`). An
+    # unrecognised value falls back to the default rather than failing startup.
+    OCR_ENGINE: str = "tesseract"
+    # Tesseract language packs to load, joined with `+`. The platform is
+    # Arabic/French/English, and a document may mix them, so all three are tried
+    # by default — each additional pack costs recognition time, so a
+    # single-language deployment should narrow this.
+    OCR_LANGUAGES: str = "eng+fra+ara"
+    # Resolution PDF pages are rendered at before recognition. 300 DPI is the
+    # accuracy floor Tesseract's own guidance recommends for scanned text; lower
+    # is markedly worse and higher costs time without improving it.
+    OCR_DPI: int = 300
+    # Whole-run deadline, covering page rendering *and* recognition.
+    OCR_TIMEOUT_SECONDS: int = 180
+    # Pages read from a single document. A bound is what keeps a 900-page bundle
+    # from being a guaranteed timeout rather than a partial result.
+    OCR_MAX_PAGES: int = 100
+    # Background workers processing OCR jobs in this API process. OCR is a
+    # subprocess-heavy workload, so a small pool keeps it from starving the
+    # request handlers.
+    OCR_WORKER_CONCURRENCY: int = 2
+    # Absolute path to the Tesseract binary. Needed when it is not on PATH,
+    # which is the default on Windows. Blank means "use the library's default".
+    TESSERACT_CMD: str | None = None
+    # Directory holding the Poppler binaries (pdftoppm/pdfinfo) that pdf2image
+    # shells out to. Same reasoning as TESSERACT_CMD.
+    POPPLER_PATH: str | None = None
+
     # --- Qdrant ---
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6333
@@ -181,7 +214,32 @@ class Settings(BaseSettings):
             raise ValueError("ALLOWED_DOCUMENT_EXTENSIONS must list at least one file type")
         return cleaned
 
-    @field_validator("REDIS_PASSWORD", "MINIO_REGION", "QDRANT_API_KEY", "REFRESH_COOKIE_DOMAIN", mode="before")
+    @field_validator("OCR_LANGUAGES")
+    @classmethod
+    def _normalize_ocr_languages(cls, value: str) -> str:
+        """Accept ``eng, fra`` and ``eng+fra`` alike, and reject an empty list.
+
+        Tesseract's own syntax is ``+``-joined, but a comma is the separator
+        every other list-valued setting in this file uses, so both are accepted
+        and normalized to what the library expects. An empty value would make
+        every extraction fail with an opaque engine error, so it is rejected here
+        instead.
+        """
+        parts = [part.strip().lower() for part in value.replace(",", "+").split("+")]
+        cleaned = [part for part in parts if part]
+        if not cleaned:
+            raise ValueError("OCR_LANGUAGES must list at least one Tesseract language code")
+        return "+".join(dict.fromkeys(cleaned))
+
+    @field_validator(
+        "REDIS_PASSWORD",
+        "MINIO_REGION",
+        "QDRANT_API_KEY",
+        "REFRESH_COOKIE_DOMAIN",
+        "TESSERACT_CMD",
+        "POPPLER_PATH",
+        mode="before",
+    )
     @classmethod
     def _empty_str_to_none(cls, value: object) -> object:
         """Treat a blank value in .env (e.g. ``REDIS_PASSWORD=``) as unset."""
@@ -204,6 +262,10 @@ class Settings(BaseSettings):
         "LOGIN_FAILURE_WINDOW_MINUTES",
         "LOGIN_LOCKOUT_MINUTES",
         "MAX_DOCUMENT_SIZE_MB",
+        "OCR_DPI",
+        "OCR_TIMEOUT_SECONDS",
+        "OCR_MAX_PAGES",
+        "OCR_WORKER_CONCURRENCY",
     )
     @classmethod
     def _require_positive(cls, value: int, info: ValidationInfo) -> int:

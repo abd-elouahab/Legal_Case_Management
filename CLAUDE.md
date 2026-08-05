@@ -15,6 +15,7 @@ or making any architectural decision:
    scoping rules, and delivery approach
 6. `context/progress-tracker.md` — current phase,
    completed work, open questions, and next steps
+7. `context/ai-architecture.md` — ai architecture rules and conventions
 
 Update `context/progress-tracker.md` after each
 meaningful implementation change.

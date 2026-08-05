@@ -74,6 +74,33 @@ export const DOCUMENT_ENDPOINTS = {
 } as const;
 
 /**
+ * OCR endpoint paths, relative to the version prefix.
+ *
+ * The per-document paths sit under `/documents` because an extraction is always
+ * *of* a document; the list and the metrics view sit under `/ocr` because they
+ * are not. There is no create path: extraction is scheduled by an upload, and the
+ * only thing a client asks for is a *retry*.
+ *
+ * `status`, `text`, and `history` take an optional version: omitted addresses the
+ * current one, which is what the API does when the parameter is absent.
+ */
+const withVersion = (path: string, version?: number) =>
+  version ? `${path}?version=${version}` : path;
+
+export const OCR_ENDPOINTS = {
+  list: "/ocr",
+  metrics: "/ocr/metrics",
+  status: (documentId: string, version?: number) =>
+    withVersion(`/documents/${encodeURIComponent(documentId)}/ocr`, version),
+  text: (documentId: string, version?: number) =>
+    withVersion(`/documents/${encodeURIComponent(documentId)}/ocr/text`, version),
+  history: (documentId: string) =>
+    `/documents/${encodeURIComponent(documentId)}/ocr/history`,
+  retry: (documentId: string, version?: number) =>
+    withVersion(`/documents/${encodeURIComponent(documentId)}/ocr/retry`, version),
+} as const;
+
+/**
  * Timeline endpoint paths, relative to the version prefix.
  *
  * Read-only, and the shape says so: there is no create, update, or delete path

@@ -99,6 +99,19 @@ class TimelineEventType(StrEnum):
     DOCUMENT_DELETED = "document_deleted"
     DOCUMENT_DOWNLOADED = "document_downloaded"
 
+    # --- OCR events --------------------------------------------------------- #
+    #
+    # Added by ``09-ocr-processing.md`` and the first demonstration that the
+    # registry's promise holds: four members here, four lines in each mapping in
+    # :mod:`core.timeline`, and **no migration** — because ``event_type`` is a
+    # ``VARCHAR`` rather than a database enum, precisely so a later module could
+    # do this. They are categorised as document events, so they reuse the five
+    # icon families ``08-timeline.md`` defines rather than inventing a sixth.
+    OCR_STARTED = "ocr_started"
+    OCR_COMPLETED = "ocr_completed"
+    OCR_FAILED = "ocr_failed"
+    OCR_RETRIED = "ocr_retried"
+
 
 #: ``JSONB`` on PostgreSQL, plain ``JSON`` everywhere else.
 #:

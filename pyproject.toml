@@ -38,7 +38,7 @@ exclude = ["\\.venv", "apps/web", "db/migrations"]
 
 [[tool.mypy.overrides]]
 # Third-party packages without bundled type stubs.
-module = ["minio.*", "qdrant_client.*"]
+module = ["minio.*", "qdrant_client.*", "pytesseract.*", "pdf2image.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

@@ -61,6 +61,8 @@ _LAWYER_PERMISSIONS: frozenset[Permission] = BASE_PERMISSIONS | {
     Permission.CASES_UPDATE,
     Permission.DOCUMENTS_VIEW,
     Permission.DOCUMENTS_UPLOAD,
+    Permission.OCR_VIEW,
+    Permission.OCR_RETRY,
     Permission.TIMELINE_VIEW,
     Permission.TIMELINE_CREATE,
     Permission.REPORTS_VIEW,
@@ -86,6 +88,13 @@ _COURT_PERMISSIONS: frozenset[Permission] = BASE_PERMISSIONS | {
     Permission.CASES_UPDATE_HEARING,
     Permission.DOCUMENTS_VIEW,
     Permission.DOCUMENTS_UPLOAD,
+    # Read the extracted text of the documents they can already read, but not
+    # re-run extraction: a retry consumes processing capacity, and the court
+    # role's description ("update hearings and decisions, upload official
+    # documents, view authorized case information") does not extend to operating
+    # the platform's pipeline. `documents:update` and `documents:delete` are
+    # withheld from this role for the same reason.
+    Permission.OCR_VIEW,
     Permission.TIMELINE_VIEW,
     Permission.TIMELINE_CREATE,
 }
