@@ -124,6 +124,24 @@ export const INDEXING_ENDPOINTS = {
 } as const;
 
 /**
+ * Semantic search endpoint paths, relative to the version prefix.
+ *
+ * Two, and there will not be a third here: retrieval and its monitoring view.
+ * Answering a question, summarizing, and streaming a reply are the RAG
+ * pipeline's and the assistant's, and they will be their own modules.
+ *
+ * **Search is a POST**, which is why there is no query-building helper beside
+ * these the way there is for the list endpoints. A query string would be written
+ * to the reverse proxy's access log, the browser's history, and the `Referer`
+ * header of anything the page loads next — three logs the application does not
+ * control — and a legal query is at least as sensitive as the passage it finds.
+ */
+export const SEARCH_ENDPOINTS = {
+  search: "/search",
+  metrics: "/search/metrics",
+} as const;
+
+/**
  * Timeline endpoint paths, relative to the version prefix.
  *
  * Read-only, and the shape says so: there is no create, update, or delete path

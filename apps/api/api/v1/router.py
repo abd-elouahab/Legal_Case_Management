@@ -15,6 +15,7 @@ from api.v1.indexing.router import document_indexing_router
 from api.v1.indexing.router import router as indexing_router
 from api.v1.ocr.router import document_ocr_router
 from api.v1.ocr.router import router as ocr_router
+from api.v1.search.router import router as search_router
 from api.v1.timeline.router import case_timeline_router
 from api.v1.timeline.router import router as timeline_router
 from api.v1.users.router import router as users_router
@@ -40,6 +41,12 @@ api_router.include_router(ocr_router, prefix="/ocr", tags=["ocr"])
 # registered from there and tagged `indexing`.
 api_router.include_router(document_indexing_router, prefix="/documents", tags=["indexing"])
 api_router.include_router(indexing_router, prefix="/indexing", tags=["indexing"])
+
+# Semantic search reads the vectors indexing wrote, so it is its own module under
+# its own prefix rather than a route on `/indexing`: the two are separate
+# capabilities with separate permissions, and `services/vector_store.py`
+# deliberately exposes no query method for a search route to have been hung off.
+api_router.include_router(search_router, prefix="/search", tags=["search"])
 
 # `GET /cases/{case_id}/timeline` lives under the case prefix but belongs to the
 # timeline module, so it is registered from there rather than added to the case

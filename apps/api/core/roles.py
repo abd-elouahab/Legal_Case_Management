@@ -65,6 +65,7 @@ _LAWYER_PERMISSIONS: frozenset[Permission] = BASE_PERMISSIONS | {
     Permission.OCR_RETRY,
     Permission.INDEXING_VIEW,
     Permission.INDEXING_REINDEX,
+    Permission.SEARCH_QUERY,
     Permission.TIMELINE_VIEW,
     Permission.TIMELINE_CREATE,
     Permission.REPORTS_VIEW,
@@ -103,6 +104,14 @@ _COURT_PERMISSIONS: frozenset[Permission] = BASE_PERMISSIONS | {
     # description does not extend to operating the pipeline — the same reasoning
     # that withholds `ocr:retry`, `documents:update`, and `documents:delete`.
     Permission.INDEXING_VIEW,
+    # Search the documents they can already read. Granted where `ocr:retry` and
+    # `indexing:reindex` are withheld, and the difference is the whole reason
+    # capabilities are named rather than roles: those two *operate the pipeline*,
+    # which is not the court role's job, while this one *reads* — and it reads
+    # strictly less than `ocr:view`, which already gives them the full extracted
+    # text of the same documents. Withholding it would leave them able to read
+    # every page of a filing but not to find a clause in it.
+    Permission.SEARCH_QUERY,
     Permission.TIMELINE_VIEW,
     Permission.TIMELINE_CREATE,
 }

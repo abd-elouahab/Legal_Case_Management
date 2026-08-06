@@ -20,6 +20,7 @@ export const ROUTES = {
   dashboard: "/dashboard",
   cases: "/cases",
   documents: "/documents",
+  search: "/search",
   users: "/users",
   lawyers: "/lawyers",
   courtUpdates: "/court",

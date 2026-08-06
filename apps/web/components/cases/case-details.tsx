@@ -27,6 +27,7 @@ import { CasePriorityBadge, CaseStatusBadge } from "@/components/cases/case-badg
 import { CasePlaceholderSections } from "@/components/cases/case-placeholder-sections";
 import { EditCaseDialog } from "@/components/cases/edit-case-dialog";
 import { CaseDocuments } from "@/components/documents/case-documents";
+import { CaseSearch } from "@/components/search/case-search";
 import { CaseTimeline } from "@/components/timeline/case-timeline";
 import { caseErrorMessage, useCase, useRestoreCase } from "@/hooks/use-cases";
 import { formatDate, formatDateTime } from "@/lib/format";
@@ -244,6 +245,17 @@ function CaseDetailsContent({ legalCase }: { legalCase: LegalCase }) {
           show an error. */}
       <Protected permission={PERMISSION.timelineView}>
         <CaseTimeline caseId={legalCase.id} />
+        <Separator />
+      </Protected>
+
+      {/* Search, pinned to this case. It sits after Documents and Timeline
+          because it searches what the first lists and is not part of the second,
+          and it is gated on its own capability: retrieval costs a query
+          embedding per request, which reading a list does not. `CaseSearch`
+          renders nothing without `search:query`, so the separator is inside the
+          gate — a rule with no section under it would leave a stray line. */}
+      <Protected permission={PERMISSION.searchQuery}>
+        <CaseSearch caseId={legalCase.id} />
         <Separator />
       </Protected>
 

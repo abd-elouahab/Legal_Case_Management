@@ -19,6 +19,7 @@ import { ReplaceDocumentDialog } from "@/components/documents/replace-document-d
 import { UploadDocumentDialog } from "@/components/documents/upload-document-dialog";
 import { IndexMetricsPanel } from "@/components/indexing/index-metrics-panel";
 import { OcrMetricsPanel } from "@/components/ocr/ocr-metrics-panel";
+import { SearchMetricsPanel } from "@/components/search/search-metrics-panel";
 import { useDocumentListQuery } from "@/hooks/use-document-list-query";
 import { documentErrorMessage, useDocuments, useDownloadDocument } from "@/hooks/use-documents";
 import { PERMISSION } from "@/types/authorization";
@@ -91,6 +92,14 @@ export function DocumentList({ caseId }: { caseId?: string } = {}) {
               not searchable". Gated on its own permission. */}
           <Protected permission={PERMISSION.indexingMonitor}>
             <IndexMetricsPanel />
+          </Protected>
+          {/* The third stage, and the one that says whether the first two are
+              paying off: extraction and indexing can both be healthy while every
+              search still fails, because retrieval depends on the embedding model
+              being loadable *at query time* and on Qdrant answering reads. Gated
+              on its own permission. */}
+          <Protected permission={PERMISSION.searchMonitor}>
+            <SearchMetricsPanel />
           </Protected>
         </div>
       ) : null}

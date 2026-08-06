@@ -21,6 +21,7 @@ from repositories.case import CaseRepository
 from repositories.document import DocumentRepository
 from repositories.indexing import IndexingRepository
 from repositories.ocr import OcrRepository
+from repositories.search import SearchRepository
 from repositories.timeline import TimelineRepository
 from repositories.user import UserRepository
 from services.auth import AuthService
@@ -37,9 +38,13 @@ from services.ocr import OcrService
 from services.ocr_engine import OcrEngine, get_ocr_engine
 from services.ocr_queue import OcrJobQueue
 from services.ocr_worker import ocr_queue
+from services.search import SearchService
+from services.search_metrics import SearchMetricsRecorder, get_search_metrics
+from services.search_ranking import Ranker, get_ranker
 from services.timeline import TimelineService
 from services.token_revocation import TokenRevocationStore
 from services.user import UserService
+from services.vector_search import VectorSearcher, get_vector_searcher
 from services.vector_store import VectorStore, get_vector_store
 
 # auto_error=False so a missing header raises our own MissingTokenError (with a
@@ -261,6 +266,82 @@ def get_indexing_service(
 
 
 IndexingServiceDep = Annotated[IndexingService, Depends(get_indexing_service)]
+
+
+def get_search_repository(session: DbSession) -> SearchRepository:
+    """Provide a request-scoped semantic-search repository."""
+    return SearchRepository(session)
+
+
+def get_vector_searcher_dependency() -> VectorSearcher:
+    """Provide the configured vector searcher.
+
+    Separate from ``get_vector_store_dependency`` on purpose, and not merely
+    because they are different classes: writing and reading the vector index are
+    two capabilities the platform keeps apart (see
+    :mod:`services.vector_search`), and one dependency yielding both would be the
+    join that undoes it.
+    """
+    return get_vector_searcher()
+
+
+def get_ranker_dependency() -> Ranker:
+    """Provide the configured search ranker.
+
+    A dependency rather than a module-level singleton so an integration test can
+    override it with a fake — and so a future cross-encoder reranker, which does
+    hold a model, can be made process-wide here without touching the service.
+    """
+    return get_ranker()
+
+
+def get_search_metrics_recorder() -> SearchMetricsRecorder:
+    """Provide the process-wide search metrics recorder.
+
+    Process-wide rather than per request for the same reason the job queues are:
+    a counter rebuilt on every request counts to one. A test overrides this so
+    assertions about the metrics endpoint do not depend on traffic another test
+    produced.
+    """
+    return get_search_metrics()
+
+
+def get_search_service(
+    searches: Annotated[SearchRepository, Depends(get_search_repository)],
+    documents: Annotated[DocumentRepository, Depends(get_document_repository)],
+    cases: Annotated[CaseRepository, Depends(get_case_repository)],
+    embedder: Annotated[Embedder, Depends(get_embedder_dependency)],
+    searcher: Annotated[VectorSearcher, Depends(get_vector_searcher_dependency)],
+    ranker: Annotated[Ranker, Depends(get_ranker_dependency)],
+    metrics: Annotated[SearchMetricsRecorder, Depends(get_search_metrics_recorder)],
+) -> SearchService:
+    """Provide the semantic-search service with its collaborators injected.
+
+    The **embedder is the same dependency the indexing service takes**, and that
+    is the point rather than a convenience: `ai-architecture.md` requires one
+    model for documents and for queries, and sharing the provider makes the two
+    impossible to configure apart.
+
+    The case and document repositories are injected because a filter naming
+    either must be checked against the caller's assignments before it is trusted;
+    the search repository because the authorization scope has to cross into
+    Qdrant as a set of case identifiers, which only SQL can produce.
+
+    There is deliberately **no timeline recorder and no job queue**: a search
+    changes nothing, so it has nothing to announce and nothing to schedule.
+    """
+    return SearchService(
+        searches,
+        documents,
+        cases,
+        embedder,
+        searcher,
+        ranker,
+        metrics=metrics,
+    )
+
+
+SearchServiceDep = Annotated[SearchService, Depends(get_search_service)]
 
 
 def get_ocr_service(

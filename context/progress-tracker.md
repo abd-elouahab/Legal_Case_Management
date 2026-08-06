@@ -9,28 +9,310 @@ change.
 
 ## Current Goal
 
-- **Next:** Semantic Search (the RAG pipeline's retrieval half). Document
-  Indexing is complete, and the vectors it writes — one point per passage in the
-  `QDRANT_COLLECTION` collection, each carrying its document, version, case,
-  page, chunk number, language, text, and embedding model — are the corpus that
-  feature queries. Nothing about search, ranking, retrieval, RAG, or an LLM was
-  built here, as the indexing spec requires: `services/vector_store.py` exposes
-  write, delete, and count and **no query method at all**, so retrieval must
-  arrive as its own module rather than by extension.
-  **The one thing Semantic Search must reuse** is the scope
-  `IndexingAccessPolicy.visibility_scope` already returns: every point's payload
-  carries `case_id` and `document_id` precisely so that scope becomes a Qdrant
-  filter rather than a second authorization scheme.
+- **Next: the RAG Pipeline** (`ai-architecture.md`'s next stage). Semantic Search
+  is complete, and what it returns — passages, verbatim, each with its document,
+  version, case, page, chunk number, and similarity score, already scoped to the
+  caller's cases — is exactly the grounded context a RAG pipeline assembles a
+  prompt from. **Nothing about answer generation, summarization, prompts,
+  conversations, or an LLM was built here**, as the search spec requires: no
+  module in the feature imports a provider, a template, or an orchestrator, and
+  `POST /api/v1/search` returns text that already exists in the corpus.
+  **The two things RAG must reuse** are `SearchService.search` — which already
+  enforces the whole authorization chain, so the pipeline must never reach past
+  it to the vector searcher — and `services/embedding.py`, which is the one place
+  a model is chosen for both documents and queries.
 
 ## Open Questions
 
 - **None outstanding.** The questions raised during OCR Processing remain closed
   (Tesseract installed and verified; Arabic recognition investigated to root
-  cause and resolved as no change required), and Document Indexing raised none:
-  the embedding model, the vector database, and the chunking library were all
-  named by `ai-architecture.md` and the feature spec.
+  cause and resolved as no change required), and neither Document Indexing nor
+  Semantic Search raised any: the embedding model, the vector database, the
+  chunking library, and the requirement that one model serve both indexing and
+  queries were all named by `ai-architecture.md` and the feature specs.
 
 ## Completed
+
+- **Semantic Search (spec `11-semantic-search.md`)** — the third stage of the AI
+  pipeline and the RAG pipeline's retrieval half: a natural-language query is
+  embedded with the *same* model the corpus was indexed with, compared against
+  the vectors in Qdrant, filtered by metadata **and by the caller's case scope**,
+  ranked by similarity, and returned as passages with their provenance.
+  **Nothing about RAG, the AI assistant, chat, summarization, or report
+  generation was implemented** — the spec puts all five out of scope, and the
+  feature ends at retrieved chunks.
+  - **No new dependencies**, backend or frontend, and **no migration**. Both are
+    consequences of the design rather than luck: the query embedder is the module
+    indexing already uses, the vector client is the one already installed, and
+    the feature persists nothing.
+  - **LangGraph was deliberately not introduced, and no "Retrieval Agent" was
+    built.** `ai-architecture.md` names LangGraph as the orchestrator and lists a
+    Retrieval Agent under *Agent Orchestration* — but it also says agents should
+    be added *"only when their corresponding feature is implemented"*, and this
+    feature is not an agent: `11-semantic-search.md` names its stack as Qdrant
+    and sentence-transformers, and states that search must never invoke an LLM.
+    An orchestration graph with one node that calls no model is ceremony, and
+    adding a framework that is not yet in `requirements.txt` inside a retrieval
+    feature is exactly the scope expansion `ai-workflow-rules.md` warns against.
+    The graph belongs to the **RAG Pipeline**, which is where a retrieval node
+    will wrap `SearchService.search` — unchanged.
+  - **No entity, and that is the load-bearing decision.** OCR and indexing each
+    got a table because each *is* a persisted run with a lifecycle a lawyer polls.
+    A search is not: it is a read that answers in milliseconds and has nothing to
+    poll. A row per search would be write amplification on the platform's most
+    frequent operation, unbounded growth, and — worst — something derived from
+    the user's query persisted, which is precisely what the spec's logging rule
+    says not to do. So the metrics accumulate **in the process**, behind a
+    `SearchMetricsRecorder` protocol. The limits are stated rather than hidden:
+    counters reset on restart and each instance counts its own traffic, which the
+    endpoint reports as `since`. A Redis-backed recorder is one class plus one
+    line in `api/deps.py`, and Redis is already in the stack.
+  - **Retrieval is a new module, not a method on the write side, and honouring
+    that was the first decision.** `10-document-indexing.md` made "indexing does
+    not retrieve" *structural* by giving `VectorStore` no query method. Shipping
+    search is exactly when someone would add one and delete the separation.
+    Instead `services/vector_search.py` introduces `VectorSearcher` — one
+    `search` call and **no write method at all** — so the boundary now holds in
+    both directions, and a test pins each protocol's member set from its own side.
+  - **The same embedder embeds documents and queries**, as `ai-architecture.md`
+    requires. Enforced by calling the same `services/embedding.py` and injecting
+    the *same dependency* in `api/deps.py`, rather than by remembering to keep
+    two settings identical. A test asserts the query reaches that module verbatim.
+  - **Authorization is applied inside the vector query, never after it** — and
+    this is the one place Semantic Search genuinely differs from every module
+    before it. The others push their scope into the SQL query they were already
+    running; search cannot, because its rows are in Qdrant, which cannot join
+    against `cases`. So the scope crosses the boundary as a **set of case
+    identifiers** (`SearchRepository.accessible_case_ids`) and becomes one more
+    `must` condition — which is exactly what Document Indexing put `case_id` in
+    every payload for. Filtering *after* retrieval would return short pages, leak
+    match counts, and pull unauthorized text into the process.
+  - **"Assigned to no cases" is an empty set that matches nothing, never an
+    absent filter that matches everything.** This is the one mistake in the
+    feature that would be catastrophic *and silent* — it would turn an unassigned
+    lawyer into a platform-wide reader — so the distinction is named in three
+    places (`SearchFilters.matches_nothing`, the service's short circuit, and
+    `search_access.py`), asserted in unit tests, over HTTP, and **against live
+    Qdrant**. The short circuit also means such a caller costs no embedding and
+    no round trip.
+  - **A filter can narrow the scope but never widen it.** Every condition lands
+    in the vector filter's `must` list and there is no `should` branch for a user
+    filter to land in, so the spec's *"metadata filtering cannot bypass
+    permissions"* holds by the shape of the value rather than by the order of a
+    series of `if`s. Filtering by a case or document the caller is not party to
+    is **403, not an empty page** — the same reasoning `timeline_access.py` uses,
+    because an inaccessible matter and a quiet one must not be told apart.
+  - **Category and file type are the exception that proves "filter in the
+    database".** The payload carries neither — indexing stores what a *chunk* is,
+    not what its document is — so rather than re-embed the corpus to add two
+    fields, they resolve to a bounded set of document ids in PostgreSQL and are
+    pushed into the vector query as one condition. A set that overflows
+    `SEARCH_MAX_FILTER_DOCUMENTS` is **refused with 422**, detected by asking for
+    one row more than the ceiling; truncating it would drop matching documents
+    with nothing to indicate it.
+  - **`documents.deleted_at` is honoured at read time.** Deletion is logical, so
+    a withdrawn document's vectors outlive it and would keep surfacing its
+    contents. The service drops results whose document no longer resolves — the
+    point at which a search result stops being more visible than the document it
+    came from — and the whole page's documents are loaded in **one** query, never
+    one per hit. `has_more` is then computed from **what the database returned**
+    rather than from what survived the drop: a page of ten that lost two to
+    deleted documents has eight results and still has more behind it, and reading
+    the surviving count would strand the reader on page one with no way forward.
+  - **A search that matches nothing is a success.** Not a 404, and not a failure
+    metric: the corpus holds nothing near the query, which is an answer. Counting
+    it as a failure would make the failure rate a measure of the corpus rather
+    than of the platform, and would hide a real outage behind it. Only a
+    dependency outage fails, with **503 naming which dependency** — a missing
+    embedding model and an unreachable Qdrant read identically otherwise and need
+    different responses.
+  - **Search is a `POST`, and that is privacy rather than style.** A query string
+    is written to the reverse proxy's access log, the browser's history, and the
+    `Referer` header of anything the page loads next — three logs the application
+    does not control — and a lawyer's query is at least as revealing as the
+    passage it finds. It is still a read: nothing is created, and it answers 200.
+  - **No query text reaches a log.** Every search is logged and correlated by a
+    **salted, non-reversible fingerprint** (`core/search.py`), which answers "this
+    query fails every time" and "this is the most common search" while telling an
+    operator nothing about the matter. Salted with the deployment secret, because
+    an unsalted twelve-character digest of a common legal term is identical on
+    every installation and a rainbow table of a few thousand phrases would undo
+    the point — asserted by a test that changes the secret. `SEARCH_LOG_QUERIES`
+    is the spec's *"unless existing project logging policies explicitly allow
+    it"* clause, made into a switch an operator sets; it is off by default and
+    adds the text *beside* the fingerprint rather than replacing it. Filters are
+    logged as a shape, never as values: a list of case ids is a list of the
+    caller's matters.
+  - **Ranking is a seam from day one, and it earns its keep today.**
+    `SimilarityRanker` orders by the score Qdrant computed — but Qdrant does not
+    guarantee an order between *equal* scores, so without a tie-break the same
+    query returns two different pages about half the time. Ties break by position
+    in the document, which is also the order a reader expects. A future
+    cross-encoder reranker is one class plus one setting, and the protocol admits
+    reordering and dropping but **never adding** — anything added after retrieval
+    would be unscoped.
+  - **Query normalisation is not cosmetic.** NFC, whitespace collapsed, control
+    characters dropped — because the indexed passages were NFC-normalised by OCR,
+    and a French or Arabic query typed in the decomposed form would otherwise
+    embed to a different vector than the identical word in the document and miss
+    the page containing it. Asserted for both scripts.
+  - **Modules** (all new): `core/search.py` (query normalisation, the
+    fingerprint, the failure vocabulary, score arithmetic — pure, no I/O),
+    `repositories/search.py` (the case scope, the document-level filter
+    resolution, and the batched document lookup), `services/vector_search.py`,
+    `services/search_ranking.py`, `services/search_metrics.py`,
+    `services/search_access.py`, `services/search.py`, `schemas/search.py`,
+    `api/v1/search/router.py`.
+  - **Two permissions** (`core/permissions.py`, `core/roles.py`): `search:query`
+    and `search:monitor`. **Court representatives hold `search:query`**, unlike
+    `ocr:retry` and `indexing:reindex` — and the difference is the whole reason
+    capabilities are named rather than roles: those two *operate the pipeline*,
+    while this one **reads**, and it reads strictly less than the `ocr:view` they
+    already hold. Withholding it would leave them able to read every page of a
+    filing but not to find a clause in it.
+  - **Two endpoints** (`POST /api/v1/search`, `GET /api/v1/search/metrics`), and
+    a test asserts there are no others under the prefix: answering a question,
+    summarizing, and streaming a reply are the RAG pipeline's and the assistant's.
+  - **Errors** (`core/exceptions.py`): `InvalidSearchQueryError` (422),
+    `SearchFilterTooBroadError` (422, naming the ceiling and how to narrow),
+    `SearchUnavailableError` (503, carrying the *cause* as its error code),
+    `SearchDisabledError` (503), `SearchAccessDeniedError` (403, generic body).
+    There is deliberately **no error for "nothing matched"**.
+  - **Monitoring** (`GET /search/metrics`, gated on `search:monitor`): the four
+    figures the spec names — search count, average latency, average relevance,
+    failures — plus the rates, the failure breakdown, the retrieval configuration,
+    and **whether the model can load and Qdrant answers**. Those last two matter
+    because the counters cannot tell three situations apart: no model installed,
+    Qdrant down, and nobody has searched yet all show the same zeros. The latency
+    average excludes failures (a timeout against a dead socket would make a
+    platform that is *down* look merely *slow*) and the relevance average is
+    weighted by result count. Verified over HTTP that no query, document id, case
+    id, filename, or passage appears in it.
+  - **Configuration:** `SEARCH_ENABLED`, `SEARCH_DEFAULT_LIMIT` (10),
+    `SEARCH_MAX_LIMIT` (50), `SEARCH_MAX_OFFSET` (500),
+    `SEARCH_QUERY_MAX_LENGTH` (1000), `SEARCH_MIN_SCORE` (0.0 — the platform does
+    not guess a threshold, because one that is right for French prose is wrong
+    for an Arabic filing), `SEARCH_RANKER`, `SEARCH_MAX_FILTER_DOCUMENTS` (2000),
+    and `SEARCH_LOG_QUERIES` (false). All documented in `.env.example`, with a
+    validator rejecting a default limit above the maximum.
+  - **Frontend:** `types/search.ts` (an **open** failure-code and language set,
+    because a future backend may report either), `lib/validation/search.ts`,
+    `lib/api/search.ts` (typed client, snake_case ↔ camelCase in one place, and
+    **no answer/summary call**), `hooks/use-search.ts`, `components/search/`
+    (`semantic-search`, `search-result-card`, `search-filters-bar`,
+    `case-search`, `search-metrics-panel`), and `app/(protected)/search/`.
+  - **Search is a mutation on the client, not a query, and that is deliberate**
+    even though it reads: a TanStack query would fire on mount and re-key on every
+    keystroke, sending a request — and a *query embedding* — for every prefix of
+    what someone is typing. Results are also not cached across submissions, on
+    purpose: a legal corpus changes as documents are indexed, and a cached result
+    showing a passage of a since-withdrawn document is exactly what this feature
+    must not do. Failed searches are **not retried**.
+  - **Paging re-runs the submitted query, not what is in the box.** The two are
+    kept apart in `useSearchSession`; without that split, editing the box and
+    pressing Next silently searches for something else. Page numbers only, with
+    no total — a similarity search has no cheap exact count, and the API reports
+    `hasMore` rather than a figure it would have to guess at.
+  - **A result shows the passage in full.** It is the evidence: truncating it
+    would leave a lawyer unable to tell whether the clause is inside and send them
+    to open the document to find out, which is the work the feature exists to
+    save. Beside it, the complete citation, the category and language as labelled
+    badges, relevance as a **percentage with a label — never colour alone**, and
+    `dir="auto"` so an Arabic passage renders right-to-left beside a French one.
+    A result links to its **case**, the one destination its reader is certainly
+    entitled to open.
+  - **Three empty states, none of them an error:** "nothing searched yet", "no
+    matching passages" (a 200 from the API), and a dependency outage that names
+    *which* dependency.
+  - **One pre-existing test was updated, and only because the design worked.**
+    `test_the_api_exposes_no_search_endpoint` asserted that *no path anywhere on
+    the platform* contained "search" — correct while none existed. It is now
+    `test_the_indexing_module_exposes_no_search_endpoint`, narrowed to what it was
+    always about: nothing tagged `indexing` and nothing under `/indexing` or
+    `/documents/{id}/index` reads a vector back. `tests/integration/test_search.py`
+    asserts the same separation from the other side, and
+    `tests/unit/test_vector_search.py` pins both protocols' member sets.
+  - **Validation:** 2047 backend tests (up from 1829 — 218 of them for search) and
+    502 frontend tests (up from 458, 44 of them for search) pass; `ruff` clean across `apps/api` and
+    `tests`, `mypy --strict` clean on `apps/api`; `tsc` and ESLint clean; the
+    production build succeeds and prerenders every route including `/search`.
+    **50/50 end-to-end HTTP checks** against a corpus built by the *real* indexing
+    pipeline: a passage returned had travelled upload → extract → chunk → embed →
+    store before being searched. Both routes answer **401** with a
+    `WWW-Authenticate: Bearer` challenge anonymously; metrics are refused to both
+    restricted roles with a body naming **neither permission nor role**; the
+    assigned lawyer and the court representative retrieve only their own cases'
+    passages while an administrator spans both, and an unassigned lawyer gets an
+    empty result set; filtering by an inaccessible case or document is **403**,
+    and the **search endpoint returns the same status code as the document
+    endpoint** for that caller; every filter narrows correctly and they combine
+    with AND; ranking is monotonic with contiguous ranks from 1, and an exact
+    passage query ranks that passage first; paging returns disjoint pages; a
+    deleted document stops being searchable **mid-session**; an empty corpus
+    answers 200 with `is_empty`; a missing model and an unreachable Qdrant each
+    answer 503 naming their own cause, and neither body quotes the query; a
+    result carries exactly the ten documented fields and **no vector, no point id,
+    and no embedding model**; and the OpenAPI document exposes `/search` as
+    **POST only**.
+  - **18/18 live Qdrant checks** passed directly against a running instance —
+    the strongest validation in this feature, and the one the codebase's own
+    recorded lesson demanded. `progress-tracker.md` already notes twice that *a
+    double which accepts anything proves nothing about a driver's contract*, and
+    a filter is exactly that kind of contract: a wrong key or a wrong value type
+    **matches nothing rather than failing**, which looks identical to "no
+    results". Verified live: the case scope, the empty scope matching **nothing**,
+    the document/version/language/model filters, the `DatetimeRange` over the
+    RFC 3339 `indexed_at` string (a numeric `Range` there would have silently
+    matched nothing), AND-combination, the inability of a filter to widen the
+    scope, limit, offset, both score-threshold directions, payload round-trip, a
+    missing collection returning `[]`, and the availability probe.
+  - **20/20 live PostgreSQL checks** passed against the real database, and one
+    of them could not have been checked any other way. `document_ids_matching`
+    filters on `documents.category`, which is a **PostgreSQL enum** — and this
+    codebase has already recorded twice that *anything a query does with a
+    PostgreSQL type is invisible to the SQLite test database*. Verified live: the
+    category filter over the real `document_category` type and its multi-value
+    `IN` clause, the file-type filter, soft-deleted documents excluded, the
+    assignment scope for lawyer / court representative / unrelated lawyer, an
+    **unassigned lawyer receiving an empty list rather than everything**, the
+    case-id intersection executing in SQL, overflow detection via `limit + 1`,
+    and the batched `documents_by_id` returning only live rows with their case
+    eagerly loaded.
+  - **27/27 live full-stack checks** passed against **PostgreSQL 16 + Qdrant +
+    the real BAAI/bge-m3 model**, with the corpus built by the real indexing
+    pipeline — so every passage retrieved had travelled extract → chunk → embed →
+    store first. Both runs are measurements rather than assertions, and three of
+    the numbers are worth keeping:
+    - **retrieval takes ~190–220 ms** per search on CPU with the real model,
+      which is the query embedding almost entirely — the Qdrant round trip is
+      single-digit milliseconds. A `no_scope` short circuit answers in **15 ms**,
+      which is the unassigned-caller path paying for neither.
+    - **cross-language retrieval works and is not a formality**: the French query
+      *"Quand le loyer doit-il etre paye ?"* reached the **Arabic** filing at
+      0.5855 similarity, and its own French clause at 0.7311. An Arabic query
+      retrieved the Arabic passage first. One shared embedding space, measured.
+    - **the privacy guarantee holds in a real log**: every `search_requested` /
+      `search_completed` line carries `query=None` and a fingerprint, with no
+      query text, no passage, and no filter values anywhere.
+    Also confirmed live: authorization (lawyer scoped to their own case, the
+    administrator spanning both, an unassigned lawyer retrieving nothing,
+    filtering by another party's case **refused rather than emptied**), every
+    metadata filter, contiguous ranks in descending score order, and a document
+    deleted **mid-session** disappearing from results — the log shows
+    `retrieved_count=2, result_count=1`, which is exactly the case `has_more` is
+    computed from the retrieved count for.
+  - **An environment note for whoever runs this next.** The first attempt failed
+    with `password authentication failed for user "postgres"`, which looked like
+    bad credentials and was not: **two servers are bound to port 5432** on this
+    host — a native Windows PostgreSQL at `D:\Apps\PostgreSQL` and Docker's
+    forward to `legal-postgres` — and connections were landing on the native one,
+    which knows nothing about this project. The container is healthy and holds
+    the schema. The fix is a one-line socat bridge publishing the container on a
+    free port (`docker run -d --name pg-bridge --network
+    legalcasemanagementplatform_default -p 5433:5433 alpine/socat
+    tcp-listen:5433,fork,reuseaddr tcp-connect:legal-postgres:5432`) and running
+    with `POSTGRES_PORT=5433`. Removing the native install, or changing its port,
+    is the permanent fix.
 
 - **AI Document Indexing (spec `10-document-indexing.md`)** — the second stage of
   the AI pipeline: the text OCR persisted is split into passages, each passage is

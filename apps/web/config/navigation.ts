@@ -6,6 +6,7 @@ import {
   Gavel,
   LayoutDashboard,
   Scale,
+  Search,
   Settings,
   Users,
   UsersRound,
@@ -80,6 +81,19 @@ export const sidebarNavigation: NavSection[] = [
         icon: FileText,
         description: "Legal documents and files",
         access: { permission: PERMISSION.documentsView },
+      },
+      {
+        title: "Search",
+        href: ROUTES.search,
+        icon: Search,
+        description: "Find passages across indexed documents",
+        // Semantic search over the case file. Placed directly after Documents
+        // because it searches exactly what that page lists — and gated on its
+        // own capability rather than on `documents:view`, since retrieval has a
+        // cost (a query embedding per request) that reading a list does not.
+        // Which passages a caller reaches is decided by the API, per case
+        // assignment.
+        access: { permission: PERMISSION.searchQuery },
       },
       {
         title: "Users",

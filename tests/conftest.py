@@ -1137,6 +1137,171 @@ def make_timeline_event(db_session: Session):  # type: ignore[no-untyped-def]
     return _make
 
 
+class InMemoryVectorSearcher:
+    """Test double for a :class:`~services.vector_search.VectorSearcher`.
+
+    Backed by **the same points** :class:`InMemoryVectorStore` holds, which is
+    what makes an end-to-end test possible without Qdrant: a document uploaded,
+    extracted, and indexed through the real pipeline becomes searchable through
+    this, exactly as it would in production.
+
+    Three behaviours are mirrored faithfully because tests depend on them being
+    the same as Qdrant's, and a double that got any of them wrong would let a
+    real bug pass:
+
+    * **filters are applied before the limit**, not after. Filtering afterwards
+      would return fewer results than asked for and would hide the whole class of
+      bug where an authorization filter is dropped;
+    * **the case filter's two empty forms are distinct.** ``None`` matches
+      everything, an empty set matches nothing — the single most dangerous
+      confusion this feature could make;
+    * **results come back in descending score order**, so a test about ranking is
+      testing the ranker rather than dictionary iteration order.
+
+    Scores are real cosine similarities over :class:`FakeEmbedder`'s vectors, so
+    a query whose text exactly matches a passage scores 1.0 and a test can assert
+    relevance rather than merely presence.
+    """
+
+    def __init__(self, store: InMemoryVectorStore) -> None:
+        self._store = store
+        self.available = True
+        #: Set to an exception instance to make the next search raise it.
+        self.raises: Exception | None = None
+        #: The filters of the most recent search, for assertions about scoping.
+        self.last_filters: object | None = None
+        #: Every search's (limit, offset), for assertions about pagination.
+        self.calls: list[tuple[int, int]] = []
+
+    @property
+    def collection(self) -> str:
+        return self._store.collection
+
+    def is_available(self) -> bool:
+        return self.available
+
+    def search(  # type: ignore[no-untyped-def]
+        self, vector, *, filters, limit, offset=0, score_threshold=None
+    ):
+        from services.vector_search import VectorMatch
+
+        self.last_filters = filters
+        self.calls.append((limit, offset))
+
+        if self.raises is not None:
+            raise self.raises
+
+        if filters.matches_nothing():
+            return []
+
+        matches = []
+        for point in self._store.points.values():
+            payload = point.payload  # type: ignore[attr-defined]
+            if not self._passes(payload, filters):
+                continue
+            score = sum(
+                left * right
+                for left, right in zip(vector, point.vector, strict=False)  # type: ignore[attr-defined]
+            )
+            if score_threshold is not None and score < score_threshold:
+                continue
+            matches.append(
+                VectorMatch(point_id=str(point.id), score=score, payload=dict(payload))
+            )
+
+        matches.sort(key=lambda match: -match.score)
+        return matches[offset : offset + limit]
+
+    @staticmethod
+    def _passes(payload, filters) -> bool:  # type: ignore[no-untyped-def]
+        """Whether one point satisfies every filter, ANDed exactly as Qdrant does."""
+        from datetime import datetime
+
+        if filters.case_ids is not None and payload["case_id"] not in {
+            str(case_id) for case_id in filters.case_ids
+        }:
+            return False
+        if filters.document_ids is not None and payload["document_id"] not in {
+            str(document_id) for document_id in filters.document_ids
+        }:
+            return False
+        if (
+            filters.document_version is not None
+            and payload["document_version"] != filters.document_version
+        ):
+            return False
+        if filters.languages and payload.get("language") not in filters.languages:
+            return False
+        if (
+            filters.embedding_model is not None
+            and payload.get("embedding_model") != filters.embedding_model
+        ):
+            return False
+        if filters.indexed_from is not None or filters.indexed_to is not None:
+            indexed_at = datetime.fromisoformat(payload["indexed_at"])
+            if filters.indexed_from is not None and indexed_at < filters.indexed_from:
+                return False
+            if filters.indexed_to is not None and indexed_at > filters.indexed_to:
+                return False
+        return True
+
+
+@pytest.fixture
+def vector_searcher(vector_store: InMemoryVectorStore) -> InMemoryVectorSearcher:
+    """A searcher reading the same points the indexing double writes."""
+    return InMemoryVectorSearcher(vector_store)
+
+
+@pytest.fixture
+def search_metrics():  # type: ignore[no-untyped-def]
+    """A fresh metrics recorder per test.
+
+    Per test rather than the process-wide one, because the real recorder counts
+    for the life of the process — assertions about "one search was recorded"
+    would otherwise depend on how many searches every earlier test ran.
+    """
+    from services.search_metrics import InMemorySearchMetrics
+
+    return InMemorySearchMetrics()
+
+
+@pytest.fixture
+def search_service(  # type: ignore[no-untyped-def]
+    db_session: Session,
+    embedder: FakeEmbedder,
+    vector_searcher: InMemoryVectorSearcher,
+    search_metrics,
+):
+    """A :class:`~services.search.SearchService` wired to the test doubles.
+
+    Real repositories, the real ranker, and the real access policy — only the
+    embedding model and the vector database are substituted, which are the two
+    genuinely external things. The ranker is deliberately real for the same
+    reason the chunker is in ``index_queue``: it is a pure function, and a fake
+    would make every ordering guarantee vacuous.
+    """
+    from typing import cast
+
+    from repositories.case import CaseRepository
+    from repositories.document import DocumentRepository
+    from repositories.search import SearchRepository
+    from services.embedding import Embedder
+    from services.search import SearchService
+    from services.search_metrics import SearchMetricsRecorder
+    from services.search_ranking import get_ranker
+    from services.vector_search import VectorSearcher
+
+    return SearchService(
+        SearchRepository(db_session),
+        DocumentRepository(db_session),
+        CaseRepository(db_session),
+        cast(Embedder, embedder),
+        cast(VectorSearcher, vector_searcher),
+        get_ranker(),
+        metrics=cast(SearchMetricsRecorder, search_metrics),
+    )
+
+
 @pytest.fixture
 def auth_service(  # type: ignore[no-untyped-def]
     db_session: Session,
@@ -1169,13 +1334,16 @@ def api_client(
     embedder: FakeEmbedder,
     vector_store: InMemoryVectorStore,
     index_queue: RecordingIndexQueue,
+    vector_searcher: InMemoryVectorSearcher,
+    search_metrics,  # type: ignore[no-untyped-def]
 ) -> Iterator[TestClient]:
     """A TestClient whose external collaborators are all doubles.
 
     The database, the token denylist, the login throttle, the object store, the
-    OCR engine, the OCR queue, the embedding model, the vector store, and the
-    indexing queue. Everything else — routers, services, repositories, chunker,
-    access policies — is the application's own.
+    OCR engine, the OCR queue, the embedding model, the vector store, the
+    indexing queue, the vector searcher, and the search metrics recorder.
+    Everything else — routers, services, repositories, chunker, ranker, access
+    policies — is the application's own.
     """
     from api.deps import (
         get_document_storage,
@@ -1184,7 +1352,9 @@ def api_client(
         get_login_throttle,
         get_ocr_engine_dependency,
         get_ocr_job_queue,
+        get_search_metrics_recorder,
         get_token_revocation_store,
+        get_vector_searcher_dependency,
         get_vector_store_dependency,
     )
     from db.session import get_db
@@ -1199,6 +1369,8 @@ def api_client(
     app.dependency_overrides[get_embedder_dependency] = lambda: embedder
     app.dependency_overrides[get_vector_store_dependency] = lambda: vector_store
     app.dependency_overrides[get_index_job_queue] = lambda: index_queue
+    app.dependency_overrides[get_vector_searcher_dependency] = lambda: vector_searcher
+    app.dependency_overrides[get_search_metrics_recorder] = lambda: search_metrics
     try:
         with TestClient(app) as test_client:
             yield test_client

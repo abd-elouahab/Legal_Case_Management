@@ -27,6 +27,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     "ocr:retry",
     "indexing:view",
     "indexing:reindex",
+    // Search the documents they can already read. Granted where `ocr:retry`
+    // and `indexing:reindex` are withheld from the court role, because this
+    // one *reads* rather than operating the pipeline.
+    "search:query",
     "timeline:view",
     "timeline:create",
     "reports:view",
@@ -49,6 +53,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     // searchable, but do not rebuild the index — a rebuild re-embeds every
     // passage, which is the most expensive operation the platform performs.
     "indexing:view",
+    // Reads strictly less than `ocr:view`, which already gives them the full
+    // extracted text of the same documents: withholding it would leave them
+    // able to read every page of a filing but not to find a clause in it.
+    "search:query",
     "timeline:view",
     "timeline:create",
     "notifications:view",
@@ -495,6 +503,88 @@ export function indexMetricsPayload(overrides: Record<string, unknown> = {}) {
     vector_store_available: true,
     vector_collection_exists: true,
     stored_vectors: 96,
+    enabled: true,
+    ...overrides,
+  };
+}
+
+// --------------------------------------------------------------------------- //
+// Semantic Search fixtures
+// --------------------------------------------------------------------------- //
+
+/** One retrieved passage in the API's wire format. */
+export function searchResultPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    document_id: "33333333-3333-4333-8333-333333333333",
+    document_version: 1,
+    case_id: "22222222-2222-4222-8222-222222222222",
+    page_number: 4,
+    chunk_number: 2,
+    score: 0.8421,
+    text:
+      "Article 4 : Loyer et charges. Le loyer mensuel est payable d'avance le premier " +
+      "jour de chaque mois, au domicile du bailleur.",
+    language: "fr",
+    rank: 1,
+    document: {
+      id: "33333333-3333-4333-8333-333333333333",
+      case_id: "22222222-2222-4222-8222-222222222222",
+      original_filename: "bail-commercial.pdf",
+      file_extension: "pdf",
+      category: "contract",
+    },
+    ...overrides,
+  };
+}
+
+/** A search response, as `POST /search` returns it. */
+export function searchResponsePayload(
+  results: Array<Record<string, unknown>> = [searchResultPayload()],
+  overrides: Record<string, unknown> = {},
+) {
+  const scores = results.map((result) => Number(result.score ?? 0));
+
+  return {
+    query: "loyer payable d'avance",
+    results,
+    result_count: results.length,
+    limit: 10,
+    offset: 0,
+    has_more: false,
+    duration_ms: 42,
+    top_score: scores.length ? Math.max(...scores) : null,
+    average_score: scores.length
+      ? Number((scores.reduce((total, score) => total + score, 0) / scores.length).toFixed(4))
+      : null,
+    is_empty: results.length === 0,
+    ...overrides,
+  };
+}
+
+/** Search metrics, as `GET /search/metrics` returns them. */
+export function searchMetricsPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    since: "2026-08-01T09:00:00Z",
+    total_searches: 25,
+    successful_searches: 23,
+    failed_searches: 2,
+    success_rate: 92.0,
+    failure_rate: 8.0,
+    average_latency_ms: 138.5,
+    average_latency_seconds: 0.139,
+    average_score: 0.7412,
+    total_results: 187,
+    average_results: 8.13,
+    failures_by_code: { vector_store_unavailable: 2 },
+    embedding_model: "BAAI/bge-m3",
+    embedding_dimensions: 1024,
+    embedding_available: true,
+    vector_collection: "document_chunks",
+    vector_store_available: true,
+    ranker: "similarity",
+    default_limit: 10,
+    max_limit: 50,
+    min_score: 0.0,
     enabled: true,
     ...overrides,
   };

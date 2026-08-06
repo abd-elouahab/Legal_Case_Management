@@ -36,6 +36,7 @@ class PermissionGroup(StrEnum):
     DOCUMENTS = "documents"
     OCR = "ocr"
     INDEXING = "indexing"
+    SEARCH = "search"
     TIMELINE = "timeline"
     REPORTS = "reports"
     NOTIFICATIONS = "notifications"
@@ -116,6 +117,21 @@ class Permission(StrEnum):
     #: administrative capability rather than something every document reader
     #: holds.
     INDEXING_MONITOR = "indexing:monitor"
+
+    # --- Semantic search ----------------------------------------------------- #
+    #: Run a natural-language search over indexed documents. Separate from
+    #: ``documents:view`` because retrieval is a distinct capability with its own
+    #: endpoint and its own cost (a query embedding per request) — but note that
+    #: holding it grants nothing on its own: every result is scoped to the cases
+    #: the caller is party to, in the vector query itself (see
+    #: :mod:`services.search_access`). It is *narrower* than reading a document,
+    #: never wider: a search can only ever return passages of documents the
+    #: caller could already open.
+    SEARCH_QUERY = "search:query"
+    #: Read platform-wide search metrics — search count, average latency, average
+    #: relevance, failures. Not scoped to a case, so it is deliberately an
+    #: administrative capability rather than something every searcher holds.
+    SEARCH_MONITOR = "search:monitor"
 
     # --- Timeline ----------------------------------------------------------- #
     TIMELINE_VIEW = "timeline:view"

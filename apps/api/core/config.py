@@ -187,6 +187,46 @@ class Settings(BaseSettings):
     # core while encoding.
     INDEXING_WORKER_CONCURRENCY: int = 1
 
+    # --- Semantic search (retrieval) ---
+    # The third stage of the AI pipeline: it embeds a natural-language query with
+    # the *same* model indexing used and retrieves the nearest passages from
+    # Qdrant. Disabling it refuses new searches; nothing already indexed is
+    # affected. Retrieval only — no answer generation and no LLM.
+    SEARCH_ENABLED: bool = True
+    # Results returned when a request does not ask for a number, and the ceiling
+    # a request may ask for. The ceiling exists so one call cannot be used to
+    # enumerate a case file, and so the response stays a page rather than a dump.
+    SEARCH_DEFAULT_LIMIT: int = 10
+    SEARCH_MAX_LIMIT: int = 50
+    # How far a caller may page into a result set. Vector search degrades with
+    # deep offsets (every skipped hit is still scored), and nobody reads past a
+    # few pages of relevance-ordered passages.
+    SEARCH_MAX_OFFSET: int = 500
+    # Longest accepted query, in characters. A natural-language question, not a
+    # document: anything longer is a paste, and embedding it would silently
+    # truncate at the model's context window instead of saying so.
+    SEARCH_QUERY_MAX_LENGTH: int = 1000
+    # Similarity floor applied when a request does not set its own. 0.0 keeps
+    # every hit Qdrant returns, which is the right default for cosine similarity
+    # on a multilingual model — a threshold that is right for French prose is
+    # wrong for an Arabic filing, so the platform does not guess one.
+    SEARCH_MIN_SCORE: float = 0.0
+    # Which ranking strategy to use (see `services/search_ranking.py`). An
+    # unrecognised value falls back to the default rather than failing startup.
+    SEARCH_RANKER: str = "similarity"
+    # Ceiling on the number of documents a metadata filter may resolve to before
+    # being pushed into the vector query. Beyond it the request is refused and
+    # the caller is asked to narrow, which is honest — silently truncating the
+    # set would drop matches with no way for anyone to notice.
+    SEARCH_MAX_FILTER_DOCUMENTS: int = 2000
+    # Whether the *text* of a user's query may be written to the application log.
+    # Off by default: `11-semantic-search.md` forbids logging queries carrying
+    # sensitive legal information unless policy explicitly allows it, and this
+    # platform's policy (`code-standards.md`) forbids logging document contents.
+    # A query is correlated by a salted fingerprint instead — see
+    # `core/search.py`.
+    SEARCH_LOG_QUERIES: bool = False
+
     # --- Embeddings ---
     # Which embedding backend to use (see `services/embedding.py`).
     EMBEDDING_BACKEND: str = "sentence-transformers"
@@ -319,12 +359,30 @@ class Settings(BaseSettings):
         "OCR_TIMEOUT_SECONDS",
         "OCR_MAX_PAGES",
         "OCR_WORKER_CONCURRENCY",
+        "SEARCH_DEFAULT_LIMIT",
+        "SEARCH_MAX_LIMIT",
+        "SEARCH_QUERY_MAX_LENGTH",
+        "SEARCH_MAX_FILTER_DOCUMENTS",
     )
     @classmethod
     def _require_positive(cls, value: int, info: ValidationInfo) -> int:
         if value <= 0:
             raise ValueError(f"{info.field_name} must be a positive integer")
         return value
+
+    @model_validator(mode="after")
+    def _validate_search_limits(self) -> Settings:
+        """Keep the search page size and its ceiling coherent.
+
+        A default above the maximum would make every unqualified search fail
+        validation against a bound the caller never chose — the kind of
+        misconfiguration that is invisible until the first request.
+        """
+        if self.SEARCH_DEFAULT_LIMIT > self.SEARCH_MAX_LIMIT:
+            raise ValueError("SEARCH_DEFAULT_LIMIT must not exceed SEARCH_MAX_LIMIT")
+        if self.SEARCH_MAX_OFFSET < 0:
+            raise ValueError("SEARCH_MAX_OFFSET must not be negative")
+        return self
 
     @model_validator(mode="after")
     def _validate_production_invariants(self) -> Settings:

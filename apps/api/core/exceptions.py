@@ -637,6 +637,102 @@ class IndexAccessDeniedError(AuthorizationError):
 
 
 # --------------------------------------------------------------------------- #
+# Semantic search errors
+#
+# There is deliberately **no error for "nothing matched"**. An empty result set
+# is a successful search: the corpus contains nothing near the query, which is an
+# answer rather than a fault, and a 404 would make "no matches" indistinguishable
+# from "the endpoint does not exist".
+# --------------------------------------------------------------------------- #
+
+
+class InvalidSearchQueryError(AppException):
+    """The query carries nothing to search for.
+
+    422 because the request *is* malformed: an empty query, one shorter than
+    :data:`~core.search.MIN_QUERY_LENGTH`, or one made entirely of punctuation.
+    Refused rather than answered, because embedding it would return a page of
+    arbitrary passages that look like results.
+    """
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    error_code = "invalid_search_query"
+    message = "Enter a search query of at least two characters."
+
+
+class SearchFilterTooBroadError(AppException):
+    """A metadata filter resolved to more documents than can be pushed down.
+
+    422 rather than a silent truncation, and that is the whole point: narrowing
+    the set to fit would drop matching documents with no way for anyone to
+    notice, and a search that quietly ignores part of its own filter is worse
+    than one that refuses. The message says how to narrow it.
+    """
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    error_code = "search_filter_too_broad"
+    message = "This filter matches too many documents to search at once."
+
+    def __init__(self, limit: int) -> None:
+        super().__init__(
+            f"This filter matches more than {limit} documents. Narrow it — for example by "
+            f"choosing a case — and search again."
+        )
+
+
+class SearchUnavailableError(AppException):
+    """A dependency the search needs could not be reached.
+
+    503 rather than 500: the request is valid and the platform is not broken —
+    the embedding model or the vector database is unavailable, which is an
+    operational condition that resolves without any change to the request. The
+    caller may retry the identical search.
+
+    The cause is carried as ``error_code`` so a client can distinguish "the model
+    is not installed here" from "Qdrant is down" without parsing a sentence, and
+    so the monitoring view can group failures the same way OCR and indexing do.
+    """
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    error_code = "search_unavailable"
+    message = "Search is temporarily unavailable."
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message, error_code=code)
+
+
+class SearchDisabledError(AppException):
+    """Semantic search is switched off for this deployment.
+
+    503 rather than 404: the capability exists and the request is valid — the
+    deployment has turned retrieval off, which is a temporary condition an
+    operator controls. Indexed documents are unaffected; only searching them is
+    refused.
+    """
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    error_code = "search_disabled"
+    message = "Semantic search is currently disabled on this platform."
+
+
+class SearchAccessDeniedError(AuthorizationError):
+    """The caller holds ``search:query`` but filtered to a case or document they
+    are not party to.
+
+    A subclass of :class:`AuthorizationError`, so it answers **403** with the
+    same generic body as every other denial — and it is raised rather than
+    silently returning an empty page, for exactly the reason
+    :class:`TimelineAccessDeniedError` is: an inaccessible case and a case with no
+    matching passages must not be indistinguishable.
+
+    Note that this covers only an *explicit* filter. The implicit scope — the
+    cases a caller is party to — is applied inside the vector query and never
+    produces a denial, because a search the caller did not narrow has nothing to
+    refuse: it simply searches what they can reach.
+    """
+
+
+# --------------------------------------------------------------------------- #
 # Timeline errors
 #
 # Only two, because the timeline is read-only over HTTP: events are published by

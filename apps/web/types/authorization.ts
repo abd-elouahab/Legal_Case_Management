@@ -42,6 +42,10 @@ export const PERMISSIONS = [
   "indexing:reindex",
   "indexing:monitor",
 
+  // Semantic search
+  "search:query",
+  "search:monitor",
+
   // Timeline
   "timeline:view",
   "timeline:create",
@@ -97,6 +101,9 @@ export const PERMISSION = {
   indexingView: "indexing:view",
   indexingReindex: "indexing:reindex",
   indexingMonitor: "indexing:monitor",
+
+  searchQuery: "search:query",
+  searchMonitor: "search:monitor",
 
   timelineView: "timeline:view",
   timelineCreate: "timeline:create",

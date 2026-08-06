@@ -130,6 +130,7 @@ Navigation:
 - Dashboard
 - Cases
 - Documents
+- Search
 - Users
 - Lawyers
 - Court Updates
@@ -327,6 +328,67 @@ components/documents/
 
 ---
 
+### Semantic Search
+
+Gated on `search:query`, which every role holds. **Which passages a user sees is
+decided per case by the API, inside the vector query itself**, so a lawyer
+searches only the matters they are assigned to — and a caller assigned to nothing
+receives an empty result set rather than the platform's corpus.
+
+It has both a destination and an embedded form. `/search` searches everything the
+caller can reach; the case workspace renders the same component pinned to one
+case, where the case filter disappears and *Clear filters* does not widen the
+search back to the platform — the same rule the embedded document list follows.
+
+The screen is a query box, the metadata filters, and the ranked passages:
+
+- **The search runs on submit, never as you type.** Every request costs a query
+  embedding on the server, and a legal search is a question someone finished
+  writing rather than a prefix they are still typing.
+- **Filters** are case, category, file type, and language — the subset a person
+  actually narrows by. Document, version, and the indexing-date range are
+  supported by the API and reachable from the case-scoped panel and the client,
+  but are given no control here: nobody searches "passages indexed between two
+  dates", and a filter row nobody uses costs every user the time to read past it.
+  The case select appears only for callers who may read the case list, since
+  nobody else could resolve a name from an identifier.
+- **A result is a passage, shown in full.** It is the evidence: truncating it
+  would leave a lawyer unable to tell whether the clause they need is inside, and
+  send them to open the document to find out — which is the work this feature
+  exists to save. Beside it sits the complete citation (file name, page, passage
+  number, version), the category and language as labelled badges, and relevance
+  as a **percentage with a label, never colour alone**. `dir="auto"` lets an
+  Arabic passage render right-to-left beside a French one.
+- A result links to its **case**, not to a document viewer: the case is the one
+  destination every result's reader is certainly entitled to open.
+- **Paging re-runs the submitted query**, not whatever is currently in the box.
+  Page numbers only, with no total — a similarity search has no cheap exact count,
+  and the API reports `hasMore` rather than a figure it would have to guess at.
+
+States:
+
+- Skeleton cards while a search is in flight.
+- Three distinct empty states, and none of them is an error: **"nothing searched
+  yet"** (explaining what a result will look like), **"no matching passages"**
+  (the corpus holds nothing near the query — an answer, which the API returns as
+  a 200), and a **dependency outage** that names *which* dependency, because "the
+  search index is unreachable" sends a user to an administrator while "search is
+  unavailable" sends them to retry forever.
+- A failed search is **not retried automatically**: a 503 means a dependency is
+  down and retrying costs another query embedding to fail the same way.
+
+`SearchMetricsPanel` sits on `/documents` beside the OCR and indexing panels,
+gated on `search:monitor` — the third stage of the same pipeline, and the one
+that says whether the first two are paying off.
+
+Business-specific components for this area live in:
+
+```
+components/search/
+```
+
+---
+
 ### Timeline & Audit Trail
 
 Gated on `timeline:view`, which every role holds. **Which timelines a user sees is
@@ -470,7 +532,11 @@ The document viewer supports:
 - Version history — **implemented**
 - OCR text display — deferred to OCR & Document Processing
 - AI-generated summaries — deferred to the AI Assistant
-- Semantic search highlights — deferred to the RAG pipeline
+- Semantic search highlights — **partially delivered**: Semantic Search returns
+  the matching passage verbatim with its page number, which is the citation a
+  lawyer needs. Highlighting that passage *inside the rendered document* is still
+  deferred, because it needs the viewer to map a chunk back to a position in the
+  file rather than to a page.
 - Source references — deferred to the AI Assistant
 
 ---

@@ -1102,13 +1102,33 @@ class TestTimeline:
 
 
 class TestScopeBoundary:
-    def test_the_api_exposes_no_search_endpoint(self, api_client: TestClient) -> None:
-        # ``10-document-indexing.md``: Semantic Search is out of scope, and
-        # indexing must remain independent from retrieval.
+    def test_the_indexing_module_exposes_no_search_endpoint(
+        self, api_client: TestClient
+    ) -> None:
+        # ``10-document-indexing.md``: indexing must remain independent from
+        # retrieval. Originally asserted over *every* path on the platform,
+        # because no search existed anywhere; Semantic Search
+        # (``11-semantic-search.md``) has since shipped as its own module, under
+        # its own prefix, its own permissions, and its own read-side vector
+        # protocol.
+        #
+        # The assertion is therefore narrowed to what it was always *about*:
+        # nothing tagged `indexing` and nothing under `/indexing` or
+        # `/documents/{id}/index` reads a vector back. That boundary is the one
+        # this spec created, and shipping search is exactly when someone would be
+        # tempted to hang a query route off this module and erase it.
+        # `tests/integration/test_search.py` asserts the same separation from the
+        # other side.
         paths = api_client.get("/openapi.json").json()["paths"]
-        for path in paths:
-            assert "search" not in path.lower()
-            assert "/query" not in path.lower()
+
+        for path, operations in paths.items():
+            indexing_route = "/indexing" in path or "/index" in path
+            indexing_tagged = any(
+                "indexing" in operation.get("tags", []) for operation in operations.values()
+            )
+            if indexing_route or indexing_tagged:
+                assert "search" not in path.lower()
+                assert "query" not in path.lower()
 
     def test_the_indexing_routes_are_exactly_the_five_documented(
         self, api_client: TestClient

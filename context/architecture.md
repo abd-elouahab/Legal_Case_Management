@@ -21,7 +21,9 @@
 | Embeddings | BAAI bge-m3 | Generate document embeddings |
 | OCR | Tesseract OCR + pytesseract + pdf2image (Poppler) + Pillow | Text extraction from PDFs, scanned PDFs, and images. OCRmyPDF was not needed: pdf2image renders pages and pytesseract reads them, which is the same pipeline with one fewer dependency. Behind the `OcrEngine` protocol, so it is replaceable |
 | Chunking | LangChain `RecursiveCharacterTextSplitter` (`langchain-text-splitters`) | Splits extracted text into passages, paragraph-first, with Arabic sentence punctuation added to the separator list. Behind the `Chunker` protocol (`services/chunking.py`), so it is replaceable |
-| Vector persistence | `qdrant-client` behind the `VectorStore` protocol (`services/vector_store.py`) | The only module that speaks Qdrant's data model. Exposes write, delete, and count — **and deliberately no query**, so retrieval cannot be smuggled in through it |
+| Vector persistence | `qdrant-client` behind the `VectorStore` protocol (`services/vector_store.py`) | The only module that speaks Qdrant's data model **on the write side**. Exposes write, delete, and count — **and deliberately no query**, so retrieval cannot be smuggled in through it |
+| Vector retrieval | `qdrant-client` behind the `VectorSearcher` protocol (`services/vector_search.py`) | The read side, introduced by Semantic Search as its own module rather than as a method on the store. Exposes one `search` call — **and deliberately no write**, so the two halves stay separable in both directions |
+| Result ranking | `Ranker` protocol (`services/search_ranking.py`), `SimilarityRanker` today | Orders retrieved passages. Exists as a seam from the start so a future cross-encoder reranker is one class rather than a redesign |
 | Background Jobs | Two bounded thread pools in the API process — `services/ocr_queue.py` (OCR) and the generic `services/job_queue.py` (indexing); Trigger.dev or Celery + Redis when a second consumer arrives | OCR and indexing today; notifications and scheduled tasks later. Separate pools, because the two stages fail differently and are sized differently. The job's identity, state, and concurrency control live in PostgreSQL rather than in the queue, so the runner is one file to replace |
 | Email Service | SMTP / Mailpit | Email notifications |
 | WhatsApp Integration | WhatsApp Business API | Real-time WhatsApp alerts |
@@ -74,8 +76,14 @@
   `services/embedding.py`, `services/vector_store.py`,
   `services/job_queue.py`, `services/indexing_worker.py`,
   `services/indexing_access.py`, `api/v1/indexing/`, plus
-  `apps/web/components/indexing/`). Semantic search, RAG, and the assistant are
-  later features that read the vectors indexing writes.
+  `apps/web/components/indexing/`). **Semantic search** is the read side of the
+  same vectors and attaches as its own module — not to the Document entity, since
+  a search spans documents (`core/search.py`, `repositories/search.py`,
+  `services/search.py`, `services/vector_search.py`,
+  `services/search_ranking.py`, `services/search_metrics.py`,
+  `services/search_access.py`, `schemas/search.py`, `api/v1/search/`, plus
+  `apps/web/components/search/` and `app/(protected)/search/`). RAG and the
+  assistant are later features that consume its results.
 - `modules/reports` — AI-generated reports, legal summaries, exports, and report history.
 - `modules/notifications` — Real-time notifications, email notifications, WhatsApp alerts, and reminder scheduling.
 - `modules/users` — Administrator, lawyer, and court representative management.
@@ -327,6 +335,23 @@ Role-Based Access Control, implemented per
     same reason as `ocr:retry`, only more strongly: a rebuild re-embeds every
     passage of the document, which is the most expensive operation the platform
     performs.
+  - `search:query` / `search:monitor` extend the chain one stage further again,
+    to **passage → document → case**. `services/search_access.py` owns no policy
+    of its own either. The one thing that is genuinely different is *where* the
+    scope is applied: every other module pushes it into the SQL query it was
+    already running, and search cannot — its rows live in Qdrant, which cannot
+    join against `cases`. So the scope crosses the boundary as a **set of case
+    identifiers** (`SearchRepository.accessible_case_ids`) and becomes one more
+    `must` condition on the vector query, which is exactly what Document Indexing
+    put `case_id` in every payload for. Three properties make that safe and each
+    is asserted rather than assumed: the scope is computed from the caller alone
+    and can never be supplied by the request; it is **ANDed** with every user
+    filter, so no combination of filters can widen it; and "assigned to no cases"
+    is an **empty set that matches nothing**, never an absent filter that matches
+    everything. `search:query` is granted to court representatives, unlike
+    `ocr:retry` and `indexing:reindex`: those two *operate the pipeline*, while
+    this one **reads**, and it reads strictly less than the `ocr:view` they
+    already hold.
 - **`AuthorizationService`** (`services/authorization.py`) evaluates every
   access decision — require role / permission / any / all — in both a boolean
   (`has_*`) and a raising (`require_*`) form. It is stateless and pure.
@@ -538,6 +563,64 @@ deliberately containing nothing about search, ranking, retrieval, RAG, or an LLM
 - **No passage ever reaches a log.** A filename appears in a timeline description
   and nowhere in the application log; a chunk's text appears in neither. The logs
   carry identifiers, statuses, chunk counts, and character counts only.
+
+### Semantic Search
+
+Implemented per `context/feature-specs/11-semantic-search.md`. The third stage of
+the AI pipeline and the RAG pipeline's retrieval half: it begins at the vectors
+indexing wrote and **ends at retrieved passages**, deliberately containing
+nothing about answer generation, summarization, prompts, conversations, or an
+LLM.
+
+- **It is a new module, not a method on the write side.** `10-document-indexing.md`
+  made "indexing does not retrieve" structural by giving `VectorStore` no query
+  method; honouring that means retrieval arrives as its own read-side protocol,
+  `VectorSearcher` (`services/vector_search.py`), which in turn has **no write
+  method**. The two halves say, in the type system, that indexing writes and
+  search reads, and neither can do the other's job by accident.
+- **The same embedding model embeds documents and queries**, because
+  `ai-architecture.md` requires it — enforced by calling the same
+  `services/embedding.py` module and injecting the same dependency, rather than
+  by remembering to configure two settings identically.
+- **No entity and no migration.** Search is a read that answers in milliseconds
+  and has no lifecycle to poll, so unlike OCR and indexing it persists nothing.
+  Its metrics accumulate **in the process** behind a `SearchMetricsRecorder`
+  protocol (`services/search_metrics.py`); the limits of that are stated rather
+  than hidden — counters reset on restart and each instance counts only its own
+  traffic, which the endpoint reports as `since`. A Redis-backed recorder is one
+  class plus one line in `api/deps.py`.
+- **Every filter executes in the database, never in Python.** Filtering after
+  retrieval would return short pages, leak match counts, and pull unauthorized
+  text into the process. Category and file type are the exception that proves the
+  rule: the vector payload carries neither (indexing stores what a *chunk* is,
+  not what its document is), so they are resolved to a bounded set of document
+  ids in PostgreSQL and pushed into the vector query as one condition — and a set
+  that overflows `SEARCH_MAX_FILTER_DOCUMENTS` is **refused**, because silently
+  truncating it would drop matching documents with nothing to indicate it.
+- **`documents.deleted_at` is honoured at read time.** Deletion is logical, so a
+  withdrawn document's vectors outlive it; the service drops results whose
+  document no longer resolves. That is the point at which a search result stops
+  being more visible than the document it came from.
+- **A search that matches nothing is a success**, not a 404 and not a failure
+  metric: the corpus holds nothing near the query, which is an answer. Only a
+  dependency outage is a failure, and it answers **503 naming which dependency**
+  — a missing embedding model and an unreachable Qdrant need different responses.
+- **Search is a `POST`, and that is a privacy decision.** A query string is
+  written to the reverse proxy's access log, the browser's history, and the
+  `Referer` header of anything the page loads next — three logs the application
+  does not control — and a legal query is at least as revealing as the passage it
+  finds. It is still a read: nothing is created and it answers 200.
+- **No query text reaches a log.** Every search is logged, correlated by a
+  **salted, non-reversible fingerprint** of the query (`core/search.py`); the
+  text itself appears only when a deployment sets `SEARCH_LOG_QUERIES`, which is
+  the spec's "unless existing project logging policies explicitly allow it"
+  clause made into a switch an operator sets. Filters are logged as a shape
+  ("filtered: true"), never as values — a list of case identifiers is a list of
+  the caller's matters.
+- **Ranking is a seam from day one.** `SimilarityRanker` orders by the score
+  Qdrant computed and breaks ties by position in the document, which is what makes
+  the same query return the same page — Qdrant does not guarantee an order between
+  equal scores. A future cross-encoder reranker is one class plus one setting.
 
 ### Timeline & Audit Trail
 
