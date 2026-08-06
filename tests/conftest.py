@@ -1302,6 +1302,172 @@ def search_service(  # type: ignore[no-untyped-def]
     )
 
 
+# --------------------------------------------------------------------------- #
+# RAG pipeline fixtures
+# --------------------------------------------------------------------------- #
+
+
+class ScriptedLLMProvider:
+    """Test double for an :class:`~services.llm.LLMProvider`.
+
+    A real provider is a **metered network service behind a credential**, so a
+    suite that used one would run only on machines with an API key, cost money
+    per assertion, and — worst — be non-deterministic about the very thing these
+    tests are checking: whether the platform handles what comes back. This double
+    keeps the contract (a name, a model, an availability probe, token counting,
+    one ``generate`` call, and one ``stream``) and lets a test choose the
+    outcome, which is what makes the failure paths testable at all. A timeout, a
+    refusal, an empty completion, and an answer citing a source that was never
+    supplied are not things a real model produces on demand.
+
+    **It records the prompt it was given**, which is how the tests assert the
+    things that matter most about this feature: that the retrieved passages
+    reached the model, that the caller's question did, and that a passage the
+    caller may not read never does.
+    """
+
+    name = "scripted"
+
+    def __init__(self) -> None:
+        self.model_name = "scripted/test-model"
+        self.available = True
+        #: What the next generation returns. Cites source 1 by default, because
+        #: an uncited default would make every citation assertion a test of the
+        #: fixture rather than of the pipeline.
+        self.answer = "Le loyer est payable le premier jour de chaque mois [1]."
+        #: Set to an exception instance to make the next call raise it.
+        self.raises: Exception | None = None
+        #: Set to a callable to compute the answer from (system, prompt).
+        self.reply: Callable[[str, str], str] | None = None
+        self.prompt_tokens: int | None = 120
+        self.completion_tokens: int | None = 40
+        self.finish_reason: str | None = "STOP"
+        self.truncated = False
+        #: Every (system, prompt) pair the provider was handed.
+        self.calls: list[tuple[str, str]] = []
+
+    @property
+    def model(self) -> str:
+        return self.model_name
+
+    def is_available(self) -> bool:
+        return self.available
+
+    def count_tokens(self, text: str) -> int | None:
+        # A crude but deterministic stand-in: tests assert that a count reaches
+        # the response, never what it is.
+        return len(text) // 4
+
+    def generate(  # type: ignore[no-untyped-def]
+        self,
+        *,
+        system: str,
+        prompt: str,
+        temperature=None,
+        max_output_tokens=None,
+        timeout_seconds=None,
+    ):
+        from services.llm import LLMCompletion
+
+        self.calls.append((system, prompt))
+
+        if self.raises is not None:
+            raise self.raises
+
+        text = self.reply(system, prompt) if self.reply is not None else self.answer
+
+        total = None
+        if self.prompt_tokens is not None or self.completion_tokens is not None:
+            total = (self.prompt_tokens or 0) + (self.completion_tokens or 0)
+
+        return LLMCompletion(
+            text=text,
+            provider=self.name,
+            model=self.model_name,
+            prompt_tokens=self.prompt_tokens,
+            completion_tokens=self.completion_tokens,
+            total_tokens=total,
+            finish_reason=self.finish_reason,
+            truncated=self.truncated,
+        )
+
+    def stream(  # type: ignore[no-untyped-def]
+        self,
+        *,
+        system: str,
+        prompt: str,
+        temperature=None,
+        max_output_tokens=None,
+        timeout_seconds=None,
+    ) -> Iterator[str]:
+        completion = self.generate(
+            system=system,
+            prompt=prompt,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+            timeout_seconds=timeout_seconds,
+        )
+        yield completion.text
+
+
+@pytest.fixture
+def llm_provider() -> ScriptedLLMProvider:
+    """A fresh, controllable language-model provider per test."""
+    return ScriptedLLMProvider()
+
+
+@pytest.fixture
+def prompt_library():  # type: ignore[no-untyped-def]
+    """The **real** prompt library, reading the templates the platform ships.
+
+    Deliberately real, for the same reason the chunker and the ranker are in the
+    indexing and search fixtures: rendering a Jinja template is a pure function
+    of files under source control, with no network, no model, and no binary
+    behind it. Substituting it would mean every claim the spec makes about the
+    prompt — that it forbids answering outside the context, that it names the
+    insufficiency sentinel, that it asks for citations, that it fences untrusted
+    text — was asserted against a fake.
+    """
+    from services.prompts import JinjaPromptLibrary
+
+    return JinjaPromptLibrary()
+
+
+@pytest.fixture
+def rag_metrics():  # type: ignore[no-untyped-def]
+    """A fresh metrics recorder per test.
+
+    Per test rather than the process-wide one, because the real recorder counts
+    for the life of the process — assertions about "one question was recorded"
+    would otherwise depend on how many questions every earlier test asked.
+    """
+    from services.rag_metrics import InMemoryRagMetrics
+
+    return InMemoryRagMetrics()
+
+
+@pytest.fixture
+def rag_service(  # type: ignore[no-untyped-def]
+    search_service,
+    prompt_library,
+    llm_provider: ScriptedLLMProvider,
+    rag_metrics,
+):
+    """A :class:`~services.rag.RagService` wired to the test doubles.
+
+    **The search service is the real one**, on the real repositories, with the
+    real access policy — only the embedding model, the vector database, and the
+    language model are substituted, which are the three genuinely external
+    things. That matters more here than anywhere else in the suite: the
+    pipeline's entire authorization story is "retrieval goes through the search
+    service", and a faked search service would make every authorization
+    assertion in these tests vacuous.
+    """
+    from services.rag import RagService
+
+    return RagService(search_service, prompt_library, llm_provider, metrics=rag_metrics)
+
+
 @pytest.fixture
 def auth_service(  # type: ignore[no-untyped-def]
     db_session: Session,
@@ -1336,22 +1502,31 @@ def api_client(
     index_queue: RecordingIndexQueue,
     vector_searcher: InMemoryVectorSearcher,
     search_metrics,  # type: ignore[no-untyped-def]
+    llm_provider: ScriptedLLMProvider,
+    rag_metrics,  # type: ignore[no-untyped-def]
 ) -> Iterator[TestClient]:
     """A TestClient whose external collaborators are all doubles.
 
     The database, the token denylist, the login throttle, the object store, the
     OCR engine, the OCR queue, the embedding model, the vector store, the
-    indexing queue, the vector searcher, and the search metrics recorder.
-    Everything else — routers, services, repositories, chunker, ranker, access
-    policies — is the application's own.
+    indexing queue, the vector searcher, the search metrics recorder, the
+    language-model provider, and the RAG metrics recorder. Everything else —
+    routers, services, repositories, chunker, ranker, **prompt templates**,
+    access policies — is the application's own.
+
+    The prompt library is deliberately *not* overridden: the templates are files
+    under source control with no external dependency, so the pipeline exercised
+    here builds the same prompt production would.
     """
     from api.deps import (
         get_document_storage,
         get_embedder_dependency,
         get_index_job_queue,
+        get_llm_provider_dependency,
         get_login_throttle,
         get_ocr_engine_dependency,
         get_ocr_job_queue,
+        get_rag_metrics_recorder,
         get_search_metrics_recorder,
         get_token_revocation_store,
         get_vector_searcher_dependency,
@@ -1371,6 +1546,8 @@ def api_client(
     app.dependency_overrides[get_index_job_queue] = lambda: index_queue
     app.dependency_overrides[get_vector_searcher_dependency] = lambda: vector_searcher
     app.dependency_overrides[get_search_metrics_recorder] = lambda: search_metrics
+    app.dependency_overrides[get_llm_provider_dependency] = lambda: llm_provider
+    app.dependency_overrides[get_rag_metrics_recorder] = lambda: rag_metrics
     try:
         with TestClient(app) as test_client:
             yield test_client

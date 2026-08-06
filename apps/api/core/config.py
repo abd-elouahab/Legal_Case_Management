@@ -227,6 +227,96 @@ class Settings(BaseSettings):
     # `core/search.py`.
     SEARCH_LOG_QUERIES: bool = False
 
+    # --- RAG pipeline (grounded answer generation) ---
+    # The fourth stage of the AI pipeline: it retrieves passages through the
+    # semantic search service, assembles a prompt from them, invokes the
+    # configured language model, and returns a grounded answer with citations.
+    # Disabling it refuses new questions; documents, indexes, and search are
+    # unaffected. Orchestration only — it manages no conversation and owns no UI.
+    RAG_ENABLED: bool = True
+    # Passages retrieved per question. Deliberately smaller than the search
+    # page size: every passage is paid for twice — once in the context window and
+    # once in the model's attention — and a long tail of weak matches dilutes a
+    # grounded answer rather than improving it. Must not exceed SEARCH_MAX_LIMIT,
+    # because retrieval runs through the same search service a user does.
+    RAG_RETRIEVAL_TOP_K: int = 8
+    # Similarity floor for retrieved passages when a request does not set one.
+    # 0.0 for the same reason SEARCH_MIN_SCORE is: a threshold that is right for
+    # French prose is wrong for an Arabic filing, so the platform does not guess.
+    RAG_MIN_SCORE: float = 0.0
+    # How much retrieved text may be placed in one prompt, in *characters*.
+    # Characters rather than tokens for the reason INDEX_CHUNK_SIZE records:
+    # counting tokens needs the provider's tokenizer loaded, which is exactly the
+    # coupling the provider abstraction exists to prevent. 24 000 characters is
+    # roughly 6-8k tokens, comfortably inside every model the platform targets.
+    RAG_MAX_CONTEXT_CHARACTERS: int = 24000
+    # Ceiling on a single passage's contribution, so one very long chunk cannot
+    # consume a budget that five passages would have used better. Retrieval
+    # quality comes from breadth of evidence.
+    RAG_MAX_PASSAGE_CHARACTERS: int = 4000
+    # Longest accepted question, in characters. A question, not a document:
+    # anything longer is a paste, and it would crowd out the evidence needed to
+    # answer it. Must not exceed SEARCH_QUERY_MAX_LENGTH — the question *is* the
+    # retrieval query one step later, so a longer one could be accepted here and
+    # then refused by the service that has to embed it.
+    RAG_QUESTION_MAX_LENGTH: int = 1000
+    # Most citations attached to one answer. A bound the prompt states, so the
+    # model produces a readable answer rather than a footnote per clause.
+    RAG_MAX_CITATIONS: int = 10
+    # Whole-request deadline, covering retrieval *and* generation. Must be at
+    # least LLM_TIMEOUT_SECONDS, or the model's own deadline could never be
+    # reached.
+    RAG_TIMEOUT_SECONDS: int = 90
+    # Whether the *text* of a user's question may be written to the application
+    # log. Off by default, and separate from SEARCH_LOG_QUERIES because the two
+    # carry different risk: a search query is a phrase, a question put to the
+    # assistant is a sentence about a client's matter. Correlated by a salted
+    # fingerprint instead — see `core/rag.py`.
+    RAG_LOG_QUESTIONS: bool = False
+    # Which prompt template answers a question, and which version of it. Both are
+    # recorded on every answer, so two weeks of answers can be compared by prompt
+    # rather than only by date.
+    RAG_PROMPT_TEMPLATE: str = "rag/answer"
+    RAG_PROMPT_VERSION: int = 1
+
+    # --- Prompt templates ---
+    # Which prompt backend to use (see `services/prompts.py`). Templates live in
+    # `apps/api/prompts/` as versioned `.j2` files under source control.
+    PROMPT_LIBRARY: str = "jinja-files"
+
+    # --- LLM provider ---
+    # Which provider implementation to use (see `services/llm.py`). An
+    # unrecognised value falls back to the default rather than failing startup:
+    # an API that refuses to come up over an AI setting would take
+    # authentication, cases, and documents down with it.
+    LLM_PROVIDER: str = "gemini"
+    # The model itself. `ai-architecture.md` names gemini-2.5-flash: strong
+    # multilingual reasoning, a long context window, and a free tier. The value
+    # is passed to whichever provider is configured, so switching to LiteLLM
+    # means changing both this and LLM_PROVIDER.
+    LLM_MODEL: str = "gemini-2.5-flash"
+    # Credential for the configured provider. Deliberately provider-neutral: the
+    # platform must not name a vendor in a setting every deployment sets. Absent
+    # is handled rather than fatal — questions answer 503 `llm_unavailable`,
+    # `GET /rag/metrics` reports `llm_available: false`, and nothing else on the
+    # platform is affected.
+    LLM_API_KEY: str | None = None
+    # Sampling temperature. Low on purpose: this is a grounded legal assistant,
+    # and creative variation between two identical questions about the same
+    # filing is a defect rather than a feature.
+    LLM_TEMPERATURE: float = 0.2
+    # Ceiling on one answer's length, in provider tokens. An answer cut off here
+    # is reported as `truncated` rather than presented as complete.
+    LLM_MAX_OUTPUT_TOKENS: int = 1024
+    # Deadline for a single provider call.
+    LLM_TIMEOUT_SECONDS: int = 45
+    # Attempts per generation, including the first. Only transient failures are
+    # retried (see `services/llm.py`); a rejected credential is not.
+    LLM_MAX_ATTEMPTS: int = 3
+    # Base delay between retries, doubled per attempt (exponential backoff, as
+    # `code-standards.md` requires).
+    LLM_RETRY_BACKOFF_SECONDS: float = 1.0
+
     # --- Embeddings ---
     # Which embedding backend to use (see `services/embedding.py`).
     EMBEDDING_BACKEND: str = "sentence-transformers"
@@ -331,6 +421,7 @@ class Settings(BaseSettings):
         "TESSERACT_CMD",
         "POPPLER_PATH",
         "EMBEDDING_DEVICE",
+        "LLM_API_KEY",
         mode="before",
     )
     @classmethod
@@ -363,6 +454,16 @@ class Settings(BaseSettings):
         "SEARCH_MAX_LIMIT",
         "SEARCH_QUERY_MAX_LENGTH",
         "SEARCH_MAX_FILTER_DOCUMENTS",
+        "RAG_RETRIEVAL_TOP_K",
+        "RAG_MAX_CONTEXT_CHARACTERS",
+        "RAG_MAX_PASSAGE_CHARACTERS",
+        "RAG_QUESTION_MAX_LENGTH",
+        "RAG_MAX_CITATIONS",
+        "RAG_TIMEOUT_SECONDS",
+        "RAG_PROMPT_VERSION",
+        "LLM_MAX_OUTPUT_TOKENS",
+        "LLM_TIMEOUT_SECONDS",
+        "LLM_MAX_ATTEMPTS",
     )
     @classmethod
     def _require_positive(cls, value: int, info: ValidationInfo) -> int:
@@ -382,6 +483,43 @@ class Settings(BaseSettings):
             raise ValueError("SEARCH_DEFAULT_LIMIT must not exceed SEARCH_MAX_LIMIT")
         if self.SEARCH_MAX_OFFSET < 0:
             raise ValueError("SEARCH_MAX_OFFSET must not be negative")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_rag_limits(self) -> Settings:
+        """Keep the RAG budgets coherent with the services they run through.
+
+        Five couplings, each of which is invisible until the first question:
+
+        * retrieval runs through the **semantic search service**, so asking for
+          more passages than that service will return means every answer is
+          quietly built on fewer sources than configured;
+        * the question **is** the retrieval query, so one this endpoint accepts
+          and that endpoint refuses would fail deep inside the pipeline with a
+          message about a search;
+        * a per-passage cap above the whole context budget is not a cap;
+        * a model deadline longer than the whole-request deadline can never be
+          reached, so the request would always fail on the outer one and the
+          provider's own timeout would never take effect;
+        * a similarity floor outside ``[-1, 1]`` is not a cosine similarity, so
+          it would either match everything or nothing.
+        """
+        if self.RAG_RETRIEVAL_TOP_K > self.SEARCH_MAX_LIMIT:
+            raise ValueError("RAG_RETRIEVAL_TOP_K must not exceed SEARCH_MAX_LIMIT")
+        if self.RAG_QUESTION_MAX_LENGTH > self.SEARCH_QUERY_MAX_LENGTH:
+            raise ValueError("RAG_QUESTION_MAX_LENGTH must not exceed SEARCH_QUERY_MAX_LENGTH")
+        if self.RAG_MAX_PASSAGE_CHARACTERS > self.RAG_MAX_CONTEXT_CHARACTERS:
+            raise ValueError(
+                "RAG_MAX_PASSAGE_CHARACTERS must not exceed RAG_MAX_CONTEXT_CHARACTERS"
+            )
+        if self.LLM_TIMEOUT_SECONDS > self.RAG_TIMEOUT_SECONDS:
+            raise ValueError("LLM_TIMEOUT_SECONDS must not exceed RAG_TIMEOUT_SECONDS")
+        if not -1.0 <= self.RAG_MIN_SCORE <= 1.0:
+            raise ValueError("RAG_MIN_SCORE must be between -1.0 and 1.0")
+        if not 0.0 <= self.LLM_TEMPERATURE <= 2.0:
+            raise ValueError("LLM_TEMPERATURE must be between 0.0 and 2.0")
+        if self.LLM_RETRY_BACKOFF_SECONDS < 0:
+            raise ValueError("LLM_RETRY_BACKOFF_SECONDS must not be negative")
         return self
 
     @model_validator(mode="after")

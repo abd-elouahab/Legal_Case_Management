@@ -70,6 +70,11 @@ _LAWYER_PERMISSIONS: frozenset[Permission] = BASE_PERMISSIONS | {
     Permission.TIMELINE_CREATE,
     Permission.REPORTS_VIEW,
     Permission.REPORTS_GENERATE,
+    # Ask the RAG pipeline a question about the documents they can already read.
+    # Granted alongside `ai:chat` rather than folded into it, because the two are
+    # separate capabilities on separate endpoints; a lawyer who may hold a
+    # conversation with the assistant may certainly ask it one question.
+    Permission.AI_ASK,
     Permission.AI_CHAT,
     Permission.AI_GENERATE_REPORT,
 }
@@ -114,6 +119,15 @@ _COURT_PERMISSIONS: frozenset[Permission] = BASE_PERMISSIONS | {
     Permission.SEARCH_QUERY,
     Permission.TIMELINE_VIEW,
     Permission.TIMELINE_CREATE,
+    # `ai:ask` is deliberately **withheld**, unlike `search:query`. The two look
+    # similar and are not: search *returns the platform's own text verbatim*,
+    # which is strictly less than the `ocr:view` this role already holds, while
+    # the RAG pipeline returns a **generated** answer — an interpretation of a
+    # case file, produced on the platform's behalf. The role descriptions in
+    # `project-overview.md` and `architecture.md` give court representatives no
+    # AI capabilities at all, and `ai:chat` and `ai:generate-report` have been
+    # withheld from them since Authorization was implemented; granting the
+    # pipeline underneath both would be the same access by another route.
 }
 
 

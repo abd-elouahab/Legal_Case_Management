@@ -41,6 +41,14 @@ exclude = ["\\.venv", "apps/web", "db/migrations"]
 module = ["minio.*", "qdrant_client.*", "pytesseract.*", "pdf2image.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# LiteLLM is an *optional* provider backend (see services/llm.py): it is not in
+# requirements.txt, it is imported lazily, and its absence is reported as
+# `llm_available: false` rather than being fatal. So it is legitimately absent
+# from a normal checkout, and mypy must not fail the build over it.
+module = ["litellm.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 pythonpath = ["apps/api"]
 testpaths = ["tests"]

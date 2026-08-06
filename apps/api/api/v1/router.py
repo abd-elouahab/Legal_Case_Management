@@ -15,6 +15,7 @@ from api.v1.indexing.router import document_indexing_router
 from api.v1.indexing.router import router as indexing_router
 from api.v1.ocr.router import document_ocr_router
 from api.v1.ocr.router import router as ocr_router
+from api.v1.rag.router import router as rag_router
 from api.v1.search.router import router as search_router
 from api.v1.timeline.router import case_timeline_router
 from api.v1.timeline.router import router as timeline_router
@@ -47,6 +48,15 @@ api_router.include_router(indexing_router, prefix="/indexing", tags=["indexing"]
 # capabilities with separate permissions, and `services/vector_store.py`
 # deliberately exposes no query method for a search route to have been hung off.
 api_router.include_router(search_router, prefix="/search", tags=["search"])
+
+# The RAG pipeline reads through the search service above rather than through
+# Qdrant, so it is its own module under its own prefix with its own permissions —
+# and deliberately *not* a route on `/search`: retrieval returns the platform's
+# own text verbatim, while this returns a generated answer, and the two are
+# different capabilities that different roles hold. It is the pipeline, not the
+# assistant: there is no conversation here, and `12-rag-pipeline.md` puts the
+# chat interface out of scope.
+api_router.include_router(rag_router, prefix="/rag", tags=["rag"])
 
 # `GET /cases/{case_id}/timeline` lives under the case prefix but belongs to the
 # timeline module, so it is registered from there rather than added to the case

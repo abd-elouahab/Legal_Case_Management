@@ -59,6 +59,37 @@ pillow==12.1.0
 langchain-text-splitters==1.1.2
 sentence-transformers==5.6.1
 
+# --- RAG pipeline (orchestration, prompts, LLM provider) ---
+# The fourth stage of the AI pipeline: it retrieves through the semantic search
+# service, assembles a versioned prompt, invokes a language model once, and
+# returns a grounded answer with citations. Each library is wrapped behind a
+# protocol (`services/rag_graph.py`, `services/prompts.py`, `services/llm.py`),
+# so none is imported anywhere else in the platform.
+#   * langgraph   — the orchestrator context/ai-architecture.md names. Small and
+#     pure Python; it pulls langgraph-checkpoint/-prebuilt/-sdk and no model.
+#     NOTE: langgraph-sdk pins `websockets<16`, which downgrades the package from
+#     17.x. Uvicorn's WebSocket support works on both, so Real-Time
+#     Synchronization is unaffected — but if that feature ever needs a 16+ API,
+#     the resolution is to run LangGraph without the SDK extra.
+#   * jinja2      — prompt templates, which live in `apps/api/prompts/` as
+#     versioned `.j2` files rather than as strings in Python, so a prompt change
+#     is reviewable as a diff. Already present transitively; declared here
+#     because the platform now imports it directly.
+#   * google-genai — the Gemini SDK, behind the `LLMProvider` protocol.
+#     **No key is needed to install, run, or test.** A deployment without
+#     LLM_API_KEY still starts, serves every other feature, and reports
+#     `llm_available: false` on GET /rag/metrics — the same posture a missing
+#     Tesseract takes for OCR.
+#
+# `litellm` is deliberately NOT listed. It is the second, optional provider
+# backend (`LiteLLMProvider`), imported lazily, for deployments that want
+# OpenAI, Ollama, Groq, or Anthropic instead of Gemini. It pulls a large
+# dependency tree a Gemini deployment does not need, so install it explicitly:
+#     pip install litellm
+langgraph==1.2.10
+jinja2==3.1.6
+google-genai==2.17.0
+
 # --- Logging ---
 structlog==26.1.0
 

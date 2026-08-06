@@ -286,7 +286,25 @@
       "Bash(MSYS_NO_PATHCONV=1 docker run -d --name pg-bridge --network container:legal-postgres alpine/socat tcp-listen:5433,fork,reuseaddr tcp-connect:127.0.0.1:5432)",
       "Bash(MSYS_NO_PATHCONV=1 docker inspect legal-postgres --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')",
       "Bash(POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=5433 python \"C:/Users/ADMINI~1/AppData/Local/Temp/claude/d--Legal-Case-Management-Platform/e8216f55-d0d2-4c57-85b0-03a032220c6a/scratchpad/live_search_e2e.py\")",
-      "Bash(MSYS_NO_PATHCONV=1 docker ps --format \"{{.Names}}\")"
+      "Bash(MSYS_NO_PATHCONV=1 docker ps --format \"{{.Names}}\")",
+      "Bash(./.venv/Scripts/python.exe -m pip list)",
+      "Bash(timeout 300 ./.venv/Scripts/python.exe -m pip install langgraph)",
+      "Bash(timeout 300 ./.venv/Scripts/python.exe -m pip install google-genai)",
+      "Bash(grep -n \"u06D4\\\\|\\\\\\\\\\\\\\\\u0\" core/indexing.py services/chunking.py)",
+      "Bash(ENVIRONMENT=testing ./.venv/Scripts/python.exe -c ' *)",
+      "Bash(./.venv/Scripts/python.exe -m ruff check --fix apps/api tests)",
+      "Bash(./.venv/Scripts/python.exe -m pytest -p no:cacheprovider --tb=no -q)",
+      "Bash(./.venv/Scripts/python.exe -m pytest -p no:cacheprovider)",
+      "Bash(./.venv/Scripts/python.exe -m pytest tests/unit/test_rag_service.py -p no:cacheprovider --tb=no -q -s)",
+      "Bash(./.venv/Scripts/python.exe -m pytest \"tests/unit/test_rag_service.py::TestFailures::test_an_unexpected_fault_is_a_503_rather_than_a_500\" -p no:cacheprovider --tb=long -q)",
+      "Bash(./.venv/Scripts/python.exe -m pytest tests/unit/test_rag_service.py tests/unit/test_rag_utils.py -p no:cacheprovider --tb=line -q)",
+      "Bash(./.venv/Scripts/python.exe -m pytest tests/unit/test_rag_schemas.py tests/unit/test_rag_metrics.py -p no:cacheprovider --tb=short -q)",
+      "Bash(./.venv/Scripts/python.exe -m pytest tests/integration/test_rag.py -p no:cacheprovider --tb=line -q)",
+      "Bash(ENVIRONMENT=testing ./.venv/Scripts/python.exe -)",
+      "Bash(./.venv/Scripts/python.exe -m pytest tests/unit/test_rag_utils.py tests/unit/test_prompts.py tests/unit/test_llm.py tests/unit/test_rag_graph.py tests/unit/test_rag_metrics.py tests/unit/test_rag_schemas.py tests/unit/test_rag_service.py tests/integration/test_rag.py -p no:cacheprovider -v --no-header)",
+      "Bash(git check-ignore *)",
+      "Bash(RUN_LIVE_AI_TESTS=1 ./.venv/Scripts/python.exe -m pytest tests/ai -p no:cacheprovider --tb=short)",
+      "Bash(rm -f tests/ai/test_transcript_scratch.py)"
     ],
     "additionalDirectories": [
       "\\tmp"

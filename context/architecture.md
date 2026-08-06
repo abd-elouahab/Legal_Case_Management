@@ -16,8 +16,9 @@
 | Vector Database | Qdrant | Semantic search and Retrieval-Augmented Generation (RAG) |
 | Object Storage | MinIO | Store legal documents, generated reports, and future voice recordings |
 | Cache & Messaging | Redis | Cache, background queues, WebSocket Pub/Sub, and temporary data |
-| AI Framework | LangGraph | Multi-agent orchestration |
-| LLM Gateway | LiteLLM | Unified interface for OpenAI, Ollama, and future models |
+| AI Framework | LangGraph | Multi-agent orchestration. Introduced by the RAG Pipeline (`services/rag_graph.py`), which declares its workflow as a `StateGraph` whose nodes are calls onto `RagService` — so the graph owns the *order* and nothing else, and a future branch (conversation memory, tool calling, a planner) is an edge rather than a redesign. Note that `langgraph-sdk` pins `websockets<16`, which downgrades that package from 17.x; uvicorn's WebSocket support works on both |
+| LLM Provider | `LLMProvider` protocol (`services/llm.py`), **Google Gemini** (`gemini-2.5-flash`) by default | The only module in the platform that imports a model SDK. Two backends ship — `GeminiProvider` over `google-genai`, and `LiteLLMProvider` over the gateway `ai-workflow-rules.md` requires models to stay replaceable through. `litellm` is deliberately **not** in `requirements.txt`: it is imported lazily and its absence is reported as `llm_available: false`, exactly as a missing Tesseract is. Every SDK failure is translated into a `RagFailureCode` at this boundary, and retries with exponential backoff live here rather than in the orchestration |
+| Prompt Templates | Jinja2 behind the `PromptLibrary` protocol (`services/prompts.py`) | Versioned `.j2` files in `apps/api/prompts/`, **not strings in Python**, so a prompt change is reviewable as a diff of the text actually sent to the model. Versioning is in the filename (`answer.v1.system.j2`), so two versions coexist and every answer records which produced it. Rendered with `StrictUndefined` — a prompt that silently lost its context block would produce ungrounded answers that look entirely normal — and with autoescaping **off**, because the output is plain text for a model rather than markup for a browser |
 | Embeddings | BAAI bge-m3 | Generate document embeddings |
 | OCR | Tesseract OCR + pytesseract + pdf2image (Poppler) + Pillow | Text extraction from PDFs, scanned PDFs, and images. OCRmyPDF was not needed: pdf2image renders pages and pytesseract reads them, which is the same pipeline with one fewer dependency. Behind the `OcrEngine` protocol, so it is replaceable |
 | Chunking | LangChain `RecursiveCharacterTextSplitter` (`langchain-text-splitters`) | Splits extracted text into passages, paragraph-first, with Arabic sentence punctuation added to the separator list. Behind the `Chunker` protocol (`services/chunking.py`), so it is replaceable |
@@ -84,6 +85,18 @@
   `services/search_access.py`, `schemas/search.py`, `api/v1/search/`, plus
   `apps/web/components/search/` and `app/(protected)/search/`). RAG and the
   assistant are later features that consume its results.
+- `services/ai` — Retrieval-Augmented Generation, prompts, and LLM integration.
+  Implemented as flat modules inside `apps/api` rather than as a nested package,
+  following the convention `services/embedding.py`, `services/chunking.py`, and
+  `services/vector_store.py` already established: `core/rag.py`,
+  `services/rag.py`, `services/rag_graph.py`, `services/rag_metrics.py`,
+  `services/prompts.py`, `services/llm.py`, `schemas/rag.py`,
+  `api/v1/rag/router.py`, plus the templates in `apps/api/prompts/`.
+  **It has no repository and no model**, because a question changes nothing and
+  is not an entity. Its retrieval collaborator is `SearchService` and nothing
+  else — see the RAG Pipeline section below for why that single fact is the
+  whole of its authorization story. The AI Assistant, the report agent, and the
+  compliance/translation/summary agents are later features that consume it.
 - `modules/reports` — AI-generated reports, legal summaries, exports, and report history.
 - `modules/notifications` — Real-time notifications, email notifications, WhatsApp alerts, and reminder scheduling.
 - `modules/users` — Administrator, lawyer, and court representative management.
@@ -352,6 +365,21 @@ Role-Based Access Control, implemented per
     `ocr:retry` and `indexing:reindex`: those two *operate the pipeline*, while
     this one **reads**, and it reads strictly less than the `ocr:view` they
     already hold.
+  - `ai:ask` / `ai:monitor` are the RAG pipeline's, and they are the first pair
+    in this chain that adds **no per-resource policy module of its own**. There
+    is no `rag_access.py`, deliberately: the pipeline retrieves only through
+    `SearchService`, which already applies `search_access.py` → document → case,
+    so a second policy here would be a second rule to keep in step with the
+    first. `ai:ask` is **withheld from court representatives**, unlike
+    `search:query` — and the difference is the one place this platform draws a
+    line between reading and generating. Search returns the platform's own text
+    verbatim; the pipeline returns a *generated interpretation* of a case file,
+    produced on the platform's behalf. `project-overview.md` and this document
+    give court representatives no AI capabilities, and `ai:chat` and
+    `ai:generate-report` have been withheld from them since Authorization
+    shipped; granting the pipeline underneath both would be the same access by
+    another route. `ai:monitor` gates the platform-wide pipeline metrics, which
+    are administrative and deliberately not case-scoped.
 - **`AuthorizationService`** (`services/authorization.py`) evaluates every
   access decision — require role / permission / any / all — in both a boolean
   (`has_*`) and a raising (`require_*`) form. It is stateless and pure.
@@ -621,6 +649,115 @@ LLM.
   Qdrant computed and breaks ties by position in the document, which is what makes
   the same query return the same page — Qdrant does not guarantee an order between
   equal scores. A future cross-encoder reranker is one class plus one setting.
+
+### RAG Pipeline
+
+Implemented per `context/feature-specs/12-rag-pipeline.md`. The fourth stage of
+the AI pipeline: it begins at the passages Semantic Search returns and **ends at
+a grounded answer with citations**. It is deliberately **not the chat
+interface** — no conversation, no history, no persistent memory, no streaming,
+and no UI — and not report generation; it is the reusable backend service the AI
+Legal Assistant and the AI Report Agent will both consume.
+
+- **Retrieval goes through `SearchService.search` and nowhere else, and that one
+  fact is the whole of this feature's authorization story.** The spec forbids
+  querying the vector database directly when a retrieval abstraction exists, and
+  the boundary is **structural** rather than a matter of discipline:
+  `RagService` holds no vector searcher, no embedder, no repository, and no
+  database session, so there is no path from the pipeline to a passage that does
+  not pass through the service that scopes it to the caller's cases. Everything
+  the spec's "Authorization" section requires — the case scope inside the vector
+  query, a filter naming an unreachable case refused with 403 rather than
+  emptied, an unassigned caller retrieving nothing — is inherited rather than
+  re-implemented. There is therefore **no `rag_access.py`**.
+- **The workflow is a LangGraph `StateGraph`, and the graph owns only the
+  order.** `services/rag_graph.py` declares seven nodes — validate, retrieve,
+  assemble, generate, verify, format, and no-evidence — each of which is a call
+  onto `RagService`. The two halves are independently testable: the graph with a
+  recorder that only writes down what ran, the nodes with no graph at all.
+- **The branch after retrieval is real, not decorative.** Nothing retrieved goes
+  straight to the no-evidence node, **skipping the model entirely**. That is
+  simultaneously "do not fabricate answers" (there is no model output to
+  fabricate from), "avoid duplicate LLM calls" taken to its limit (the cheapest
+  call is the one not made), and the proof that the branching the spec asks to be
+  possible actually is.
+- **No evidence is answered by the platform, not by the model.** The "could not
+  find supporting information" sentence is written once per language in
+  `core/rag.py`. Asking a model to explain that it found nothing is the tempting
+  alternative and the wrong one: handed an empty context and a legal question, a
+  model will sometimes explain the emptiness *and then answer anyway* from its
+  training data, which is indistinguishable from a grounded answer downstream.
+- **The model's own refusal is a typed outcome.** The prompt instructs it to
+  reply with the exact token `INSUFFICIENT_EVIDENCE` when the passages do not
+  support an answer; the pipeline recognises that and returns
+  `insufficient_evidence: true` with the platform's sentence. A sentinel rather
+  than a phrase, because a phrase would have to be matched in three languages and
+  a paraphrase would read as a confident answer.
+- **Prompts are files, versioned in their filenames.** `apps/api/prompts/rag/
+  answer.v1.{system,user}.j2`, rendered by `services/prompts.py` and pinned by
+  `RAG_PROMPT_TEMPLATE` / `RAG_PROMPT_VERSION`. Every answer records which
+  template and version produced it, because configuration is *current* and an
+  answer is *historical* — an evaluation run (Ragas, DeepEval) cannot compare two
+  prompts otherwise.
+- **Untrusted text is delimited, not escaped.** The question and the retrieved
+  passages are fenced inside `CONTEXT`/`QUESTION` markers, and the system prompt
+  states that everything inside them is data to be read rather than instructions
+  to be followed. A prompt-level control, because no character-escaping scheme
+  makes a sentence stop being a sentence.
+- **The context budget is in characters and is enforced before the provider is
+  called.** Same reasoning as `INDEX_CHUNK_SIZE`: counting tokens needs the
+  provider's tokenizer, which is the coupling the provider abstraction exists to
+  prevent. Enforcing it afterwards means discovering the overflow *after* the
+  request was sent, billed, and waited for — or, on some providers, having it
+  silently truncated with nothing to say which passages were lost. Passages are
+  consumed in relevance order; the one that would overflow is clipped if a
+  readable remainder is left and dropped otherwise, and once one is dropped the
+  rest are too, because skipping ahead to a shorter passage would reorder the
+  evidence by length.
+- **Citations carry the four references the spec names** — document, version,
+  page, case — plus the excerpt *as it was placed in the prompt*, which is the
+  honest evidence for an answer. The chunk number, the point id, the embedding
+  model, and the vector are all available at that layer and are all withheld.
+  **Every source is returned, whether the model cited it or not**, each flagged
+  `referenced`: a model that forgot a marker has not made the evidence disappear,
+  and the flag keeps the list complete and honest at once. A marker pointing at
+  no source is **removed from the prose** and counted — a dangling reference in a
+  legal answer invites a reader to look for a source that does not exist.
+- **The answer language is settled once, and detected `en` becomes French.**
+  `detect_language` tells French from English by diacritics, and *"Quand le loyer
+  est-il payable ?"* is impeccable French containing none — so on a short
+  question the heuristic cannot do better than a coin flip. Since
+  `project-overview.md` names Arabic and French as the interface and
+  AI-interaction languages, French is the right fallback; an explicit `language`
+  on the request always wins, and is what the localized frontend will send.
+- **A failure is a 503 naming its cause**, never a 500: `retrieval_unavailable`,
+  `llm_unavailable`, `timeout`, `llm_failure`, `malformed_response`,
+  `context_overflow`, `unknown`. A rejected *request* (an unanswerable question,
+  an inaccessible filter) keeps its own 4xx and is deliberately **not** counted
+  as a pipeline failure — the failure rate is a health signal, and a badly-formed
+  question says nothing about the pipeline's health. There is deliberately **no
+  failure code for "no supporting evidence"**.
+- **The whole-run deadline is checked between stages, not inside them**, for the
+  reason indexing records: neither the search service nor a provider SDK accepts
+  a deadline that can be moved mid-call, so the honest guarantee is "no new stage
+  begins after the deadline". The provider is given the *smaller* of its own
+  timeout and what remains of the run's.
+- **Retries live in the provider, with exponential backoff**, and only transient
+  failures are retried: a rejected credential retried three times is three
+  refusals, slower and billed.
+- **No question, passage, or answer reaches a log.** Every run is logged and
+  correlated by the *same* salted fingerprint a search for that text produces, so
+  an operator can trace a failing question across both surfaces while learning
+  nothing about the matter. `RAG_LOG_QUESTIONS` adds the question beside the
+  fingerprint; there is deliberately **no switch that logs the answer**.
+- **No entity and no migration.** A question is not a persisted run with a
+  lifecycle anyone polls, and a row per question would be write amplification
+  derived from the user's question. Metrics accumulate in the process behind a
+  `RagMetricsRecorder`, exactly as search's do; conversations *are* persisted, by
+  the AI Assistant, which is a different feature.
+- **Two endpoints only** (`POST /api/v1/rag/answer`, `GET /api/v1/rag/metrics`),
+  and a test asserts there is no third: conversations, streaming, follow-up
+  suggestions, and feedback are the assistant's.
 
 ### Timeline & Audit Trail
 

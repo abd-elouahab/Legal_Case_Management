@@ -1,0 +1,15 @@
+CONTEXT
+{% for source in sources %}
+[{{ source.marker }}] {{ source.document_name }} — version {{ source.document_version }}, page {{ source.page_number }}
+{{ source.text }}
+
+{% endfor %}
+END CONTEXT
+
+QUESTION
+{{ question }}
+END QUESTION
+
+Answer the question in {{ language_name }}, using only the sources above, citing
+each statement with its source number. If the sources do not support an answer,
+reply with {{ insufficient_marker }} alone.

@@ -33,11 +33,15 @@ from services.embedding import Embedder, get_embedder
 from services.indexing import IndexingService, IndexJob
 from services.indexing_worker import index_queue
 from services.job_queue import JobQueue
+from services.llm import LLMProvider, get_llm_provider
 from services.login_throttle import LoginThrottle
 from services.ocr import OcrService
 from services.ocr_engine import OcrEngine, get_ocr_engine
 from services.ocr_queue import OcrJobQueue
 from services.ocr_worker import ocr_queue
+from services.prompts import PromptLibrary, get_prompt_library
+from services.rag import RagService
+from services.rag_metrics import RagMetricsRecorder, get_rag_metrics
 from services.search import SearchService
 from services.search_metrics import SearchMetricsRecorder, get_search_metrics
 from services.search_ranking import Ranker, get_ranker
@@ -342,6 +346,69 @@ def get_search_service(
 
 
 SearchServiceDep = Annotated[SearchService, Depends(get_search_service)]
+
+
+def get_prompt_library_dependency() -> PromptLibrary:
+    """Provide the configured prompt library.
+
+    The instance is process-wide (see
+    :func:`~services.prompts.get_prompt_library`) because it owns Jinja's
+    compiled-template cache, but it is still reached through a dependency so a
+    test can override it and exercise the pipeline against a template of its own
+    — the same reason the embedder is a dependency despite being a singleton.
+    """
+    return get_prompt_library()
+
+
+def get_llm_provider_dependency() -> LLMProvider:
+    """Provide the configured language-model provider.
+
+    Process-wide for the same reason: it owns an HTTP client and its connection
+    pool. Reached through a dependency so an integration test can substitute a
+    scripted provider and exercise the endpoints **without an API key, without a
+    network call, and without paying a vendor per assertion** — which is the only
+    way the failure paths (a timeout, a refusal, an empty completion) are
+    testable at all.
+    """
+    return get_llm_provider()
+
+
+def get_rag_metrics_recorder() -> RagMetricsRecorder:
+    """Provide the process-wide RAG metrics recorder.
+
+    Process-wide rather than per request for the same reason the search recorder
+    is: a counter rebuilt on every request counts to one. A test overrides this
+    so assertions about the metrics endpoint do not depend on traffic another
+    test produced.
+    """
+    return get_rag_metrics()
+
+
+def get_rag_service(
+    search: Annotated[SearchService, Depends(get_search_service)],
+    prompts: Annotated[PromptLibrary, Depends(get_prompt_library_dependency)],
+    provider: Annotated[LLMProvider, Depends(get_llm_provider_dependency)],
+    metrics: Annotated[RagMetricsRecorder, Depends(get_rag_metrics_recorder)],
+) -> RagService:
+    """Provide the RAG pipeline with its collaborators injected.
+
+    **The search service is the pipeline's only retrieval collaborator, and that
+    is the load-bearing line in this function.** ``12-rag-pipeline.md`` forbids
+    querying the vector database directly when a retrieval abstraction exists,
+    and this is where that would be undone: injecting a ``VectorSearcher`` or a
+    ``SearchRepository`` here would give the pipeline a way to reach a passage
+    without the case scope the search service applies. It takes neither, so the
+    authorization chain — passage → document → case — holds structurally rather
+    than by discipline.
+
+    There is deliberately **no timeline recorder, no job queue, and no database
+    session**: answering a question changes nothing, so it has nothing to
+    announce, nothing to schedule, and nothing to write.
+    """
+    return RagService(search, prompts, provider, metrics=metrics)
+
+
+RagServiceDep = Annotated[RagService, Depends(get_rag_service)]
 
 
 def get_ocr_service(

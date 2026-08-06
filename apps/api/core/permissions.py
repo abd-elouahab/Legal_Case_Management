@@ -146,8 +146,26 @@ class Permission(StrEnum):
     NOTIFICATIONS_MANAGE = "notifications:manage"
 
     # --- AI ----------------------------------------------------------------- #
+    #: Put a question to the RAG pipeline and receive a grounded, cited answer.
+    #: Separate from ``ai:chat`` because the two are different capabilities: this
+    #: one is a single stateless question against the pipeline, while ``ai:chat``
+    #: is the assistant's conversational surface with its persisted history. A
+    #: deployment may reasonably grant one and withhold the other.
+    #:
+    #: Note that holding it grants nothing on its own: the pipeline retrieves
+    #: **only** through :class:`~services.search.SearchService`, so every passage
+    #: an answer is built from is one the caller could already open, and a caller
+    #: party to no case receives "no supporting information found" rather than an
+    #: answer drawn from somebody else's file.
+    AI_ASK = "ai:ask"
     AI_CHAT = "ai:chat"
     AI_GENERATE_REPORT = "ai:generate-report"
+    #: Read platform-wide RAG metrics — request counts, latency, retrieval
+    #: latency, token usage, grounding rate, failures. Not scoped to a case, so
+    #: it is deliberately an administrative capability rather than something
+    #: every questioner holds, exactly like ``search:monitor`` and
+    #: ``indexing:monitor``.
+    AI_MONITOR = "ai:monitor"
 
     # --- Settings ----------------------------------------------------------- #
     SETTINGS_VIEW = "settings:view"

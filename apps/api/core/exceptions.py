@@ -733,6 +733,74 @@ class SearchAccessDeniedError(AuthorizationError):
 
 
 # --------------------------------------------------------------------------- #
+# RAG pipeline errors
+#
+# There is deliberately **no error for "no supporting evidence"**. An answer that
+# says the documents do not support one is a *successful* run of the pipeline —
+# `12-rag-pipeline.md`'s "No Evidence Handling" section requires exactly that
+# response — and a 404 would make "the corpus does not cover this" look like "the
+# endpoint does not exist".
+#
+# There is also **no per-resource denial of its own**. The pipeline retrieves
+# only through :class:`~services.search.SearchService`, which already refuses a
+# case or document the caller is not party to with
+# :class:`SearchAccessDeniedError`; a second, parallel denial here would be a
+# second authorization rule to keep in step with the first.
+# --------------------------------------------------------------------------- #
+
+
+class InvalidQuestionError(AppException):
+    """The question carries nothing to answer.
+
+    422 because the request *is* malformed: an empty question, one shorter than
+    :data:`~core.rag.MIN_QUESTION_LENGTH`, or one made entirely of punctuation.
+    Refused rather than answered, because retrieving on it returns arbitrary
+    passages and the model then writes a confident paragraph out of them — which
+    is precisely the fabrication this pipeline exists to prevent.
+    """
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    error_code = "invalid_question"
+    message = "Enter a question of at least two characters."
+
+
+class RagUnavailableError(AppException):
+    """A dependency the pipeline needs could not be reached, or failed.
+
+    503 rather than 500: the request is valid and the platform is not broken —
+    retrieval or the language model is unavailable, which is an operational
+    condition that resolves without any change to the request. The caller may
+    retry the identical question.
+
+    The cause is carried as ``error_code`` so a client can distinguish "no model
+    is configured here" from "retrieval is down" from "the model timed out"
+    without parsing a sentence, and so the monitoring view can group failures the
+    same way OCR, indexing, and search do.
+    """
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    error_code = "rag_unavailable"
+    message = "The AI assistant is temporarily unavailable."
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message, error_code=code)
+
+
+class RagDisabledError(AppException):
+    """The RAG pipeline is switched off for this deployment.
+
+    503 rather than 404: the capability exists and the request is valid — the
+    deployment has turned answer generation off, which is a temporary condition
+    an operator controls. Documents, indexes, and semantic search are unaffected;
+    only grounded answers are refused.
+    """
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    error_code = "rag_disabled"
+    message = "The AI assistant is currently disabled on this platform."
+
+
+# --------------------------------------------------------------------------- #
 # Timeline errors
 #
 # Only two, because the timeline is read-only over HTTP: events are published by
