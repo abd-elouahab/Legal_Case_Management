@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from models.case import Case, CasePriority, CaseStatus
 from models.document import Document, DocumentCategory, DocumentVersion
+from models.indexing import DocumentIndex, IndexStatus
 from models.ocr import OcrPage, OcrResult, OcrStatus
 from models.timeline import TimelineEvent, TimelineEventCategory, TimelineEventType
 from models.user import User, UserRole, UserStatus
@@ -19,7 +20,9 @@ __all__ = [
     "CaseStatus",
     "Document",
     "DocumentCategory",
+    "DocumentIndex",
     "DocumentVersion",
+    "IndexStatus",
     "OcrPage",
     "OcrResult",
     "OcrStatus",

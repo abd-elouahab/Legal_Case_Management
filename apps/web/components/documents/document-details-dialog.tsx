@@ -32,6 +32,7 @@ import { LoadingState } from "@/components/shared/loading-state";
 import { Spinner } from "@/components/shared/spinner";
 import { DocumentCategoryBadge } from "@/components/documents/document-badges";
 import { DocumentVersionHistory } from "@/components/documents/document-version-history";
+import { DocumentIndexPanel } from "@/components/indexing/document-index-panel";
 import { DocumentOcrPanel } from "@/components/ocr/document-ocr-panel";
 import {
   documentErrorMessage,
@@ -292,6 +293,15 @@ function DocumentDetailsContent({
             document rather than on a screen of its own. Gated on `ocr:view`,
             which the API requires independently. */}
         <DocumentOcrPanel document={document} />
+      </Protected>
+
+      <Protected permission={PERMISSION.indexingView}>
+        <Separator />
+        {/* Directly after extraction, because it is the next stage of the same
+            pipeline and reads the text the panel above produced. Gated on
+            `indexing:view`, which the API requires independently — a court
+            representative holds it, and holds neither retry nor rebuild. */}
+        <DocumentIndexPanel document={document} />
       </Protected>
 
       <Separator />

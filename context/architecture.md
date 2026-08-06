@@ -20,7 +20,9 @@
 | LLM Gateway | LiteLLM | Unified interface for OpenAI, Ollama, and future models |
 | Embeddings | BAAI bge-m3 | Generate document embeddings |
 | OCR | Tesseract OCR + pytesseract + pdf2image (Poppler) + Pillow | Text extraction from PDFs, scanned PDFs, and images. OCRmyPDF was not needed: pdf2image renders pages and pytesseract reads them, which is the same pipeline with one fewer dependency. Behind the `OcrEngine` protocol, so it is replaceable |
-| Background Jobs | Bounded thread pool in the API process (`services/ocr_queue.py`); Trigger.dev or Celery + Redis when a second consumer arrives | OCR today; indexing, notifications, and scheduled tasks later. The job's identity, state, and concurrency control live in PostgreSQL rather than in the queue, so the runner is one file to replace |
+| Chunking | LangChain `RecursiveCharacterTextSplitter` (`langchain-text-splitters`) | Splits extracted text into passages, paragraph-first, with Arabic sentence punctuation added to the separator list. Behind the `Chunker` protocol (`services/chunking.py`), so it is replaceable |
+| Vector persistence | `qdrant-client` behind the `VectorStore` protocol (`services/vector_store.py`) | The only module that speaks Qdrant's data model. Exposes write, delete, and count — **and deliberately no query**, so retrieval cannot be smuggled in through it |
+| Background Jobs | Two bounded thread pools in the API process — `services/ocr_queue.py` (OCR) and the generic `services/job_queue.py` (indexing); Trigger.dev or Celery + Redis when a second consumer arrives | OCR and indexing today; notifications and scheduled tasks later. Separate pools, because the two stages fail differently and are sized differently. The job's identity, state, and concurrency control live in PostgreSQL rather than in the queue, so the runner is one file to replace |
 | Email Service | SMTP / Mailpit | Email notifications |
 | WhatsApp Integration | WhatsApp Business API | Real-time WhatsApp alerts |
 | Authentication | JWT + OAuth2 | Secure authentication and authorization |
@@ -66,7 +68,14 @@
   `core/ocr.py`, `repositories/ocr.py`, `services/ocr.py`,
   `services/ocr_engine.py`, `services/ocr_queue.py`, `services/ocr_worker.py`,
   `services/ocr_access.py`, `api/v1/ocr/`, plus `apps/web/components/ocr/`).
-  Indexing and embeddings are later features that consume the text OCR persists.
+  **Document indexing** attaches to it the same way and consumes the text OCR
+  persists (`models/indexing.py`, `core/indexing.py`,
+  `repositories/indexing.py`, `services/indexing.py`, `services/chunking.py`,
+  `services/embedding.py`, `services/vector_store.py`,
+  `services/job_queue.py`, `services/indexing_worker.py`,
+  `services/indexing_access.py`, `api/v1/indexing/`, plus
+  `apps/web/components/indexing/`). Semantic search, RAG, and the assistant are
+  later features that read the vectors indexing writes.
 - `modules/reports` — AI-generated reports, legal summaries, exports, and report history.
 - `modules/notifications` — Real-time notifications, email notifications, WhatsApp alerts, and reminder scheduling.
 - `modules/users` — Administrator, lawyer, and court representative management.
@@ -77,13 +86,17 @@
 - `modules/localization` — Arabic and French translations, language switching, and RTL support.
 - `services/ai` — Retrieval-Augmented Generation (RAG), semantic search, summarization, information extraction, report generation, compliance checking, and multilingual AI services.
 - `services/workers` — Background workers responsible for OCR, embeddings, indexing, notifications, and scheduled tasks.
-  The OCR worker is implemented inside `apps/api` (`services/ocr_queue.py`,
-  `services/ocr_worker.py`, started and drained by `core/lifespan.py`), following
-  the same "no separate deployable until one is needed" reasoning as Cases,
-  Documents, and Timeline. It is a bounded thread pool today; the queue sits
-  behind the `OcrJobQueue` protocol, and the job's identity, state, and
-  concurrency control live in PostgreSQL, so promoting it to a standalone Celery
-  or Trigger.dev worker replaces one file rather than the feature.
+  The OCR and indexing workers are implemented inside `apps/api`
+  (`services/ocr_queue.py` + `services/ocr_worker.py`, and
+  `services/job_queue.py` + `services/indexing_worker.py`, all started and
+  drained by `core/lifespan.py`), following the same "no separate deployable
+  until one is needed" reasoning as Cases, Documents, and Timeline. Both are
+  bounded thread pools today; each sits behind a protocol, and the job's
+  identity, state, and concurrency control live in PostgreSQL, so promoting
+  either to a standalone Celery or Trigger.dev worker replaces one file rather
+  than the feature. `services/job_queue.py` is the **generic** form — typed by
+  the job it carries — introduced by indexing so the machinery is written once;
+  `services/ocr_queue.py` predates it and is the candidate to fold into it.
 - `packages/shared` — Shared DTOs, schemas, utilities, constants, and API contracts.
 - `infrastructure` — Docker Compose, Nginx, monitoring, deployment scripts, CI/CD, and environment configuration.
 
@@ -106,6 +119,8 @@ Stores structured business data:
 - Document Versions
 - OCR Results (one per document version)
 - OCR Pages (extracted text, one row per page)
+- Document Indexes (one indexing run per document version — the run's state and
+  what it produced; the chunks and vectors themselves live in Qdrant)
 - Lawyer Assignments
 - Clients
 - Hearings
@@ -127,6 +142,22 @@ Stores AI knowledge:
 - Semantic search indexes
 - Chunk metadata
 - Retrieval information
+
+Document chunks live in the `QDRANT_COLLECTION` collection (`document_chunks` by
+default, created on the first indexing run at `EMBEDDING_DIMENSIONS` with
+**cosine** distance, because the embedder returns unit-length vectors). Each
+point's id is **derived** from `(document_id, document_version, page_number,
+chunk_number)` as a UUID5 over a fixed namespace — never random — which is what
+makes writing the same chunk twice an overwrite rather than a duplicate. Its
+payload carries exactly what `10-document-indexing.md` lists (document, version,
+case, page, chunk number, language, timestamps) plus the passage text and the
+embedding model: the text so a future search result is readable without a second
+round trip, the model because changing models requires re-indexing and a point
+that does not say which model built it cannot be told apart from one that does
+not need rebuilding. **Nothing is deleted except by version**: a rebuild removes
+that version's points before writing its replacements, so a shorter rebuild
+leaves no stale tail, while a replacement's index is built without destroying the
+previous version's — which is still the right answer for anyone reading it.
 
 ---
 
@@ -288,6 +319,14 @@ Role-Based Access Control, implemented per
     because a retry consumes real processing capacity: lawyers hold it, court
     representatives do not. `ocr:monitor` gates the platform-wide metrics view,
     which is administrative and deliberately not scoped to a case.
+  - `indexing:view` / `indexing:reindex` / `indexing:monitor` extend the same
+    shape one stage further. `services/indexing_access.py` owns no policy either;
+    it delegates to `DocumentAccessPolicy`, so the chain is **index → document →
+    case**, and an index can never be more visible than the extracted text it was
+    built from. `indexing:reindex` is withheld from court representatives for the
+    same reason as `ocr:retry`, only more strongly: a rebuild re-embeds every
+    passage of the document, which is the most expensive operation the platform
+    performs.
 - **`AuthorizationService`** (`services/authorization.py`) evaluates every
   access decision — require role / permission / any / all — in both a boolean
   (`has_*`) and a raising (`require_*`) form. It is stateless and pure.
@@ -439,6 +478,66 @@ about embeddings, vectors, retrieval, or an LLM.
   `engine_failure`, `GET /ocr/metrics` reports `engine_available: false`, the
   uploaded document is untouched, and every run can be retried once they are
   installed.
+
+### Document Indexing
+
+Implemented per `context/feature-specs/10-document-indexing.md`. The second stage
+of the AI pipeline: it begins where OCR ends and **ends at persisted vectors**,
+deliberately containing nothing about search, ranking, retrieval, RAG, or an LLM.
+
+- **An index belongs to a document *version*, not to a document.**
+  `document_indexes` is keyed `(document_id, document_version)` by a unique
+  constraint, which is the whole of the spec's idempotency requirement: a rebuild
+  re-uses the row, and a replacement gets its own index while the previous
+  version keeps the one built from *its* text.
+- **One table, not two.** OCR needed a run table and a text table because the
+  text has nowhere else to live. Indexing needs one: the chunks and their
+  embeddings live in Qdrant, and duplicating them into PostgreSQL would create
+  two stores that can disagree about what is indexed. What PostgreSQL keeps is
+  the *run* — the part a lawyer polls, an operator monitors, and a rebuild
+  re-uses.
+- **Concurrency is a conditional `UPDATE`, not a lock**, exactly as OCR's is:
+  `IndexingRepository.claim` moves a run `pending → indexing` with
+  `WHERE status = 'pending'`, so exactly one worker updates a row.
+- **Re-indexing is idempotent through two mechanisms that cover different
+  halves.** A point's id is *derived* from its position in the document, so
+  writing the same chunk twice is an overwrite — that is "avoid duplicate
+  vectors". And the version's previous points are deleted before the new ones are
+  written, so a rebuild producing *fewer* chunks leaves no tail behind — that is
+  "replace outdated vectors". Either alone is insufficient.
+- **Three seams keep the feature replaceable**, in the shape `OcrEngine`
+  established: `services/chunking.py` is the only module that imports a text
+  splitter, `services/embedding.py` the only one that imports
+  `sentence_transformers` or touches a model, and `services/vector_store.py` the
+  only one that speaks Qdrant's data model. Every library failure is translated
+  into an `IndexFailureCode` at its boundary, so the service records a *cause*
+  without knowing what a `ValidationError` is — and so a library message, which
+  can echo the text it was processing, never leaves the module.
+- **Chunking preserves the page.** Pages are split one at a time rather than
+  concatenated, because a chunk straddling two pages has no honest answer to
+  "which page is this?" — and the page is what a future citation points at. A
+  page that yields nothing contributes no chunk and does not renumber the pages
+  after it, because the page number travels *on* the chunk.
+- **The embedding model is loaded lazily, once, per process.** bge-m3 is roughly
+  2 GB: loading it at import would make startup depend on a model download, and
+  loading it per document would make indexing unusable. A deployment without it
+  still starts and reports `embedding_available: false`.
+- **A failure is a recorded state, not a failed request.** Every way indexing can
+  go wrong becomes a `failed` run with a machine-readable `error_code`; the
+  extracted text, the document, its metadata, and its version history are
+  untouched, and the run stays retryable. The service writes to
+  `document_indexes` only, so that guarantee is structural rather than a matter
+  of care. Vectors already written by a failed attempt are deliberately **kept**:
+  they are correct passages under derived ids, so a rebuild overwrites them, and
+  a partial index is more useful than none while the failure is investigated.
+- **Indexing inherits document permissions, which inherit case permissions** —
+  `services/indexing_access.py` owns no policy of its own, exactly as
+  `ocr_access.py`, `document_access.py`, and `timeline_access.py` do not. Every
+  vector's payload carries its `case_id` and `document_id`, which is the metadata
+  a future search will need to translate that same scope into a Qdrant filter.
+- **No passage ever reaches a log.** A filename appears in a timeline description
+  and nowhere in the application log; a chunk's text appears in neither. The logs
+  carry identifiers, statuses, chunk counts, and character counts only.
 
 ### Timeline & Audit Trail
 

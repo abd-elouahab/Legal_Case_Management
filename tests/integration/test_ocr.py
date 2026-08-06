@@ -1079,26 +1079,46 @@ class TestDependencyWiring:
     def test_the_document_service_schedules_through_the_ocr_service(
         self, db_session: Any, document_storage: InMemoryDocumentStorage
     ) -> None:
-        from api.deps import get_document_service, get_ocr_service
+        from api.deps import get_document_service, get_indexing_service, get_ocr_service
         from repositories.case import CaseRepository
         from repositories.document import DocumentRepository
+        from repositories.indexing import IndexingRepository
         from repositories.ocr import OcrRepository
         from repositories.timeline import TimelineRepository
+        from services.chunking import get_chunker
+        from services.embedding import get_embedder
+        from services.indexing import IndexJob
+        from services.job_queue import NullJobQueue
         from services.ocr import OcrService
         from services.ocr_engine import get_ocr_engine
         from services.ocr_queue import NullOcrJobQueue
         from services.timeline import TimelineService
+        from services.vector_store import get_vector_store
 
         cases = CaseRepository(db_session)
         documents = DocumentRepository(db_session)
+        results = OcrRepository(db_session)
         timeline = TimelineService(TimelineRepository(db_session), cases)
+        # Indexing is a publisher too, and `get_ocr_service` now takes one — so it
+        # is built the same way the application does, through its own factory.
+        indexing = get_indexing_service(
+            IndexingRepository(db_session),
+            documents,
+            results,
+            get_chunker(),
+            get_embedder(),
+            get_vector_store(),
+            NullJobQueue[IndexJob](name="indexing"),
+            timeline,
+        )
         ocr = get_ocr_service(
-            OcrRepository(db_session),
+            results,
             documents,
             document_storage,
             get_ocr_engine(),
             NullOcrJobQueue(),
             timeline,
+            indexing,
         )
 
         service = get_document_service(documents, cases, document_storage, timeline, ocr)

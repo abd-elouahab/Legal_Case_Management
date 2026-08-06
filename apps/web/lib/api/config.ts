@@ -101,6 +101,29 @@ export const OCR_ENDPOINTS = {
 } as const;
 
 /**
+ * Document indexing endpoint paths, relative to the version prefix.
+ *
+ * The same shape as {@link OCR_ENDPOINTS} and for the same reasons: the
+ * per-document paths sit under `/documents` because an index is always *of* a
+ * document, while the list and metrics view sit under `/indexing`. There is no
+ * create path — indexing is scheduled when extraction completes, and the only
+ * thing a client asks for is a *rebuild*.
+ *
+ * **There is no search path, and there will not be one here.** Reading the index
+ * back is Semantic Search's feature; this module only reports what was built.
+ */
+export const INDEXING_ENDPOINTS = {
+  list: "/indexing",
+  metrics: "/indexing/metrics",
+  status: (documentId: string, version?: number) =>
+    withVersion(`/documents/${encodeURIComponent(documentId)}/index`, version),
+  history: (documentId: string) =>
+    `/documents/${encodeURIComponent(documentId)}/index/history`,
+  reindex: (documentId: string, version?: number) =>
+    withVersion(`/documents/${encodeURIComponent(documentId)}/index/reindex`, version),
+} as const;
+
+/**
  * Timeline endpoint paths, relative to the version prefix.
  *
  * Read-only, and the shape says so: there is no create, update, or delete path

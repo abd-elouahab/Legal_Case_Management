@@ -93,6 +93,12 @@ EVENT_CATEGORIES: Mapping[TimelineEventType, TimelineEventCategory] = MappingPro
         TimelineEventType.OCR_COMPLETED: TimelineEventCategory.DOCUMENT,
         TimelineEventType.OCR_FAILED: TimelineEventCategory.DOCUMENT,
         TimelineEventType.OCR_RETRIED: TimelineEventCategory.DOCUMENT,
+        # Indexing, for the same reason: making a document searchable is
+        # something that happened to that document.
+        TimelineEventType.INDEXING_STARTED: TimelineEventCategory.DOCUMENT,
+        TimelineEventType.INDEXING_COMPLETED: TimelineEventCategory.DOCUMENT,
+        TimelineEventType.INDEXING_FAILED: TimelineEventCategory.DOCUMENT,
+        TimelineEventType.INDEXING_RETRIED: TimelineEventCategory.DOCUMENT,
     }
 )
 
@@ -126,6 +132,13 @@ DEFAULT_TITLES: Mapping[TimelineEventType, str] = MappingProxyType(
         TimelineEventType.OCR_COMPLETED: "Text Extraction Completed",
         TimelineEventType.OCR_FAILED: "Text Extraction Failed",
         TimelineEventType.OCR_RETRIED: "Text Extraction Retried",
+        # "Search Indexing" rather than "Embedding" or "Vectorization", for the
+        # same reason: a case history is read by lawyers, and the headline should
+        # name the capability it gives them rather than the machinery behind it.
+        TimelineEventType.INDEXING_STARTED: "Search Indexing Started",
+        TimelineEventType.INDEXING_COMPLETED: "Search Indexing Completed",
+        TimelineEventType.INDEXING_FAILED: "Search Indexing Failed",
+        TimelineEventType.INDEXING_RETRIED: "Search Indexing Requested",
     }
 )
 

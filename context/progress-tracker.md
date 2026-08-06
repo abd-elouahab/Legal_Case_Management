@@ -9,21 +9,375 @@ change.
 
 ## Current Goal
 
-- **Next:** AI Document Indexing (spec `10-document-indexing.md`). OCR Processing
-  is complete, and the text it persists — one row per page, in reading order,
-  NFC-normalised — is the canonical input that feature consumes. Nothing about
-  embeddings, vectors, chunking, retrieval, or an LLM was built here, as the OCR
-  spec requires.
+- **Next:** Semantic Search (the RAG pipeline's retrieval half). Document
+  Indexing is complete, and the vectors it writes — one point per passage in the
+  `QDRANT_COLLECTION` collection, each carrying its document, version, case,
+  page, chunk number, language, text, and embedding model — are the corpus that
+  feature queries. Nothing about search, ranking, retrieval, RAG, or an LLM was
+  built here, as the indexing spec requires: `services/vector_store.py` exposes
+  write, delete, and count and **no query method at all**, so retrieval must
+  arrive as its own module rather than by extension.
+  **The one thing Semantic Search must reuse** is the scope
+  `IndexingAccessPolicy.visibility_scope` already returns: every point's payload
+  carries `case_id` and `document_id` precisely so that scope becomes a Qdrant
+  filter rather than a second authorization scheme.
 
 ## Open Questions
 
-- **None outstanding.** Both questions raised during OCR Processing are closed:
-  Tesseract is installed and verified (see the live-engine validation below), and
-  the Arabic recognition question was investigated to root cause and resolved as
-  **no change required** — the evidence is recorded under "Arabic recognition,
-  investigated and closed" below.
+- **None outstanding.** The questions raised during OCR Processing remain closed
+  (Tesseract installed and verified; Arabic recognition investigated to root
+  cause and resolved as no change required), and Document Indexing raised none:
+  the embedding model, the vector database, and the chunking library were all
+  named by `ai-architecture.md` and the feature spec.
 
 ## Completed
+
+- **AI Document Indexing (spec `10-document-indexing.md`)** — the second stage of
+  the AI pipeline: the text OCR persisted is split into passages, each passage is
+  embedded, and the vectors and their metadata are stored in Qdrant, with the run
+  tracked through its own lifecycle. **Nothing about semantic search, RAG, the AI
+  assistant, or report generation was implemented** — the spec puts all four out
+  of scope, and the feature ends at persisted vectors.
+  - **Two new dependencies (backend only):** `langchain-text-splitters` (small,
+    pure Python) and `sentence-transformers`, both added to `requirements.txt`.
+    The second pulls **torch** (~2.5 GB installed) and downloads **BAAI/bge-m3**
+    (~2.3 GB) from Hugging Face **on first use, not at startup** — so a
+    deployment without the model still comes up, serves every other feature, and
+    reports `embedding_available: false`. No new frontend dependencies.
+  - **One entity** (`models/indexing.py` + migration `c47f2a91b8de`).
+    `document_indexes` is the *run*: status, start/finish, duration, attempt
+    count, chunk/page/character counts, the embedding model and its width, the
+    collection, the chunk size and overlap, the detected language, failure code
+    and message, who asked.
+  - **One table, not two, and that is the load-bearing decision.** OCR needed a
+    run table *and* a text table because the text has nowhere else to live.
+    Indexing needs one: the chunks and their embeddings live in **Qdrant**, which
+    is where `architecture.md` and `code-standards.md` both say document
+    embeddings belong. Duplicating them into PostgreSQL would create two stores
+    that can disagree about what is indexed, and the Postgres copy would be a
+    cache with no invalidation. What Postgres keeps is the part a lawyer polls,
+    an operator monitors, and a rebuild re-uses.
+  - **An index belongs to a document *version*, not to a document.** The unique
+    `(document_id, document_version)` constraint is the whole of the spec's
+    idempotency requirement, exactly as it is for OCR — enforced by the database
+    rather than only by the service, because the check-then-insert in between is
+    where a race lives.
+  - **Concurrency is a conditional `UPDATE`, not a lock.**
+    `IndexingRepository.claim` moves a run `pending → indexing` with
+    `WHERE status = 'pending'` and reads the row count. No Redis key, nothing to
+    expire or leak — the row *is* the lock.
+  - **Re-indexing is idempotent through two mechanisms covering different
+    halves, and neither alone is sufficient.** A point's id is **derived** —
+    `uuid5(namespace, "document:version:page:chunk")`, never random — so writing
+    the same chunk twice is an *overwrite*: that is "avoid duplicate vectors",
+    and it holds whichever order two runs interleave in. And the version's
+    previous points are **deleted before** the new ones are written, so a rebuild
+    producing *fewer* chunks leaves no stale tail: that is "replace outdated
+    vectors". Both are scoped to the **version**, which is what lets a
+    replacement's index be built without destroying the previous version's —
+    still the right answer for anyone reading that version. Verified against live
+    Qdrant, not only against a double.
+  - **Three seams, in the shape `OcrEngine` established, and they are the point
+    of the design.**
+    `services/chunking.py` is the **only** module that imports a text splitter:
+    it exposes a `Chunker` protocol and wraps LangChain's
+    `RecursiveCharacterTextSplitter`. `services/embedding.py` is the **only** one
+    that imports `sentence_transformers` or touches a model file: an `Embedder`
+    protocol over BAAI/bge-m3. `services/vector_store.py` is the **only** one
+    that speaks Qdrant's data model. Each has a `*_FACTORIES` registry, so a
+    second splitter, a second embedding backend, or an alternative vector
+    database is one class plus one entry — the spec's "multiple embedding models
+    / alternative vector databases" extensibility.
+  - **Every library failure is translated at its boundary** into an
+    `IndexFailureCode`, so the service records a *cause* without knowing what a
+    pydantic `ValidationError` is — and so a library message, which can echo the
+    text it was processing, never leaves the module. Asserted directly: a
+    chunker and an embedder made to fail on `"Contrat de bail"` produce an error
+    with that phrase nowhere in it.
+  - **`services/vector_store.py` has no query method, deliberately.** The spec
+    requires indexing to stay independent from retrieval, and the boundary is
+    **structural** rather than a matter of discipline: a search feature cannot be
+    smuggled in through this interface, it must add its own read-side module. A
+    test pins the protocol's member set, and a live check asserts the OpenAPI
+    document contains no path matching `search` or `query`.
+  - **Chunking preserves the page, because a citation points at one.** Pages are
+    split one at a time rather than concatenated — a chunk straddling two pages
+    has no honest answer to "which page is this?" — and the chunk number runs
+    across the document in reading order. A page that yields nothing contributes
+    no chunk and **does not renumber the pages after it**, because the page
+    number travels *on* the chunk rather than being inferred from a position.
+  - **The separator list carries Arabic sentence punctuation** — U+06D4 (full
+    stop), U+061F (question mark), U+060C (comma) — added to the library's
+    Latin-centric default. Without them an Arabic page has no sentence separator
+    at all and degrades straight to word splitting, which is precisely the
+    language the platform exists to serve. `keep_separator="end"`, not `True`:
+    `True` moves the separator to the *front* of the next passage, so a chunk
+    ends "Article 2" and the next begins ". Le loyer" — a fragment in a search
+    result and a stray full stop at the head of an embedded passage.
+  - **A fragment below 20 characters, or one with no letter at all, gets no
+    vector.** A splitter's last piece is routinely a page number or a footer
+    ("— 14 —"), and a vector for it can only ever be noise in a future search
+    result.
+  - **Language is per chunk, not per document** (`detect_language`), because a
+    Moroccan filing routinely carries an Arabic body and a French annex. Script
+    tells the three apart: a proportion of Arabic letters is conclusive at a
+    threshold well below half (a real Arabic filing quotes French party names in
+    Latin script throughout), and French is told from English by the diacritics
+    English does not have. Anything else is `und` rather than a guess — a wrong
+    label would silently exclude a passage from a filtered search. Deliberately a
+    heuristic and not a dependency: it runs on every chunk, needs no model, and
+    its answer is a *filter hint*, not a fact retrieval quality rests on.
+  - **The embedding model is loaded lazily, once, per process**, behind a lock.
+    Two gigabytes at import time would make startup depend on a model download;
+    per document would make indexing unusable; per thread would multiply the
+    platform's memory by the pool size. It is stateless once loaded, so sharing
+    it is safe as well as necessary — which is why `get_embedder()` returns a
+    process-wide instance while `get_ocr_engine()` returns a fresh object.
+  - **Vectors are normalised to unit length**, so Qdrant's cosine distance is a
+    dot product and vectors written months apart stay comparable. Confirmed
+    against a live collection: |v| = 1.000000.
+  - **A dimension mismatch fails once, loudly, rather than per point.** The
+    configured width and the loaded model's are compared before anything is
+    written, and an *existing* collection built for a different width is
+    **reported rather than recreated** — silently recreating it would delete
+    every vector on the platform, which is never the right response to a
+    configuration mistake.
+  - **`services/job_queue.py` is the generic form of the OCR queue**, typed by
+    the job it carries (PEP 695 syntax). `code-standards.md` asks for reusable
+    services rather than duplication, and a thread pool has nothing OCR-specific
+    about it. **`services/ocr_queue.py` was deliberately left untouched** — OCR
+    is shipped and this spec is not the place to refactor it — but it is now the
+    candidate to fold in the next time it is opened.
+  - **Indexing gets its own pool, not OCR's.** They compete for the same CPU but
+    fail differently and are sized differently: extraction is subprocess-bound
+    and parallelises cheaply (2 workers), while embedding holds a large model and
+    benefits from a single worker on a CPU-only host. One shared pool would make
+    a backlog of scans delay every index, and a slow index stall every upload's
+    extraction. Shutdown drains OCR **first**, because an OCR worker still
+    finishing can schedule an indexing job.
+  - **The hand-off is one line, and it is the only change OCR needed.**
+    `OcrService` gained an `IndexScheduler` — the same narrow-protocol shape as
+    `OcrScheduler` on `DocumentService`, so it cannot reach the read, rebuild, or
+    monitoring side — published after its commit and after the timeline.
+    Scheduling swallows its own failures: the text is persisted and the
+    extraction has succeeded, so a queueing problem must not undo either.
+  - **The deadline is checked *between* stages, not inside them**, and the
+    docstring says why: neither the splitter nor the model accepts a deadline,
+    and interrupting a forward pass is not something a thread can do safely — so
+    the honest guarantee is "no new stage begins after the deadline", which
+    bounds a run at one stage's overrun instead of claiming a precision the
+    libraries do not offer. The alternative, no deadline at all, is a worker
+    thread that never returns.
+  - **A failure is a recorded state, not a failed request** — the same posture as
+    OCR. Invalid OCR output, a chunking failure, an embedding failure, an
+    unreachable vector database, a timeout, and an `unknown` catch-all each
+    become an `error_code` on a `failed` run; an unexpected fault is caught,
+    logged with a traceback, and recorded as an ordinary failed run, because
+    `indexing` forever is the one state nothing recovers from without an
+    operator.
+  - **A failure cannot touch the extracted text or the document.** The service
+    writes to `document_indexes` only and holds no write path to `ocr_results`,
+    `ocr_pages`, or `documents` — so *"failures must preserve OCR data"* is
+    structural rather than a matter of care. Asserted over HTTP: after a failed
+    index the text reads back identically and the document is unchanged.
+  - **Vectors written by a failed attempt are deliberately kept.** They are
+    correct passages of the current version under derived ids, so a rebuild
+    overwrites them; deleting them would mean a failure at chunk 900 of 1000
+    throws away 899 good vectors, and a partial index is more useful than none
+    while the failure is investigated.
+  - **Indexing begins where extraction ends, and says so.** A document whose
+    version has no completed OCR run answers **409 `indexing_not_ready`**
+    *naming the extraction's actual state*, not 422 — nothing about the request
+    is malformed and nothing about the document is permanently unsuitable; it is
+    a sequencing conflict, and the caller can wait for it or retry the
+    extraction. Checked in the service rather than only in the worker, so the
+    caller learns *now* rather than watching a run fail a minute later.
+  - **Repository** (`repositories/indexing.py`): the claim, the natural-key
+    lookup, the version history, and the list — with filtering, sorting,
+    pagination, **and the case scope** all executing in the database. The
+    monitoring aggregate is **one grouped query**. The `case_id` column on the
+    table is what lets the scope be one subquery rather than two.
+  - **Schemas** (`schemas/indexing.py`): `IndexRead` (with computed
+    `is_terminal`, `is_active`, `can_reindex`, `duration_seconds`),
+    `IndexResultPage`, `IndexMetricsRead` (with computed `finished_runs`,
+    `average_duration_seconds`, `average_chunks_per_document`), `IndexListQuery`,
+    `IndexMetricsQuery`. **No schema carries a chunk, a vector, or a passage** —
+    a test asserts it on the field set, and a live check asserts it on the wire.
+  - **Per-resource authorization** (`services/indexing_access.py`): owns no
+    policy and **delegates to `DocumentAccessPolicy`, which delegates to
+    `CaseAccessPolicy`** — so the chain is index → document → case. Asserted as
+    the identity it is: unit tests compare this policy's verdict with the
+    document policy's *and* the OCR policy's for every role, and an HTTP test
+    asserts the document endpoint, the text endpoint, and the index endpoint
+    return the **same** status code for an unassigned lawyer.
+  - **Three permissions** (`core/permissions.py`, `core/roles.py`):
+    `indexing:view`, `indexing:reindex`, `indexing:monitor`. Lawyers hold view
+    and reindex; **court representatives hold view only** — a rebuild re-embeds
+    every passage of a document, which is by far the most expensive operation the
+    platform performs, and their role description does not extend to operating
+    the pipeline. Same reasoning as `ocr:retry`, only stronger.
+  - **Endpoints** (`api/v1/indexing/router.py`, two routers):
+    `GET /documents/{id}/index`, `GET /documents/{id}/index/history`,
+    `POST /documents/{id}/index/reindex` (**202**, because the work is accepted
+    rather than done), `GET /indexing` (status, document, case, failure-cause and
+    **embedding-model** filters, scoped in SQL), and `GET /indexing/metrics`.
+    The per-document routes live under `/documents` but are registered from the
+    indexing module and tagged `indexing`, exactly as OCR and the timeline do.
+  - **The `embedding_model` filter is the one that is not convenience.**
+    `ai-architecture.md` states that changing the embedding model requires
+    re-indexing everything, and this is how an operator finds the documents still
+    built with the previous one — which is also why the model is recorded on each
+    run rather than read from configuration.
+  - **Monitoring** (`GET /indexing/metrics`, gated on `indexing:monitor`): the
+    four figures the spec names — indexed documents, indexed chunks, average
+    duration, failures — plus the rates, the failure breakdown, the chunker and
+    model configuration, and **whether the model can load and Qdrant answers**.
+    Those last two matter because the counts cannot tell three situations apart:
+    a platform indexing nothing because no model is installed, one indexing
+    nothing because Qdrant is down, and one with nothing to index all show the
+    same zeros. It also reports **Qdrant's own vector count** rather than summing
+    the rows: a divergence between what the platform believes it indexed and what
+    is actually stored is precisely what an operator opens the page to find.
+    Verified over HTTP that no document id, case, or filename appears in it.
+  - **Errors** (`core/exceptions.py`): `DocumentIndexNotFoundError` (404),
+    `IndexingNotReadyError` (409, naming the extraction's state),
+    `IndexingAlreadyRunningError` (409), `InvalidIndexTransitionError` (409),
+    `IndexingDisabledError` (503), and `IndexAccessDeniedError` (403, generic
+    body). There is deliberately **no error for a failed index**.
+  - **Timeline: four new event types, and no timeline code changed.**
+    `indexing_started` / `indexing_completed` / `indexing_failed` /
+    `indexing_retried` were added to the registry with **no migration** — the
+    second module to exercise the promise `timeline_events.event_type` being a
+    `VARCHAR` was made for. Categorised as **document** events, and titled
+    "Search Indexing …" rather than "Embedding" or "Vectorization": a case
+    history is read by lawyers, and the headline should name the capability they
+    get rather than the machinery behind it.
+  - **Configuration:** `INDEXING_ENABLED`, `INDEX_CHUNKER`, `INDEX_CHUNK_SIZE`
+    (1000 characters), `INDEX_CHUNK_OVERLAP` (200), `INDEX_MAX_CHUNKS` (5000),
+    `INDEXING_TIMEOUT_SECONDS` (900), `INDEXING_WORKER_CONCURRENCY` (1),
+    `EMBEDDING_BACKEND`, `EMBEDDING_MODEL` (`BAAI/bge-m3`),
+    `EMBEDDING_DIMENSIONS` (1024), `EMBEDDING_BATCH_SIZE` (16),
+    `EMBEDDING_DEVICE`, `QDRANT_COLLECTION` (`document_chunks`), and
+    `QDRANT_UPSERT_BATCH_SIZE` (128). All documented in `.env.example`.
+    Chunk size is in **characters, not tokens**, deliberately: tokens would need
+    the model's tokenizer loaded, which would couple the chunker to the embedder
+    and make chunk boundaries move when the model does.
+  - **Logging:** `indexing_requested`, `indexing_started`, `indexing_completed`,
+    `indexing_failed`, `indexing_retried`, plus `indexing_not_scheduled`,
+    `indexing_job_skipped`, `indexing_reindex_rejected`, `indexing_access_denied`,
+    `indexing_chunks_truncated`, `chunker_unavailable`, `embedder_unavailable`,
+    `vector_store_operation_failed`, and every lookup failure. Identifiers,
+    statuses, chunk counts, **character counts** — and **never a filename, never
+    a description, and never a character of an indexed passage**.
+  - **Frontend:** `types/indexing.ts` (a **closed** status union, because the
+    lifecycle is a database enum on the server, alongside **open** failure-code,
+    embedding-model, and language sets, because a future backend may report a
+    value this build has never heard of), `types/indexing-management.ts`,
+    `lib/validation/indexing.ts` (response schemas only — there is no indexing
+    *form*), `lib/api/indexing.ts` (typed client, snake_case ↔ camelCase in one
+    place, and **no search call**), and `hooks/use-indexing.ts`.
+  - **The client polls at 5 s, not OCR's 3 s.** Embedding a document takes tens
+    of seconds where extraction takes seconds, so a three-second tick would be
+    dozens of requests each saying "still working". The decision to keep going
+    reads the server's computed `isActive` rather than a client-side list of
+    running states.
+  - **UI** (`components/indexing/`): `IndexStatusBadge` (state as text, never
+    colour alone; the spinner turns only while the run is actually moving, and
+    the success icon is a **magnifying glass** rather than a tick because what a
+    successful index gives the reader is that the document is *searchable*),
+    `DocumentIndexPanel` (embedded in the document details dialog directly below
+    the extraction panel, because it is the next stage of the same pipeline and
+    reads the text that panel produced), and `IndexMetricsPanel` (on
+    `/documents`, beside the OCR one, gated on `indexing:monitor`).
+  - **The panel shows the model, and that is not decoration.** Changing the
+    embedding model requires re-indexing, so "which model is this document on?"
+    is the question that decides whether a rebuild is needed.
+  - **Every UI gate names a permission, never a role**, and no action the API
+    would refuse is offered: Rebuild is hidden without `indexing:reindex` (so a
+    court representative never sees it) and disabled while `canReindex` is false
+    (so it never produces a 409 the user could not have predicted). A missing
+    record renders as "not indexed yet" with an action, not as an error.
+  - **One real defect, found by live Qdrant rather than by tests — and it is the
+    same *class* of fault as the two before it.** `_version_filter` returned a
+    `FilterSelector`, which is what `delete` wants; `count` wants the **bare
+    `Filter`** and rejected it with a pydantic `ValidationError`. The stub client
+    in the unit tests accepted either shape, so all 25 of them passed. Fixed by
+    returning the bare filter and wrapping at the delete call site, and a
+    regression test now asserts the two shapes **against the driver's own
+    models** — verified to fail on the old code and pass on the new one.
+    **General lesson, and the third of its kind in this codebase: a double that
+    accepts anything proves nothing about a driver's contract. What the SQLite
+    test database is to PostgreSQL types, a hand-written stub is to a client
+    library's request models — both need either a live check or an assertion
+    against the real types.**
+  - **Two pre-existing tests were updated, both because the design worked.**
+    `test_a_successful_run_publishes_started_then_completed` pinned the timeline
+    to exactly OCR's two events, which now legitimately gains indexing's — it
+    asserts the pair as a *prefix* plus "no OCR event follows the hand-off". And
+    the two dependency-wiring tests call `get_ocr_service` positionally, whose
+    signature grew by the `IndexScheduler` the feature adds; they now build it
+    through `get_indexing_service`, the same way the application does.
+  - **Validation (live Postgres + Redis + MinIO + Qdrant, real HTTP, real
+    model):** 1829 backend tests (up from 1524 — 305 of them for indexing) and
+    458 frontend tests (up from 422) pass, under both fixed and randomised
+    ordering; `ruff` clean across `apps/api` and `tests`, `mypy --strict` clean
+    on `apps/api`; `tsc` and ESLint clean; the production build succeeds and
+    prerenders every route. Migration verified on **live PostgreSQL 16 in both
+    directions**: the upgrade creates the `index_status` type with its four
+    labels in order, the table, all four indexes, the unique constraint, and all
+    three foreign keys (`document_id` CASCADE, `case_id` CASCADE, `requested_by`
+    SET NULL); the downgrade drops the table, every index, **and the type**
+    (confirmed absent from `pg_type`), and a re-upgrade is clean. **13/13 live
+    Qdrant checks** passed directly against the vector store: collection created
+    at the declared width with cosine distance, a repeat write duplicates
+    nothing, a shorter rebuild leaves no stale vectors, a second version lives
+    alongside the first, the payload round-trips with every key, and a width
+    mismatch is refused rather than recreating the collection.
+    **106/106 end-to-end HTTP checks passed** against a running API with the real
+    **BAAI/bge-m3** model (1024 dimensions) and real Qdrant: an upload returns
+    **201 immediately** and the whole pipeline — extract → chunk → embed → store —
+    completes on background workers; the run records the model, width,
+    collection, chunk settings, language, and duration; the vectors are **really
+    in Qdrant** with every metadata field the spec lists, at the declared width,
+    **unit length (|v| = 1.000000)**, in page order with gapless chunk numbers;
+    a rebuild answers **202**, re-uses the record, increments the attempt, and
+    produces **the same point ids and byte-identical vectors** — determinism
+    measured rather than asserted; a replacement is indexed separately and
+    **version 1's vectors survive**, with the history reading `[v1, v2]`; a
+    `.docx` gets no index and answers 404, while indexing it is **409
+    `indexing_not_ready`**; all five routes answer **401** with a
+    `WWW-Authenticate: Bearer` challenge anonymously; the assigned lawyer reads
+    and rebuilds, the **court representative reads but is refused a rebuild with
+    403**, and an unassigned lawyer is refused status, history, and rebuild —
+    with a body naming **neither permission nor role**, and with the **same
+    status code** the document and text endpoints give that caller; the list is
+    scoped in SQL (0 records for an unassigned lawyer), filters by case and by
+    embedding model, rejects an unknown parameter and an oversized page with 422,
+    answers a page past the end with an empty list, and its two sort directions
+    are exact reverses; metrics report the four figures, the rates summing to
+    100, the model and vector-database availability, and **Qdrant's own count** —
+    are refused to both restricted roles, reject `window_days=0`, and contain no
+    document id, case id, or filename; the case timeline carries
+    `indexing_started`, `indexing_completed`, and `indexing_retried`, all
+    categorised `document` and titled "Search Indexing …"; and a deleted
+    document's index answers 404. **Zero 5xx responses and no tracebacks in the
+    server log**; the log shows all the indexing events with **no filename, no
+    indexed passage, no password, and no JWT anywhere**. Frontend routes:
+    `/documents`, `/cases`, and `/dashboard` 307 to `/login` anonymously and 200
+    with a session cookie against the live API; no errors in the dev-server log.
+  - **Multilingual verified end to end through the real pipeline**, which is what
+    the spec's "multilingual, support Arabic and French" asks for: an accented
+    **French** page uploaded as a PDF was extracted, chunked, embedded, and
+    labelled `fr`; a dense **Arabic** page was extracted, chunked, embedded, and
+    labelled `ar`. Both completed in well under a second of indexing time on CPU.
+    Note that a French page written *without* accents is labelled `en` — correct
+    behaviour of a diacritic-based discriminator, and harmless: the label is a
+    filter hint, and bge-m3 embeds all three languages into one shared space.
+  - **Measured indexing cost, for whoever sizes the worker pool:** a
+    single-page filing indexed in **0.31–0.59 s** end to end on CPU (chunking,
+    embedding, and the Qdrant write), against a first-use model load of roughly
+    twenty seconds that is paid **once per process**. That ratio is the whole
+    argument for the lazy, process-wide, single-worker design.
 
 - **OCR Processing (spec `09-ocr-processing.md`)** — the first stage of the AI
   pipeline: machine-readable text extracted from uploaded documents in the

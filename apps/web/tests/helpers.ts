@@ -25,6 +25,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     "documents:upload",
     "ocr:view",
     "ocr:retry",
+    "indexing:view",
+    "indexing:reindex",
     "timeline:view",
     "timeline:create",
     "reports:view",
@@ -43,6 +45,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     // re-run extraction: `ocr:retry` consumes processing capacity, and the
     // court role's description does not extend to operating the pipeline.
     "ocr:view",
+    // Same reasoning one stage further on: read whether a document is
+    // searchable, but do not rebuild the index — a rebuild re-embeds every
+    // passage, which is the most expensive operation the platform performs.
+    "indexing:view",
     "timeline:view",
     "timeline:create",
     "notifications:view",
@@ -410,6 +416,86 @@ export function ocrMetricsPayload(overrides: Record<string, unknown> = {}) {
     engine_available: true,
     enabled: true,
     supported_extensions: ["jpeg", "jpg", "pdf", "png"],
+    ...overrides,
+  };
+}
+
+// --------------------------------------------------------------------------- //
+// Document indexing fixtures
+// --------------------------------------------------------------------------- //
+
+/** One indexing run in the API's wire format, as `GET /documents/{id}/index` returns it. */
+export function documentIndexPayload(overrides: Record<string, unknown> = {}) {
+  const status = (overrides.status as string | undefined) ?? "indexed";
+  const terminal = status === "indexed" || status === "failed";
+  const succeeded = status === "indexed";
+
+  return {
+    id: "77777777-7777-4777-8777-777777777777",
+    document_id: legalDocumentPayload().id,
+    document_version: 1,
+    case_id: legalCasePayload().id,
+    document: {
+      id: legalDocumentPayload().id,
+      case_id: legalCasePayload().id,
+      original_filename: "contrat-de-bail.pdf",
+      file_extension: "pdf",
+    },
+    status,
+    chunk_count: succeeded ? 14 : null,
+    page_count: succeeded ? 2 : null,
+    character_count: succeeded ? 8420 : null,
+    embedding_model: succeeded ? "BAAI/bge-m3" : null,
+    embedding_dimensions: succeeded ? 1024 : null,
+    vector_collection: succeeded ? "document_chunks" : null,
+    chunk_size: succeeded ? 1000 : null,
+    chunk_overlap: succeeded ? 200 : null,
+    detected_language: succeeded ? "fr" : null,
+    started_at: status === "pending" ? null : "2026-07-20T09:00:05Z",
+    finished_at: terminal ? "2026-07-20T09:00:19Z" : null,
+    duration_ms: terminal ? 14200 : null,
+    duration_seconds: terminal ? 14.2 : null,
+    attempt_count: 1,
+    error_code: null,
+    error_message: null,
+    requested_by: null,
+    created_at: "2026-07-20T09:00:04Z",
+    updated_at: "2026-07-20T09:00:19Z",
+    is_terminal: terminal,
+    is_active: !terminal,
+    can_reindex: terminal,
+    ...overrides,
+  };
+}
+
+/** Platform-wide indexing metrics in the API's wire format. */
+export function indexMetricsPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    window_days: null,
+    total_runs: 12,
+    pending: 1,
+    indexing: 1,
+    indexed: 8,
+    failed: 2,
+    finished_runs: 10,
+    total_chunks: 96,
+    average_chunks_per_document: 12.0,
+    success_rate: 80.0,
+    failure_rate: 20.0,
+    average_duration_ms: 14200,
+    average_duration_seconds: 14.2,
+    failures_by_code: { embedding_failure: 1, vector_store_unavailable: 1 },
+    embedding_model: "BAAI/bge-m3",
+    embedding_dimensions: 1024,
+    embedding_available: true,
+    chunker: "recursive-character",
+    chunk_size: 1000,
+    chunk_overlap: 200,
+    vector_collection: "document_chunks",
+    vector_store_available: true,
+    vector_collection_exists: true,
+    stored_vectors: 96,
+    enabled: true,
     ...overrides,
   };
 }

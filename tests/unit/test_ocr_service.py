@@ -700,10 +700,18 @@ class TestTimelinePublication:
             .order_by(TimelineEvent.created_at)
             .all()
         ]
-        assert types == [
+        # A *prefix*, not the whole list. A completed extraction hands the
+        # pipeline on to indexing (spec 10), which publishes its own events after
+        # these two — asserting equality here would fail every time a later stage
+        # correctly attached itself to the same document, which is exactly what
+        # the OCR service's `IndexScheduler` seam exists to allow.
+        assert types[:2] == [
             TimelineEventType.OCR_STARTED.value,
             TimelineEventType.OCR_COMPLETED.value,
         ]
+        # And the OCR pair is complete: neither event appears twice, and nothing
+        # of OCR's is published after the hand-off.
+        assert [entry for entry in types if entry.startswith("ocr_")] == types[:2]
 
     def test_a_failed_run_publishes_started_then_failed(
         self, ocr_service: OcrService, ocr_engine, document, db_session: Session

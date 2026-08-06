@@ -19,13 +19,19 @@ from db.session import get_db
 from models.user import User
 from repositories.case import CaseRepository
 from repositories.document import DocumentRepository
+from repositories.indexing import IndexingRepository
 from repositories.ocr import OcrRepository
 from repositories.timeline import TimelineRepository
 from repositories.user import UserRepository
 from services.auth import AuthService
 from services.case import CaseService
+from services.chunking import Chunker, get_chunker
 from services.document import DocumentService
 from services.document_storage import DocumentStorageService
+from services.embedding import Embedder, get_embedder
+from services.indexing import IndexingService, IndexJob
+from services.indexing_worker import index_queue
+from services.job_queue import JobQueue
 from services.login_throttle import LoginThrottle
 from services.ocr import OcrService
 from services.ocr_engine import OcrEngine, get_ocr_engine
@@ -34,6 +40,7 @@ from services.ocr_worker import ocr_queue
 from services.timeline import TimelineService
 from services.token_revocation import TokenRevocationStore
 from services.user import UserService
+from services.vector_store import VectorStore, get_vector_store
 
 # auto_error=False so a missing header raises our own MissingTokenError (with a
 # consistent error envelope) instead of FastAPI's bare 403 "Not authenticated".
@@ -170,6 +177,92 @@ def get_ocr_job_queue() -> OcrJobQueue:
     return ocr_queue
 
 
+def get_indexing_repository(session: DbSession) -> IndexingRepository:
+    """Provide a request-scoped document-index repository."""
+    return IndexingRepository(session)
+
+
+def get_chunker_dependency() -> Chunker:
+    """Provide the configured text chunker.
+
+    A dependency rather than a module-level singleton so an integration test can
+    override it with a fake — the same reason ``get_document_storage`` and
+    ``get_ocr_engine_dependency`` are ones.
+    """
+    return get_chunker()
+
+
+def get_embedder_dependency() -> Embedder:
+    """Provide the configured embedding model.
+
+    The instance is process-wide (see :func:`~services.embedding.get_embedder`) —
+    a model measured in gigabytes must not be built per request — but it is still
+    reached through a dependency so a test can override it and exercise the
+    endpoints without a downloaded model.
+    """
+    return get_embedder()
+
+
+def get_vector_store_dependency() -> VectorStore:
+    """Provide the configured vector store.
+
+    A dependency for the same reason as the two above: the monitoring endpoint
+    asks it whether Qdrant is reachable, and a test must be able to answer that
+    without a running Qdrant.
+    """
+    return get_vector_store()
+
+
+def get_index_job_queue() -> JobQueue[IndexJob]:
+    """Provide the application's background indexing queue.
+
+    The process-wide pool from :mod:`services.indexing_worker`, not a fresh one
+    per request: bounding concurrency is the whole point of it, and a pool per
+    request would bound nothing. A test overrides this with an inline queue so
+    the work happens synchronously and the assertion does not race a thread.
+    """
+    return index_queue
+
+
+def get_indexing_service(
+    indexes: Annotated[IndexingRepository, Depends(get_indexing_repository)],
+    documents: Annotated[DocumentRepository, Depends(get_document_repository)],
+    results: Annotated[OcrRepository, Depends(get_ocr_repository)],
+    chunker: Annotated[Chunker, Depends(get_chunker_dependency)],
+    embedder: Annotated[Embedder, Depends(get_embedder_dependency)],
+    vectors: Annotated[VectorStore, Depends(get_vector_store_dependency)],
+    queue: Annotated[JobQueue[IndexJob], Depends(get_index_job_queue)],
+    timeline: Annotated[TimelineService, Depends(get_timeline_service)],
+) -> IndexingService:
+    """Provide the indexing service with its collaborators injected.
+
+    The document repository is injected because every indexing path starts from a
+    document, and because index access follows document access, which follows
+    case access. The OCR repository is injected because the *input* to indexing
+    is the text OCR persisted: a re-index reads it back, and the precondition
+    "this version has completed extraction" is a question only that repository
+    can answer. Neither rule may be re-implemented against a second copy of its
+    query.
+
+    The timeline service is injected because the indexing service *publishes* to
+    it: started, completed, failed, and retried are the indexing half of a
+    document's history.
+    """
+    return IndexingService(
+        indexes,
+        documents,
+        results,
+        chunker,
+        embedder,
+        vectors,
+        queue,
+        timeline=timeline,
+    )
+
+
+IndexingServiceDep = Annotated[IndexingService, Depends(get_indexing_service)]
+
+
 def get_ocr_service(
     results: Annotated[OcrRepository, Depends(get_ocr_repository)],
     documents: Annotated[DocumentRepository, Depends(get_document_repository)],
@@ -177,6 +270,7 @@ def get_ocr_service(
     engine: Annotated[OcrEngine, Depends(get_ocr_engine_dependency)],
     queue: Annotated[OcrJobQueue, Depends(get_ocr_job_queue)],
     timeline: Annotated[TimelineService, Depends(get_timeline_service)],
+    indexing: Annotated[IndexingService, Depends(get_indexing_service)],
 ) -> OcrService:
     """Provide the OCR service with its collaborators injected.
 
@@ -190,8 +284,16 @@ def get_ocr_service(
     history. As with the case and document services, this is one of only two
     places the real recorder is wired in — the other being the background worker,
     which has no request to take one from.
+
+    The indexing service is injected for the same shape of reason the OCR service
+    is injected into the document service: a completed extraction is what
+    schedules an index. OCR depends on the narrow
+    :class:`~services.indexing.IndexScheduler` protocol rather than on this
+    class, so it cannot reach the read, re-index, or monitoring side.
     """
-    return OcrService(results, documents, storage, engine, queue, timeline=timeline)
+    return OcrService(
+        results, documents, storage, engine, queue, timeline=timeline, indexing=indexing
+    )
 
 
 OcrServiceDep = Annotated[OcrService, Depends(get_ocr_service)]

@@ -63,6 +63,8 @@ _LAWYER_PERMISSIONS: frozenset[Permission] = BASE_PERMISSIONS | {
     Permission.DOCUMENTS_UPLOAD,
     Permission.OCR_VIEW,
     Permission.OCR_RETRY,
+    Permission.INDEXING_VIEW,
+    Permission.INDEXING_REINDEX,
     Permission.TIMELINE_VIEW,
     Permission.TIMELINE_CREATE,
     Permission.REPORTS_VIEW,
@@ -95,6 +97,12 @@ _COURT_PERMISSIONS: frozenset[Permission] = BASE_PERMISSIONS | {
     # the platform's pipeline. `documents:update` and `documents:delete` are
     # withheld from this role for the same reason.
     Permission.OCR_VIEW,
+    # Read whether the documents they can already read are searchable, but not
+    # rebuild the index: a re-index re-embeds every passage of a document, which
+    # is the most expensive operation the platform performs. The court role's
+    # description does not extend to operating the pipeline — the same reasoning
+    # that withholds `ocr:retry`, `documents:update`, and `documents:delete`.
+    Permission.INDEXING_VIEW,
     Permission.TIMELINE_VIEW,
     Permission.TIMELINE_CREATE,
 }

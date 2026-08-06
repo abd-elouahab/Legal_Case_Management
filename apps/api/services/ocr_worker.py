@@ -25,9 +25,12 @@ import structlog
 from db.session import SessionLocal
 from repositories.case import CaseRepository
 from repositories.document import DocumentRepository
+from repositories.indexing import IndexingRepository
 from repositories.ocr import OcrRepository
 from repositories.timeline import TimelineRepository
 from services.document_storage import DocumentStorageService
+from services.indexing import IndexingService
+from services.indexing_worker import index_queue
 from services.ocr import OcrService
 from services.ocr_engine import get_ocr_engine
 from services.ocr_queue import (
@@ -52,14 +55,30 @@ def run_ocr_job(job: OcrJob) -> None:
         documents = DocumentRepository(session)
         timeline = TimelineService(TimelineRepository(session), CaseRepository(session))
 
+        # The indexing scheduler this run hands a completed extraction to. It is
+        # given the *indexing* queue and nothing else it could use to do work
+        # itself: scheduling from an OCR worker enqueues an indexing job, it does
+        # not embed anything on this thread. Building it here rather than
+        # importing a singleton keeps it on the same session as the extraction,
+        # so the index row it creates is written by the transaction that has just
+        # committed the text.
+        indexing = IndexingService(
+            IndexingRepository(session),
+            documents,
+            results,
+            queue=index_queue,
+            timeline=timeline,
+        )
+
         service = OcrService(
             results,
             documents,
             DocumentStorageService(),
             get_ocr_engine(),
-            # A worker may not queue more work — see the module docstring.
+            # A worker may not queue more OCR work — see the module docstring.
             NullOcrJobQueue(),
             timeline=timeline,
+            indexing=indexing,
         )
         service.process(job)
     finally:

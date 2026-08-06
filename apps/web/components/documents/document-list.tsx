@@ -17,6 +17,7 @@ import { DocumentTable } from "@/components/documents/document-table";
 import { DocumentTableSkeleton } from "@/components/documents/document-table-skeleton";
 import { ReplaceDocumentDialog } from "@/components/documents/replace-document-dialog";
 import { UploadDocumentDialog } from "@/components/documents/upload-document-dialog";
+import { IndexMetricsPanel } from "@/components/indexing/index-metrics-panel";
 import { OcrMetricsPanel } from "@/components/ocr/ocr-metrics-panel";
 import { useDocumentListQuery } from "@/hooks/use-document-list-query";
 import { documentErrorMessage, useDocuments, useDownloadDocument } from "@/hooks/use-documents";
@@ -80,9 +81,18 @@ export function DocumentList({ caseId }: { caseId?: string } = {}) {
           with the case being read. Gated on `ocr:monitor`, which the API requires
           independently — the panel is an operational view, not a case view. */}
       {!caseId ? (
-        <Protected permission={PERMISSION.ocrMonitor}>
-          <OcrMetricsPanel />
-        </Protected>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Protected permission={PERMISSION.ocrMonitor}>
+            <OcrMetricsPanel />
+          </Protected>
+          {/* The second stage of the same pipeline, beside the first: a failure
+              rate on one and a healthy rate on the other is the difference
+              between "documents are unreadable" and "documents are readable but
+              not searchable". Gated on its own permission. */}
+          <Protected permission={PERMISSION.indexingMonitor}>
+            <IndexMetricsPanel />
+          </Protected>
+        </div>
       ) : null}
 
       <div className="flex flex-col gap-4">

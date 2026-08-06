@@ -37,6 +37,11 @@ export const PERMISSIONS = [
   "ocr:retry",
   "ocr:monitor",
 
+  // Document indexing
+  "indexing:view",
+  "indexing:reindex",
+  "indexing:monitor",
+
   // Timeline
   "timeline:view",
   "timeline:create",
@@ -88,6 +93,10 @@ export const PERMISSION = {
   ocrView: "ocr:view",
   ocrRetry: "ocr:retry",
   ocrMonitor: "ocr:monitor",
+
+  indexingView: "indexing:view",
+  indexingReindex: "indexing:reindex",
+  indexingMonitor: "indexing:monitor",
 
   timelineView: "timeline:view",
   timelineCreate: "timeline:create",

@@ -20,8 +20,13 @@ Scope boundaries, kept deliberately sharp:
   it has not loaded.
 * **Nothing about embeddings, vectors, chunking, retrieval, or an LLM appears
   anywhere in this module.** The spec is explicit that this feature ends at
-  persisted text, and the text it persists is what a later indexing feature will
-  read.
+  persisted text, and the text it persists is what the indexing feature reads.
+  ``10-document-indexing.md``'s flow begins at "OCR Completed", so this service
+  *announces* that moment through the narrow
+  :class:`~services.indexing.IndexScheduler` protocol — one call, after the
+  commit, that cannot fail the extraction. It knows nothing about what indexing
+  does with it, exactly as :class:`~services.document.DocumentService` knows
+  nothing about extraction beyond :class:`OcrScheduler`.
 
 What it does own are the rules nothing else can express: that a run belongs to a
 *document version*, that only one worker may process it, that a status may only
@@ -75,6 +80,7 @@ from repositories.document import DocumentRepository
 from repositories.ocr import OcrRepository, OcrStatusCounts
 from schemas.ocr import OcrListQuery
 from services.document_storage import DocumentStorageService
+from services.indexing import IndexScheduler, NullIndexScheduler
 from services.ocr_access import OcrAccessPolicy
 from services.ocr_engine import Extraction, OcrEngine, OcrEngineError, get_ocr_engine
 from services.ocr_queue import NullOcrJobQueue, OcrJob, OcrJobQueue
@@ -168,6 +174,7 @@ class OcrService:
         access: OcrAccessPolicy | None = None,
         *,
         timeline: TimelineRecorder | None = None,
+        indexing: IndexScheduler | None = None,
     ) -> None:
         self._results = results
         self._documents = documents
@@ -179,6 +186,7 @@ class OcrService:
         self._queue: OcrJobQueue = queue or NullOcrJobQueue()
         self._access = access or OcrAccessPolicy()
         self._timeline: TimelineRecorder = timeline or NullTimelineRecorder()
+        self._indexing: IndexScheduler = indexing or NullIndexScheduler()
 
     # ---------------------------------------------------------- scheduling #
 
@@ -682,6 +690,13 @@ class OcrService:
                 "engine": saved.engine,
             },
         )
+        # The one line that hands the pipeline on. **After the commit and after
+        # the timeline**, for the same reason publication is: the text is
+        # persisted and the extraction has succeeded by this point, so nothing
+        # indexing does may be able to undo either. `schedule_for_ocr_result`
+        # swallows its own failures, so this cannot raise — and if it somehow
+        # did, the run is already `completed` in the database.
+        self._indexing.schedule_for_ocr_result(saved, actor=actor)
         return saved
 
     def _fail(

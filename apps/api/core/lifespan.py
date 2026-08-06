@@ -19,6 +19,7 @@ from core.logging import configure_logging
 from core.readiness import probe_dependencies
 from core.vector import close_qdrant
 from db.session import dispose_engine
+from services.indexing_worker import start_index_workers, stop_index_workers
 from services.ocr_worker import start_ocr_workers, stop_ocr_workers
 
 logger = structlog.get_logger(__name__)
@@ -53,12 +54,21 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # background pool could not be created would take authentication, cases, and
     # documents down over a background feature.
     start_ocr_workers()
+    # Same contract, same reasoning, and deliberately its own pool: indexing and
+    # extraction fail differently and are sized differently, so a backlog of
+    # scans must not delay every index and a slow index must not stall every
+    # upload's extraction. The embedding model is *not* loaded here — it is
+    # fetched on first use, so a deployment without it still starts.
+    start_index_workers()
 
     yield
 
     logger.info("application_shutdown")
     # Before the engine is disposed: draining workers still need their sessions.
+    # Indexing first: an OCR worker that is still finishing can schedule an
+    # indexing job, so draining indexing last would leave that job unaccepted.
     stop_ocr_workers()
+    stop_index_workers()
     close_redis()
     close_qdrant()
     dispose_engine()

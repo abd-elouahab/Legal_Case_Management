@@ -569,14 +569,20 @@ def ocr_queue(  # type: ignore[no-untyped-def]
     db_session: Session,
     document_storage: InMemoryDocumentStorage,
     ocr_engine: FakeOcrEngine,
+    indexing_service,
 ):
     """A queue that records jobs and runs them against the test doubles.
 
     The runner builds an :class:`~services.ocr.OcrService` the same way
     :func:`services.ocr_worker.run_ocr_job` does — real repositories, real
-    timeline, real access policy — but on the test session with the fake storage
-    and engine. So the pipeline under test is the production one; only the two
-    genuinely external things are substituted.
+    timeline, real access policy, **and a real indexing scheduler** — but on the
+    test session with the fake storage and engine. So the pipeline under test is
+    the production one; only the genuinely external things are substituted.
+
+    The indexing service is passed for the same reason the timeline is: a
+    completed extraction schedules an index in production, and a runner that
+    omitted it would make every "extraction hands off to indexing" assertion a
+    test of the fixture rather than of the platform.
     """
     from typing import cast
 
@@ -599,6 +605,7 @@ def ocr_queue(  # type: ignore[no-untyped-def]
             # A worker may not queue more work, exactly as in production.
             NullOcrJobQueue(),
             timeline=TimelineService(TimelineRepository(db_session), CaseRepository(db_session)),
+            indexing=indexing_service,
         ).process(job)
 
     return RecordingOcrQueue(run)
@@ -610,6 +617,7 @@ def ocr_service(  # type: ignore[no-untyped-def]
     document_storage: InMemoryDocumentStorage,
     ocr_engine: FakeOcrEngine,
     ocr_queue: RecordingOcrQueue,
+    indexing_service,
 ):
     """An :class:`~services.ocr.OcrService` wired to the test doubles."""
     from typing import cast
@@ -631,6 +639,7 @@ def ocr_service(  # type: ignore[no-untyped-def]
         cast(OcrEngine, ocr_engine),
         cast(OcrJobQueue, ocr_queue),
         timeline=TimelineService(TimelineRepository(db_session), CaseRepository(db_session)),
+        indexing=indexing_service,
     )
 
 
@@ -707,6 +716,356 @@ def make_ocr_result(db_session: Session):  # type: ignore[no-untyped-def]
         db_session.add(result)
         db_session.commit()
         return result
+
+    return _make
+
+
+# --------------------------------------------------------------------------- #
+# Document indexing fixtures
+# --------------------------------------------------------------------------- #
+
+
+class FakeEmbedder:
+    """Test double for an :class:`~services.embedding.Embedder`.
+
+    The real model is ``BAAI/bge-m3`` — roughly two gigabytes, fetched from the
+    network on first use — so a suite that needed one would download it once per
+    CI machine and take minutes to start. This double keeps the contract (a model
+    name, a vector width, an availability probe, and one ``embed`` call) and lets
+    a test choose the outcome, which is what makes the failure paths testable at
+    all: an unavailable model and a dimension mismatch are not things a real
+    model produces on demand.
+
+    **The vectors are deterministic and derived from the text**, which is not
+    incidental: the spec requires the real embedder to be deterministic, and
+    several tests assert that re-indexing unchanged text produces the same
+    vectors. A random double would make that assertion vacuous. This is a fixture,
+    not an embedding algorithm — it is not, and must not become, importable from
+    the application.
+    """
+
+    name = "fake-embedder"
+
+    def __init__(self) -> None:
+        self.model_name = "fake/test-embedder"
+        self.available = True
+        self.width = 8
+        #: Set to an exception instance to make the next call raise it.
+        self.raises: Exception | None = None
+        #: Every batch of texts the embedder was asked to encode.
+        self.calls: list[list[str]] = []
+
+    @property
+    def model(self) -> str:
+        return self.model_name
+
+    @property
+    def dimensions(self) -> int:
+        return self.width
+
+    def is_available(self) -> bool:
+        return self.available
+
+    def embed(self, texts):  # type: ignore[no-untyped-def]
+        import hashlib
+
+        from services.embedding import EmbeddingBatch
+
+        self.calls.append(list(texts))
+
+        if self.raises is not None:
+            raise self.raises
+
+        vectors: list[list[float]] = []
+        for text in texts:
+            digest = hashlib.sha256(text.encode("utf-8")).digest()
+            raw = [digest[index] / 255.0 for index in range(self.width)]
+            # Unit length, like the real embedder's `normalize_embeddings=True`,
+            # so a test that checks the magnitude checks something true of both.
+            norm = sum(value * value for value in raw) ** 0.5 or 1.0
+            vectors.append([value / norm for value in raw])
+
+        return EmbeddingBatch(
+            vectors=vectors, model=self.model_name, dimensions=self.width
+        )
+
+
+class InMemoryVectorStore:
+    """Test double for a :class:`~services.vector_store.VectorStore`.
+
+    Mirrors the real contract — upsert by point id, delete by document version,
+    count, describe — with a dict instead of Qdrant. Two behaviours are kept
+    faithfully because tests depend on them being the *same* as production:
+
+    * **upsert replaces by id.** That is what makes a derived point id an
+      idempotency guarantee rather than a hope, and a double that appended would
+      let a duplicate-vector bug pass.
+    * **delete is filtered by document *and* version.** A double that deleted by
+      document alone would hide the bug where re-indexing version 2 wipes version
+      1's vectors.
+    """
+
+    def __init__(self, collection_name: str = "test-chunks") -> None:
+        self.collection_name = collection_name
+        self.points: dict[str, object] = {}
+        self.available = True
+        self.created_with: int | None = None
+        #: Set to an exception instance to make the next write raise it.
+        self.raises: Exception | None = None
+
+    @property
+    def collection(self) -> str:
+        return self.collection_name
+
+    def is_available(self) -> bool:
+        return self.available
+
+    def ensure_collection(self, *, dimensions: int) -> None:
+        if self.raises is not None:
+            raise self.raises
+        self.created_with = dimensions
+
+    def upsert(self, points) -> int:  # type: ignore[no-untyped-def]
+        if self.raises is not None:
+            raise self.raises
+        for point in points:
+            self.points[str(point.id)] = point
+        return len(points)
+
+    def delete_document_version(self, document_id: uuid.UUID, version: int) -> None:
+        if self.raises is not None:
+            raise self.raises
+        for key, point in list(self.points.items()):
+            payload = point.payload  # type: ignore[attr-defined]
+            if (
+                payload["document_id"] == str(document_id)
+                and payload["document_version"] == version
+            ):
+                del self.points[key]
+
+    def count_document_version(self, document_id: uuid.UUID, version: int) -> int:
+        return len(self.for_version(document_id, version))
+
+    def collection_info(self):  # type: ignore[no-untyped-def]
+        from services.vector_store import CollectionInfo
+
+        if not self.available:
+            return CollectionInfo(
+                name=self.collection_name, vector_count=None, dimensions=None, exists=False
+            )
+        return CollectionInfo(
+            name=self.collection_name,
+            vector_count=len(self.points),
+            dimensions=self.created_with,
+            exists=self.created_with is not None,
+        )
+
+    # ------------------------------------------------------ test affordances #
+
+    def for_version(self, document_id: uuid.UUID, version: int) -> list[object]:
+        """Every point belonging to one version of one document, in chunk order."""
+        matching = [
+            point
+            for point in self.points.values()
+            if point.payload["document_id"] == str(document_id)  # type: ignore[attr-defined]
+            and point.payload["document_version"] == version  # type: ignore[attr-defined]
+        ]
+        return sorted(matching, key=lambda point: point.payload["chunk_number"])  # type: ignore[attr-defined,no-any-return]
+
+
+class RecordingIndexQueue:
+    """Test double for a :class:`~services.job_queue.JobQueue`.
+
+    Records every job **and** runs it on the calling thread. Both halves matter:
+    recording is how a test asserts that a completed extraction scheduled work
+    without waiting for it, and running inline is how the rest of the pipeline
+    becomes testable without a thread — a test that has to wait for a worker is a
+    test that will eventually be flaky.
+
+    It keeps the contract that a failing job must not fail the caller, so a test
+    passing against this double exercises the same error handling production
+    does. ``run_inline`` can be switched off to observe a run in its ``pending``
+    state.
+    """
+
+    def __init__(self, runner=None) -> None:  # type: ignore[no-untyped-def]
+        self.jobs: list[object] = []
+        self.run_inline = True
+        self._runner = runner
+
+    def enqueue(self, job: object) -> None:
+        self.jobs.append(job)
+        if self.run_inline and self._runner is not None:
+            with suppress(Exception):
+                self._runner(job)
+
+
+@pytest.fixture
+def embedder() -> FakeEmbedder:
+    """A fresh, controllable embedding model per test."""
+    return FakeEmbedder()
+
+
+@pytest.fixture
+def vector_store() -> InMemoryVectorStore:
+    """A fresh in-memory vector store per test."""
+    return InMemoryVectorStore()
+
+
+@pytest.fixture
+def index_queue(  # type: ignore[no-untyped-def]
+    db_session: Session,
+    embedder: FakeEmbedder,
+    vector_store: InMemoryVectorStore,
+):
+    """A queue that records jobs and runs them against the test doubles.
+
+    The runner builds an :class:`~services.indexing.IndexingService` the same way
+    :func:`services.indexing_worker.run_index_job` does — real repositories, the
+    real chunker, real timeline, real access policy — but on the test session with
+    the fake embedder and vector store. So the pipeline under test is the
+    production one; only the two genuinely external things are substituted.
+
+    **The chunker is real, deliberately.** It is a pure function of text with no
+    network, no model, and no binary behind it, so substituting it would mean
+    every chunking guarantee the spec asks for — page order, page numbering,
+    overlap, semantic boundaries — was asserted against a fake.
+    """
+    from typing import cast
+
+    from repositories.case import CaseRepository
+    from repositories.document import DocumentRepository
+    from repositories.indexing import IndexingRepository
+    from repositories.ocr import OcrRepository
+    from repositories.timeline import TimelineRepository
+    from services.chunking import get_chunker
+    from services.embedding import Embedder
+    from services.indexing import IndexingService, IndexJob
+    from services.job_queue import NullJobQueue
+    from services.timeline import TimelineService
+    from services.vector_store import VectorStore
+
+    def run(job: IndexJob) -> None:
+        IndexingService(
+            IndexingRepository(db_session),
+            DocumentRepository(db_session),
+            OcrRepository(db_session),
+            get_chunker(),
+            cast(Embedder, embedder),
+            cast(VectorStore, vector_store),
+            # A worker may not queue more work, exactly as in production.
+            NullJobQueue(name="indexing"),
+            timeline=TimelineService(TimelineRepository(db_session), CaseRepository(db_session)),
+        ).process(job)
+
+    return RecordingIndexQueue(run)
+
+
+@pytest.fixture
+def indexing_service(  # type: ignore[no-untyped-def]
+    db_session: Session,
+    embedder: FakeEmbedder,
+    vector_store: InMemoryVectorStore,
+    index_queue: RecordingIndexQueue,
+):
+    """An :class:`~services.indexing.IndexingService` wired to the test doubles."""
+    from typing import cast
+
+    from repositories.case import CaseRepository
+    from repositories.document import DocumentRepository
+    from repositories.indexing import IndexingRepository
+    from repositories.ocr import OcrRepository
+    from repositories.timeline import TimelineRepository
+    from services.chunking import get_chunker
+    from services.embedding import Embedder
+    from services.indexing import IndexingService, IndexJob
+    from services.job_queue import JobQueue
+    from services.timeline import TimelineService
+    from services.vector_store import VectorStore
+
+    return IndexingService(
+        IndexingRepository(db_session),
+        DocumentRepository(db_session),
+        OcrRepository(db_session),
+        get_chunker(),
+        cast(Embedder, embedder),
+        cast(VectorStore, vector_store),
+        cast("JobQueue[IndexJob]", index_queue),
+        timeline=TimelineService(TimelineRepository(db_session), CaseRepository(db_session)),
+    )
+
+
+@pytest.fixture
+def make_document_index(db_session: Session):  # type: ignore[no-untyped-def]
+    """Factory creating persisted indexing runs.
+
+    Bypasses the service on purpose: tests about *reading* an index need rows in
+    controlled states — a run that failed three days ago, a run mid-index, a run
+    built with a superseded model — and going through the pipeline would tie them
+    to whatever the embedder happens to return today.
+    """
+    from models.indexing import DocumentIndex, IndexStatus
+
+    def _make(
+        *,
+        document_id: uuid.UUID,
+        case_id: uuid.UUID,
+        document_version: int = 1,
+        status: IndexStatus = IndexStatus.INDEXED,
+        chunk_count: int | None = 3,
+        page_count: int | None = 1,
+        character_count: int | None = 240,
+        embedding_model: str | None = "fake/test-embedder",
+        embedding_dimensions: int | None = 8,
+        vector_collection: str | None = "test-chunks",
+        chunk_size: int | None = 1000,
+        chunk_overlap: int | None = 200,
+        detected_language: str | None = "fr",
+        duration_ms: int | None = 4200,
+        attempt_count: int = 1,
+        error_code: str | None = None,
+        error_message: str | None = None,
+        requested_by: uuid.UUID | None = None,
+        started_at: datetime | None = None,
+        finished_at: datetime | None = None,
+        created_at: datetime | None = None,
+    ) -> DocumentIndex:
+        terminal = status in {IndexStatus.INDEXED, IndexStatus.FAILED}
+        succeeded = status is IndexStatus.INDEXED
+
+        index = DocumentIndex(
+            id=uuid.uuid4(),
+            document_id=document_id,
+            document_version=document_version,
+            case_id=case_id,
+            status=status,
+            chunk_count=chunk_count if succeeded else None,
+            page_count=page_count if succeeded else None,
+            character_count=character_count if succeeded else None,
+            embedding_model=embedding_model if succeeded else None,
+            embedding_dimensions=embedding_dimensions if succeeded else None,
+            vector_collection=vector_collection if succeeded else None,
+            chunk_size=chunk_size if succeeded else None,
+            chunk_overlap=chunk_overlap if succeeded else None,
+            detected_language=detected_language if succeeded else None,
+            started_at=started_at
+            or (datetime.now(UTC) if status is not IndexStatus.PENDING else None),
+            finished_at=finished_at or (datetime.now(UTC) if terminal else None),
+            duration_ms=duration_ms if terminal else None,
+            attempt_count=attempt_count,
+            error_code=error_code,
+            error_message=error_message,
+            requested_by=requested_by,
+        )
+
+        if created_at is not None:
+            # Set explicitly so ordering and window tests do not depend on
+            # wall-clock gaps between rows inserted in the same millisecond.
+            index.created_at = created_at
+
+        db_session.add(index)
+        db_session.commit()
+        return index
 
     return _make
 
@@ -807,19 +1166,26 @@ def api_client(
     document_storage: InMemoryDocumentStorage,
     ocr_engine: FakeOcrEngine,
     ocr_queue: RecordingOcrQueue,
+    embedder: FakeEmbedder,
+    vector_store: InMemoryVectorStore,
+    index_queue: RecordingIndexQueue,
 ) -> Iterator[TestClient]:
     """A TestClient whose external collaborators are all doubles.
 
     The database, the token denylist, the login throttle, the object store, the
-    OCR engine, and the OCR queue. Everything else — routers, services,
-    repositories, access policies — is the application's own.
+    OCR engine, the OCR queue, the embedding model, the vector store, and the
+    indexing queue. Everything else — routers, services, repositories, chunker,
+    access policies — is the application's own.
     """
     from api.deps import (
         get_document_storage,
+        get_embedder_dependency,
+        get_index_job_queue,
         get_login_throttle,
         get_ocr_engine_dependency,
         get_ocr_job_queue,
         get_token_revocation_store,
+        get_vector_store_dependency,
     )
     from db.session import get_db
     from main import app
@@ -830,6 +1196,9 @@ def api_client(
     app.dependency_overrides[get_document_storage] = lambda: document_storage
     app.dependency_overrides[get_ocr_engine_dependency] = lambda: ocr_engine
     app.dependency_overrides[get_ocr_job_queue] = lambda: ocr_queue
+    app.dependency_overrides[get_embedder_dependency] = lambda: embedder
+    app.dependency_overrides[get_vector_store_dependency] = lambda: vector_store
+    app.dependency_overrides[get_index_job_queue] = lambda: index_queue
     try:
         with TestClient(app) as test_client:
             yield test_client

@@ -35,6 +35,7 @@ class PermissionGroup(StrEnum):
     CASES = "cases"
     DOCUMENTS = "documents"
     OCR = "ocr"
+    INDEXING = "indexing"
     TIMELINE = "timeline"
     REPORTS = "reports"
     NOTIFICATIONS = "notifications"
@@ -97,6 +98,24 @@ class Permission(StrEnum):
     #: administrative capability rather than something every document reader
     #: holds.
     OCR_MONITOR = "ocr:monitor"
+
+    # --- Document indexing --------------------------------------------------- #
+    #: Read a document's search-index status and metadata. Separate from
+    #: ``ocr:view`` because the index is a *further* derived artefact with its own
+    #: endpoints — but note that holding this grants nothing on its own: index
+    #: access follows the document, which follows its case (see
+    #: :mod:`services.indexing_access`).
+    INDEXING_VIEW = "indexing:view"
+    #: Rebuild a document's index. Narrower than ``indexing:view`` because a
+    #: re-index re-embeds every passage of the document, which is by far the most
+    #: expensive operation the platform performs — the same reasoning that makes
+    #: ``ocr:retry`` narrower than ``ocr:view``, only more so.
+    INDEXING_REINDEX = "indexing:reindex"
+    #: Read platform-wide indexing metrics — indexed documents, indexed chunks,
+    #: average duration, failures. Not scoped to a case, so it is deliberately an
+    #: administrative capability rather than something every document reader
+    #: holds.
+    INDEXING_MONITOR = "indexing:monitor"
 
     # --- Timeline ----------------------------------------------------------- #
     TIMELINE_VIEW = "timeline:view"

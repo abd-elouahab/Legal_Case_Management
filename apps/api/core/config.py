@@ -154,6 +154,58 @@ class Settings(BaseSettings):
     QDRANT_API_KEY: str | None = None
     QDRANT_HTTPS: bool = False
     QDRANT_TIMEOUT: int = 3
+    # Collection holding document chunk embeddings. Created on first index if
+    # absent, at the width EMBEDDING_DIMENSIONS declares.
+    QDRANT_COLLECTION: str = "document_chunks"
+    # Vectors written per Qdrant request. One request per vector pays a round
+    # trip each; one request for a 900-page bundle is a payload large enough to
+    # time out. This is the middle.
+    QDRANT_UPSERT_BATCH_SIZE: int = 128
+
+    # --- Document indexing (chunking + embeddings) ---
+    # The second stage of the AI pipeline: it turns the text OCR extracted into
+    # vectors in Qdrant. Disabling it stops new work from being scheduled;
+    # existing indexes stay readable and re-indexable.
+    INDEXING_ENABLED: bool = True
+    # Which chunking strategy to use (see `services/chunking.py`). An
+    # unrecognised value falls back to the default rather than failing startup.
+    INDEX_CHUNKER: str = "recursive-character"
+    # Target passage length in *characters*, and how much each passage repeats
+    # from its predecessor. Both change what a vector means, so both are recorded
+    # on every index: a collection built at one setting is not comparable with
+    # one built at another. 1000/200 is the widely used starting point for prose
+    # and leaves ample room inside bge-m3's 8192-token window.
+    INDEX_CHUNK_SIZE: int = 1000
+    INDEX_CHUNK_OVERLAP: int = 200
+    # Chunks read from a single document. A bound is what keeps a 900-page bundle
+    # from being a guaranteed timeout rather than a partial index.
+    INDEX_MAX_CHUNKS: int = 5000
+    # Whole-run deadline, covering chunking, embedding, *and* vector writes.
+    INDEXING_TIMEOUT_SECONDS: int = 900
+    # Background workers processing indexing jobs in this API process. Small,
+    # because each holds the embedding model's working memory and saturates a
+    # core while encoding.
+    INDEXING_WORKER_CONCURRENCY: int = 1
+
+    # --- Embeddings ---
+    # Which embedding backend to use (see `services/embedding.py`).
+    EMBEDDING_BACKEND: str = "sentence-transformers"
+    # The model itself. `ai-architecture.md` names BAAI/bge-m3: multilingual,
+    # with strong Arabic and French retrieval, and the same model must be used
+    # for indexing and for future query embedding. Changing it requires
+    # re-indexing every document, which is why each index records the model it
+    # was built with.
+    EMBEDDING_MODEL: str = "BAAI/bge-m3"
+    # Width of that model's vectors. Declared rather than probed so the Qdrant
+    # collection can be created before the model is ever loaded; a mismatch with
+    # the loaded model is detected and reported rather than written.
+    EMBEDDING_DIMENSIONS: int = 1024
+    # Passages encoded per forward pass. Bounds peak memory during a run.
+    EMBEDDING_BATCH_SIZE: int = 16
+    # Torch device the model runs on ("cpu", "cuda", "cuda:0"). Blank lets
+    # sentence-transformers pick, which is the right default on a host that may
+    # or may not have a GPU.
+    EMBEDDING_DEVICE: str | None = None
 
     # --- Authentication (JWT) ---
     # The signing secret MUST come from the environment. The default below is a
@@ -238,6 +290,7 @@ class Settings(BaseSettings):
         "REFRESH_COOKIE_DOMAIN",
         "TESSERACT_CMD",
         "POPPLER_PATH",
+        "EMBEDDING_DEVICE",
         mode="before",
     )
     @classmethod

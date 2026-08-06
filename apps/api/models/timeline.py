@@ -112,6 +112,18 @@ class TimelineEventType(StrEnum):
     OCR_FAILED = "ocr_failed"
     OCR_RETRIED = "ocr_retried"
 
+    # --- Document indexing events ------------------------------------------- #
+    #
+    # Added by ``10-document-indexing.md``, the second module to extend the
+    # registry — again with **no migration**, for the reason given above. Also
+    # categorised as document events: making a document searchable is something
+    # that happened to that document, and inventing a sixth icon family for it
+    # would fragment the timeline's presentation for no gain to the reader.
+    INDEXING_STARTED = "indexing_started"
+    INDEXING_COMPLETED = "indexing_completed"
+    INDEXING_FAILED = "indexing_failed"
+    INDEXING_RETRIED = "indexing_retried"
+
 
 #: ``JSONB`` on PostgreSQL, plain ``JSON`` everywhere else.
 #:

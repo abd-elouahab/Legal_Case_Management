@@ -11,6 +11,8 @@ from api.v1.auth.router import router as auth_router
 from api.v1.authorization.router import router as authorization_router
 from api.v1.cases.router import router as cases_router
 from api.v1.documents.router import router as documents_router
+from api.v1.indexing.router import document_indexing_router
+from api.v1.indexing.router import router as indexing_router
 from api.v1.ocr.router import document_ocr_router
 from api.v1.ocr.router import router as ocr_router
 from api.v1.timeline.router import case_timeline_router
@@ -32,6 +34,12 @@ api_router.include_router(documents_router, prefix="/documents", tags=["document
 # and its siblings keep their place in the route table.
 api_router.include_router(document_ocr_router, prefix="/documents", tags=["ocr"])
 api_router.include_router(ocr_router, prefix="/ocr", tags=["ocr"])
+
+# `GET|POST /documents/{document_id}/index*` follow the same pattern: they live
+# under the document prefix but belong to the indexing module, so they are
+# registered from there and tagged `indexing`.
+api_router.include_router(document_indexing_router, prefix="/documents", tags=["indexing"])
+api_router.include_router(indexing_router, prefix="/indexing", tags=["indexing"])
 
 # `GET /cases/{case_id}/timeline` lives under the case prefix but belongs to the
 # timeline module, so it is registered from there rather than added to the case

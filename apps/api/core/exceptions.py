@@ -521,6 +521,122 @@ class OcrAccessDeniedError(AuthorizationError):
 
 
 # --------------------------------------------------------------------------- #
+# Document indexing errors
+#
+# Same posture as the OCR errors above, for the same reason: a caller who has
+# proved both who they are and that they hold the matching ``indexing:*``
+# capability is told what is wrong. :class:`IndexAccessDeniedError` is the
+# exception, being a per-resource denial.
+#
+# There is deliberately **no error for a failed indexing run**. A failure is a
+# recorded *state* of the run, not a failed request: the caller asking for the
+# status gets a 200 describing a run whose status is ``failed``, with the reason
+# on it. Answering 5xx would say the platform is broken when what happened is
+# that one document had no extractable text.
+# --------------------------------------------------------------------------- #
+
+
+class DocumentIndexNotFoundError(AppException):
+    """No index exists for the requested document, or for that version.
+
+    Distinct from "the document does not exist": a document whose text has never
+    been extracted has no index and will not have one until it does, and the
+    message says so rather than implying something went missing.
+    """
+
+    status_code = status.HTTP_404_NOT_FOUND
+    error_code = "document_index_not_found"
+    message = "No search index record exists for this document."
+
+
+class IndexingNotReadyError(AppException):
+    """Indexing was requested for a document whose text has not been extracted.
+
+    409 rather than 422: nothing about the request is malformed, and nothing
+    about the document is permanently unsuitable — it is a *sequencing* conflict.
+    ``10-document-indexing.md`` begins its flow at "OCR Completed", so text is
+    the precondition, and the right response tells the caller which state the
+    document is actually in so they can wait for it or retry the extraction.
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "indexing_not_ready"
+    message = "This document has no extracted text to index yet."
+
+    def __init__(self, ocr_status: str | None = None) -> None:
+        if ocr_status is None:
+            super().__init__(
+                "This document version has not been processed for text extraction, so there is "
+                "nothing to index yet."
+            )
+        else:
+            super().__init__(
+                f"Text extraction for this document version is {ocr_status!r}. Indexing can "
+                f"begin once it has completed."
+            )
+
+
+class IndexingAlreadyRunningError(AppException):
+    """A re-index was requested while one is queued or already running.
+
+    409 rather than 202-and-ignore: the caller asked for a *new* run, and
+    silently answering "done" for one already in flight would make the button
+    they pressed indistinguishable from one that worked. Whether the run is
+    queued or mid-index is stated, because it is the difference between "wait a
+    moment" and "wait a while".
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "indexing_already_running"
+    message = "This document is already being indexed."
+
+    def __init__(self, current: str) -> None:
+        super().__init__(f"Indexing for this document is already {current!r}.")
+
+
+class InvalidIndexTransitionError(AppException):
+    """An index was asked to move to a state that is not reachable from its own.
+
+    Only provokable through the service's own API, not by a client: every HTTP
+    path checks first. It exists so that a future caller — a scheduled
+    re-indexing job, a bulk migration after a model change — cannot corrupt a
+    run's lifecycle by writing a status directly, and so that the attempt is
+    visible rather than silent.
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "invalid_index_transition"
+    message = "This indexing run cannot move to that state."
+
+    def __init__(self, current: str, target: str) -> None:
+        super().__init__(f"An indexing run that is {current!r} cannot move to {target!r}.")
+
+
+class IndexingDisabledError(AppException):
+    """Document indexing is switched off for this deployment.
+
+    503 rather than 404: the capability exists and the request is valid — the
+    deployment has turned the pipeline off, which is a temporary condition an
+    operator controls. Existing indexes stay readable; only new work is refused.
+    """
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    error_code = "indexing_disabled"
+    message = "Document indexing is currently disabled on this platform."
+
+
+class IndexAccessDeniedError(AuthorizationError):
+    """The caller holds the capability but is not party to the document's case.
+
+    A subclass of :class:`AuthorizationError`, so it answers **403** with the
+    same generic body as every other denial. Index access follows document
+    access, which follows case access — see :mod:`services.indexing_access` — so
+    the reasoning behind :class:`CaseAccessDeniedError` (403 rather than a
+    concealing 404) applies unchanged.
+    """
+
+
+# --------------------------------------------------------------------------- #
 # Timeline errors
 #
 # Only two, because the timeline is read-only over HTTP: events are published by

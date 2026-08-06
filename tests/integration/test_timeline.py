@@ -125,28 +125,52 @@ class TestDependencyWiring:
         # a unit test about something else. This asserts that the *application*
         # never takes that default, because if it did the whole feature would
         # silently be a no-op in production while every unit test still passed.
-        from api.deps import get_case_service, get_document_service, get_ocr_service
+        from api.deps import (
+            get_case_service,
+            get_document_service,
+            get_indexing_service,
+            get_ocr_service,
+        )
         from repositories.case import CaseRepository
         from repositories.document import DocumentRepository
+        from repositories.indexing import IndexingRepository
         from repositories.ocr import OcrRepository
         from repositories.timeline import TimelineRepository
         from repositories.user import UserRepository
+        from services.chunking import get_chunker
+        from services.embedding import get_embedder
+        from services.indexing import IndexJob
+        from services.job_queue import NullJobQueue
         from services.ocr_engine import get_ocr_engine
         from services.ocr_queue import NullOcrJobQueue
         from services.timeline import TimelineService
+        from services.vector_store import get_vector_store
 
         cases = CaseRepository(db_session)
         documents = DocumentRepository(db_session)
+        results = OcrRepository(db_session)
         timeline = TimelineService(TimelineRepository(db_session), cases)
-        # OCR is a publisher too, and `get_document_service` now takes one — so
-        # it is built the same way the application does, through its own factory.
+        # OCR and indexing are publishers too, and each is taken by the factory
+        # above it — so both are built the same way the application does, through
+        # their own factories.
+        indexing = get_indexing_service(
+            IndexingRepository(db_session),
+            documents,
+            results,
+            get_chunker(),
+            get_embedder(),
+            get_vector_store(),
+            NullJobQueue[IndexJob](name="indexing"),
+            timeline,
+        )
         ocr = get_ocr_service(
-            OcrRepository(db_session),
+            results,
             documents,
             document_storage,
             get_ocr_engine(),
             NullOcrJobQueue(),
             timeline,
+            indexing,
         )
 
         case_service = get_case_service(cases, UserRepository(db_session), timeline)
@@ -154,7 +178,7 @@ class TestDependencyWiring:
             documents, cases, document_storage, timeline, ocr
         )
 
-        for service in (case_service, document_service, ocr):
+        for service in (case_service, document_service, ocr, indexing):
             assert isinstance(service._timeline, TimelineService), type(service)
 
 
