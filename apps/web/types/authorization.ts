@@ -59,8 +59,15 @@ export const PERMISSIONS = [
   "notifications:manage",
 
   // AI
+  //
+  // `ai:ask` is putting one question to the RAG pipeline; `ai:chat` is the
+  // assistant's conversational surface. Sending a message needs both, because a
+  // message does both — a deployment may grant one and withhold the other, and
+  // the API refuses the combination the client cannot see.
+  "ai:ask",
   "ai:chat",
   "ai:generate-report",
+  "ai:monitor",
 
   // Settings
   "settings:view",
@@ -114,8 +121,10 @@ export const PERMISSION = {
   notificationsView: "notifications:view",
   notificationsManage: "notifications:manage",
 
+  aiAsk: "ai:ask",
   aiChat: "ai:chat",
   aiGenerateReport: "ai:generate-report",
+  aiMonitor: "ai:monitor",
 
   settingsView: "settings:view",
   settingsUpdate: "settings:update",

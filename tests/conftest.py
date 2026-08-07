@@ -1345,6 +1345,20 @@ class ScriptedLLMProvider:
         self.truncated = False
         #: Every (system, prompt) pair the provider was handed.
         self.calls: list[tuple[str, str]] = []
+        #: Fragments :meth:`stream` yields. ``None`` streams the whole answer as
+        #: one fragment, which is what a provider that cannot stream effectively
+        #: does. Set it to a list to exercise a genuinely incremental reply —
+        #: which is the only way to test that the platform withholds the refusal
+        #: sentinel while it is still a prefix.
+        self.stream_chunks: list[str] | None = None
+        #: Set to an exception to make :meth:`stream` fail. Raised **before** the
+        #: first fragment, so it exercises the fallback to a whole answer; set
+        #: ``stream_raises_after`` to fail mid-answer instead, which must not fall
+        #: back because text has already been delivered.
+        self.stream_raises: Exception | None = None
+        self.stream_raises_after: int = 0
+        #: How many times :meth:`stream` was entered.
+        self.stream_calls = 0
 
     @property
     def model(self) -> str:
@@ -1400,6 +1414,22 @@ class ScriptedLLMProvider:
         max_output_tokens=None,
         timeout_seconds=None,
     ) -> Iterator[str]:
+        self.stream_calls += 1
+
+        if self.stream_raises is not None and self.stream_raises_after == 0:
+            raise self.stream_raises
+
+        if self.stream_chunks is not None:
+            self.calls.append((system, prompt))
+            for index, chunk in enumerate(self.stream_chunks):
+                if (
+                    self.stream_raises is not None
+                    and index >= self.stream_raises_after > 0
+                ):
+                    raise self.stream_raises
+                yield chunk
+            return
+
         completion = self.generate(
             system=system,
             prompt=prompt,
@@ -1468,6 +1498,129 @@ def rag_service(  # type: ignore[no-untyped-def]
     return RagService(search_service, prompt_library, llm_provider, metrics=rag_metrics)
 
 
+# --------------------------------------------------------------------------- #
+# AI Legal Assistant fixtures
+# --------------------------------------------------------------------------- #
+
+
+class ScriptedFollowUpSuggester:
+    """Test double for a :class:`~services.suggestions.FollowUpSuggester`.
+
+    The real one is a **second metered model call**, and substituting it here is
+    what keeps every assistant test free, fast, and deterministic — a suite whose
+    conversation assertions depended on what a model felt like proposing would be
+    a suite that fails for reasons nobody can fix.
+
+    It records what it was asked, which is how the tests assert the two things
+    that actually matter: that an **ungrounded** answer is never followed by
+    suggestions, and that the suggester is handed the answer and its citations
+    rather than a way to reach a document.
+    """
+
+    name = "scripted"
+
+    def __init__(self) -> None:
+        self.available = True
+        self.suggestions: list[str] = ["Quelle est la durée du bail ?"]
+        #: Set to an exception to make the next call raise — which must never
+        #: cost the answer it would have followed.
+        self.raises: Exception | None = None
+        #: Every (question, answer, citation count, language) it was handed.
+        self.calls: list[tuple[str, str, int, str]] = []
+
+    def is_available(self) -> bool:
+        return self.available
+
+    def suggest(  # type: ignore[no-untyped-def]
+        self, *, question: str, answer: str, citations, language: str
+    ) -> list[str]:
+        self.calls.append((question, answer, len(citations), language))
+
+        if self.raises is not None:
+            raise self.raises
+        if not citations:
+            return []
+        return list(self.suggestions)
+
+
+@pytest.fixture
+def follow_up_suggester() -> ScriptedFollowUpSuggester:
+    """A fresh, controllable follow-up suggester per test."""
+    return ScriptedFollowUpSuggester()
+
+
+@pytest.fixture
+def assistant_metrics():  # type: ignore[no-untyped-def]
+    """A fresh assistant metrics recorder per test.
+
+    Per test rather than the process-wide one, for the reason ``rag_metrics``
+    gives: the real recorder counts for the life of the process, so "one message
+    was recorded" would otherwise depend on how many every earlier test sent.
+    """
+    from services.assistant_metrics import InMemoryAssistantMetrics
+
+    return InMemoryAssistantMetrics()
+
+
+@pytest.fixture
+def assistant_service(  # type: ignore[no-untyped-def]
+    db_session: Session,
+    rag_service,
+    follow_up_suggester: ScriptedFollowUpSuggester,
+    assistant_metrics,
+):
+    """An :class:`~services.assistant.AssistantService` wired to the test doubles.
+
+    **The RAG service is the real one**, on the real search service, on the real
+    repositories, with the real access policy — only the embedding model, the
+    vector database, the language model, and the suggester are substituted. That
+    matters here for the same reason it matters in ``rag_service``: this
+    feature's whole claim is that it delegates every answer to the pipeline, and
+    a faked pipeline would make every one of those assertions vacuous.
+    """
+    from repositories.conversation import ConversationRepository
+    from services.assistant import AssistantService
+
+    return AssistantService(
+        ConversationRepository(db_session),
+        rag_service,
+        suggester=follow_up_suggester,  # type: ignore[arg-type]
+        metrics=assistant_metrics,
+    )
+
+
+@pytest.fixture
+def make_conversation(db_session: Session):  # type: ignore[no-untyped-def]
+    """Create a conversation directly, bypassing the service.
+
+    For tests about *reading* — the list, the transcript, ownership — which
+    should not have to spend a pipeline run each to arrange a fixture.
+    """
+    from models.conversation import Conversation, ConversationStatus
+
+    def _make(  # type: ignore[no-untyped-def]
+        *,
+        owner,
+        title: str = "Bail commercial",
+        status: ConversationStatus = ConversationStatus.ACTIVE,
+        case_id=None,
+        language: str | None = None,
+    ) -> Conversation:
+        conversation = Conversation(
+            owner_id=owner.id,
+            title=title,
+            status=status,
+            case_id=case_id,
+            language=language,
+        )
+        db_session.add(conversation)
+        db_session.commit()
+        db_session.refresh(conversation)
+        return conversation
+
+    return _make
+
+
 @pytest.fixture
 def auth_service(  # type: ignore[no-untyped-def]
     db_session: Session,
@@ -1504,6 +1657,8 @@ def api_client(
     search_metrics,  # type: ignore[no-untyped-def]
     llm_provider: ScriptedLLMProvider,
     rag_metrics,  # type: ignore[no-untyped-def]
+    follow_up_suggester: ScriptedFollowUpSuggester,
+    assistant_metrics,  # type: ignore[no-untyped-def]
 ) -> Iterator[TestClient]:
     """A TestClient whose external collaborators are all doubles.
 
@@ -1519,8 +1674,10 @@ def api_client(
     here builds the same prompt production would.
     """
     from api.deps import (
+        get_assistant_metrics_recorder,
         get_document_storage,
         get_embedder_dependency,
+        get_follow_up_suggester_dependency,
         get_index_job_queue,
         get_llm_provider_dependency,
         get_login_throttle,
@@ -1548,6 +1705,8 @@ def api_client(
     app.dependency_overrides[get_search_metrics_recorder] = lambda: search_metrics
     app.dependency_overrides[get_llm_provider_dependency] = lambda: llm_provider
     app.dependency_overrides[get_rag_metrics_recorder] = lambda: rag_metrics
+    app.dependency_overrides[get_follow_up_suggester_dependency] = lambda: follow_up_suggester
+    app.dependency_overrides[get_assistant_metrics_recorder] = lambda: assistant_metrics
     try:
         with TestClient(app) as test_client:
             yield test_client

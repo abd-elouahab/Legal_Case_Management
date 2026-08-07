@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { CaseAssistant } from "@/components/ai/case-assistant";
 import { Protected } from "@/components/auth/protected";
 import { ErrorState } from "@/components/shared/error-state";
 import { LoadingState } from "@/components/shared/loading-state";
@@ -256,6 +257,17 @@ function CaseDetailsContent({ legalCase }: { legalCase: LegalCase }) {
           gate — a rule with no section under it would leave a stray line. */}
       <Protected permission={PERMISSION.searchQuery}>
         <CaseSearch caseId={legalCase.id} />
+        <Separator />
+      </Protected>
+
+      {/* The assistant, pinned to this case. It sits after Search because it is
+          the stage above it — the same passages, answered rather than listed —
+          and it is gated on `ai:chat` rather than on `search:query`: a court
+          representative may search this case's documents and may not put a
+          question to the model about them. `CaseAssistant` renders nothing
+          without the capability, so the separator is inside the gate. */}
+      <Protected permission={PERMISSION.aiChat}>
+        <CaseAssistant caseId={legalCase.id} />
         <Separator />
       </Protected>
 

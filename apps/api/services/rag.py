@@ -53,8 +53,9 @@ from __future__ import annotations
 import re
 import time
 import uuid
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any, NoReturn
 
 import structlog
@@ -83,6 +84,7 @@ from core.rag import (
     no_evidence_message,
     question_fingerprint,
     resolve_answer_language,
+    sentinel_prefix_pending,
     unknown_markers,
 )
 from models.user import User
@@ -173,6 +175,38 @@ class RagOutcome:
             completion_tokens=self.completion_tokens,
             total_tokens=self.total_tokens,
         )
+
+
+class RagStreamEventKind(StrEnum):
+    """What one event of a streamed run reports."""
+
+    #: Retrieval has finished. Carries how many passages were found, which is
+    #: what lets a client show "searching 6 documents" before the first word of
+    #: the answer arrives — the part of a slow request that is otherwise silent.
+    RETRIEVAL = "retrieval"
+    #: A fragment of the answer.
+    DELTA = "delta"
+    #: The run is complete. Carries the whole :class:`RagOutcome`, which is the
+    #: authoritative answer and the only place citations appear.
+    FINAL = "final"
+
+
+@dataclass(frozen=True, slots=True)
+class RagStreamEvent:
+    """One thing that happened during a streamed run.
+
+    A single event type with a ``kind`` rather than three classes, because the
+    consumer is a transport that serializes whatever it is handed — and a
+    hierarchy would make that consumer a dispatch table over types.
+    """
+
+    kind: RagStreamEventKind
+    #: Set on :attr:`RagStreamEventKind.DELTA`.
+    text: str = ""
+    #: Set on :attr:`RagStreamEventKind.RETRIEVAL`.
+    retrieved_count: int = 0
+    #: Set on :attr:`RagStreamEventKind.FINAL`.
+    outcome: RagOutcome | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -317,6 +351,211 @@ class RagService:
             ) from exc
 
         return self._complete(final, request=request, actor=actor, started=started)
+
+    def stream(self, request: RagRequest, *, actor: User) -> Iterator[RagStreamEvent]:
+        """Answer one question, emitting the answer as it is produced.
+
+        The same pipeline as :meth:`answer`, in the same order, calling the same
+        nodes — with exactly one difference: generation uses the provider's
+        incremental interface instead of its blocking one.
+
+        **Why this lives here rather than in the AI Assistant.**
+        ``13-ai-legal-assistant.md`` requires streaming *and* forbids the
+        assistant from duplicating *"retrieval, prompt construction, or
+        orchestration logic already implemented by the RAG Pipeline"*. An
+        assistant that streamed on its own would have to retrieve, build a
+        prompt, call a provider, verify the reply, and attach citations — which
+        is this whole module, written twice. So streaming is an entry point on
+        the pipeline, and the assistant relays what comes out of it.
+
+        **Why it is not a graph.** LangGraph's ``invoke`` returns a *final
+        state*; emitting fragments out of the middle of a node needs a generator.
+        The traversal below is the graph's edges written out by hand, and the
+        honest description is that the two must be kept in step — which is why a
+        test asserts they visit the same nodes, in the same order, with the same
+        branch after retrieval.
+
+        **The refusal sentinel never reaches the client as text.** Fragments are
+        withheld while the accumulated answer could still turn out to be
+        :data:`~core.rag.INSUFFICIENT_EVIDENCE_MARKER` alone (see
+        :func:`~core.rag.sentinel_prefix_pending`), so a reader is never shown an
+        internal token that is about to be replaced by a sentence.
+
+        **The final event is authoritative.** Citations, the grounding flag, and
+        the cleaned answer are all on it, and a client must render *that* rather
+        than what it accumulated — because an answer that cites a source it was
+        never given has its dangling marker removed, and because a model that
+        declined has its sentinel replaced. The deltas are a progress indicator
+        that happens to be readable, not the answer.
+
+        Raises:
+            The same exceptions as :meth:`answer`, at the point in the iteration
+            where the corresponding stage runs. A failure after the first
+            fragment has been emitted is still raised: the consumer has already
+            shown text, so the transport is what decides how to tell the user.
+        """
+        if not settings.RAG_ENABLED:
+            logger.info(
+                "rag_rejected",
+                reason="disabled",
+                actor_id=str(actor.id),
+                question_fingerprint=question_fingerprint(request.question),
+            )
+            raise RagDisabledError
+
+        started = time.monotonic()
+        logger.info("rag_requested", streamed=True, **self._event(request, actor=actor))
+
+        state = RagState(
+            request=request,
+            actor=actor,
+            started=started,
+            deadline=started + settings.RAG_TIMEOUT_SECONDS,
+        )
+
+        try:
+            state.update(self.validate_request(state))
+            state.update(self.retrieve_context(state))
+
+            yield RagStreamEvent(
+                kind=RagStreamEventKind.RETRIEVAL,
+                retrieved_count=len(state.get("passages", [])),
+            )
+
+            if state.get("passages"):
+                state.update(self.assemble_prompt(state))
+                # The one branch that differs from `answer`, and it is delegated
+                # rather than inlined so that "what a streamed generation is" has
+                # a single definition.
+                yield from self._generate_streaming(state)
+                state.update(self.verify_response(state))
+            else:
+                # The same branch `route_after_retrieval` takes, and for the same
+                # reason: with nothing retrieved there is nothing to ground an
+                # answer in, and the model is not called at all.
+                state.update(self.report_no_evidence(state))
+
+            state.update(self.format_output(state))
+        except RagUnavailableError as exc:
+            self._record_failure(request, actor=actor, started=started, error_code=exc.error_code)
+            raise
+        except AppException:
+            # Already a precise status — an unanswerable question, an
+            # inaccessible filter, a filter naming nothing. Deliberately not
+            # counted as a pipeline failure, exactly as in `answer`.
+            raise
+        except Exception as exc:
+            logger.exception(
+                "rag_failed",
+                streamed=True,
+                error_code=RagFailureCode.UNKNOWN.value,
+                error_type=type(exc).__name__,
+                **self._event(request, actor=actor),
+            )
+            self._record_failure(
+                request,
+                actor=actor,
+                started=started,
+                error_code=RagFailureCode.UNKNOWN.value,
+                already_logged=True,
+            )
+            raise RagUnavailableError(
+                RagFailureCode.UNKNOWN.value, failure_message(RagFailureCode.UNKNOWN)
+            ) from exc
+
+        yield RagStreamEvent(
+            kind=RagStreamEventKind.FINAL,
+            outcome=self._complete(state, request=request, actor=actor, started=started),
+        )
+
+    def _generate_streaming(self, state: RagState) -> Iterator[RagStreamEvent]:
+        """Call the provider incrementally, and fall back when it cannot stream.
+
+        ``13-ai-legal-assistant.md``: *"The implementation should gracefully fall
+        back to non-streaming responses if streaming is unavailable."* The
+        fallback is taken when the provider fails **before producing a single
+        fragment** — which covers a backend that does not implement streaming, a
+        gateway that refuses it, and a connection that never opened.
+
+        A failure **after** the first fragment is not retried and not fallen back
+        on, deliberately: text has already been delivered to the reader, and
+        restarting would either duplicate it or replace it with a differently
+        worded answer mid-paragraph. The same reasoning
+        :meth:`~services.llm.GeminiProvider.stream` gives for not retrying.
+
+        A streamed completion carries **no token usage**, because the provider
+        reports usage on a finished response and there is not one. That is stated
+        rather than papered over: the monitoring view counts metered runs
+        separately, so a deployment that streams everything reports honest
+        ``None`` totals instead of a figure that silently omits its real traffic.
+        """
+        self._check_deadline(state, stage="generate")
+
+        prompt = state["prompt"]
+        remaining = max(1.0, state["deadline"] - time.monotonic())
+        timeout = min(float(settings.LLM_TIMEOUT_SECONDS), remaining)
+        generation_started = time.monotonic()
+
+        accumulated = ""
+        released = 0
+        streamed = False
+
+        try:
+            for fragment in self._provider.stream(
+                system=prompt.system, prompt=prompt.user, timeout_seconds=timeout
+            ):
+                streamed = True
+                accumulated += fragment
+
+                # Withheld while the reply could still be the refusal sentinel
+                # alone; released in one piece the moment it cannot be.
+                if sentinel_prefix_pending(accumulated):
+                    continue
+
+                pending = accumulated[released:]
+                released = len(accumulated)
+                if pending:
+                    yield RagStreamEvent(kind=RagStreamEventKind.DELTA, text=pending)
+        except LLMError as exc:
+            if streamed:
+                # Mid-answer failure: the provider has already translated and
+                # logged the SDK's failure without quoting it, so all that is
+                # left is to carry the cause up.
+                self._unavailable(exc.code)
+
+            logger.info(
+                "rag_stream_unavailable",
+                provider=self._provider.name,
+                model=self._provider.model,
+                error_code=exc.code.value,
+            )
+            state.update(self.invoke_model(state))
+            completion = state["completion"]
+            text = completion.text
+            if not sentinel_prefix_pending(text) and text:
+                yield RagStreamEvent(kind=RagStreamEventKind.DELTA, text=text)
+            return
+
+        generation_ms = self._elapsed_ms(generation_started)
+
+        logger.info(
+            "rag_llm_streamed",
+            provider=self._provider.name,
+            model=self._provider.model,
+            generation_ms=generation_ms,
+            answer_characters=len(accumulated),
+        )
+
+        state.update(
+            RagState(
+                completion=LLMCompletion(
+                    text=accumulated,
+                    provider=self._provider.name,
+                    model=self._provider.model,
+                ),
+                generation_ms=generation_ms,
+            )
+        )
 
     # ----------------------------------------------------------- graph nodes #
 
@@ -1090,4 +1329,11 @@ def citation_document_ids(citations: Sequence[RagCitationRead]) -> list[uuid.UUI
     return list(seen)
 
 
-__all__ = ["RagHealth", "RagOutcome", "RagService", "citation_document_ids"]
+__all__ = [
+    "RagHealth",
+    "RagOutcome",
+    "RagService",
+    "RagStreamEvent",
+    "RagStreamEventKind",
+    "citation_document_ids",
+]

@@ -1,0 +1,17 @@
+DOCUMENTS
+{% for source in sources %}
+- {{ source.document_name }} — version {{ source.document_version }}, page {{ source.page_number }}
+{% endfor %}
+END DOCUMENTS
+
+QUESTION
+{{ question }}
+END QUESTION
+
+ANSWER
+{{ answer }}
+END ANSWER
+
+Write {{ suggestion_count }} follow-up questions in {{ language_name }}, one per
+line, each answerable from the documents above and none of them repeating the
+question already asked.

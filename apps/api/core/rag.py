@@ -433,6 +433,44 @@ def is_insufficient_evidence(answer: str) -> bool:
     return INSUFFICIENT_EVIDENCE_MARKER.casefold() in answer.casefold()
 
 
+def sentinel_prefix_pending(accumulated: str) -> bool:
+    """Whether the text produced so far could still turn out to be the refusal alone.
+
+    Used only when an answer is **streamed**. A streamed answer is emitted as it
+    arrives, but the platform replaces the refusal sentinel with its own sentence
+    — so a naive relay would show a reader the characters ``INSUFFICIENT_EVID…``
+    and then swap them for a paragraph of French, which looks like a malfunction
+    and briefly exposes an internal token.
+
+    So a stream withholds its fragments while the accumulated text is still a
+    *prefix* of the sentinel, and releases them the moment it cannot be one. The
+    cost is bounded and tiny: at most the sentinel's length of text is held back,
+    and only until the model writes a character that diverges from it — which,
+    for any real answer, is the first one.
+
+    **Both directions are withheld**, and the second is the one a naive
+    implementation gets wrong: text that is still *becoming* the sentinel
+    (``INSUFFICIENT_EVID``) and text that *already is* it, with or without
+    anything after (``INSUFFICIENT_EVIDENCE.``). Releasing the second would emit
+    the token in full the instant it completed, which is precisely the flash this
+    exists to prevent.
+
+    What it does **not** catch is a model that prefixes the sentinel with prose —
+    ``Answer: INSUFFICIENT_EVIDENCE`` — because by the time the token appears the
+    prose has already been released. :func:`is_insufficient_evidence` still
+    recognises that reply and the final answer is still replaced; the reader
+    briefly saw ``Answer: ``. That is the honest limit of a guard that cannot see
+    the future, and the prompt asks for the sentinel *alone*.
+
+    Recognised the same way :func:`is_insufficient_evidence` recognises the
+    finished reply: case-insensitively, and tolerant of the opening quotation
+    mark a model sometimes leads with.
+    """
+    trimmed = accumulated.lstrip().lstrip("\"'").casefold()
+    marker = INSUFFICIENT_EVIDENCE_MARKER.casefold()
+    return marker.startswith(trimmed) or trimmed.startswith(marker)
+
+
 def is_usable_answer(answer: str) -> bool:
     """Whether a generated answer carries anything to show a user.
 
@@ -472,6 +510,7 @@ __all__ = [
     "normalize_question",
     "question_fingerprint",
     "resolve_answer_language",
+    "sentinel_prefix_pending",
     "total_characters",
     "unknown_markers",
 ]

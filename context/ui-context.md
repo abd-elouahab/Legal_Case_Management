@@ -224,12 +224,13 @@ it needs attention.
 The details page groups the record the way someone working a case reads it:
 **General information**, **Assignment**, **Court information**, and **Audit
 information**, followed by the case's **Documents** (the real list, scoped to
-this case), its **Timeline** (the real activity history), and then dashed
-placeholder cards reserving the layout for Notes, AI Assistant, and Reports.
-Those cards say plainly that the module is not built yet, so an empty card is
-never mistaken for a loading failure. Documents and Timeline no longer have
-placeholders — both modules shipped, and a placeholder beside a working feature
-reads as a bug.
+this case), its **Timeline** (the real activity history), its **Search** (pinned
+to this case), its **AI Assistant** (also pinned), and then dashed placeholder
+cards reserving the layout for Notes and Reports. Those cards say plainly that
+the module is not built yet, so an empty card is never mistaken for a loading
+failure. Documents, Timeline, and the AI Assistant no longer have placeholders —
+all three modules shipped, and a placeholder beside a working feature reads as a
+bug.
 
 Dialogs:
 
@@ -531,13 +532,19 @@ The document viewer supports:
 - Document metadata — **implemented**
 - Version history — **implemented**
 - OCR text display — deferred to OCR & Document Processing
-- AI-generated summaries — deferred to the AI Assistant
+- AI-generated summaries — deferred to a later AI feature. The AI Assistant
+  answers questions about a document from inside the case workspace; summarizing
+  one *in the viewer* still needs a viewer-level action, and
+  `13-ai-legal-assistant.md` puts summarization out of its scope
 - Semantic search highlights — **partially delivered**: Semantic Search returns
   the matching passage verbatim with its page number, which is the citation a
   lawyer needs. Highlighting that passage *inside the rendered document* is still
   deferred, because it needs the viewer to map a chunk back to a position in the
   file rather than to a page.
-- Source references — deferred to the AI Assistant
+- Source references — **delivered**, but by the AI Assistant rather than by the
+  viewer: every answer carries its citations with the document, version, and
+  page, and each links to the case. Rendering a reference *inside* the viewer
+  waits on the same chunk-to-position mapping the highlight does
 
 ---
 
@@ -560,18 +567,86 @@ Users can mark notifications as read or filter them by type.
 
 ### AI Assistant
 
-The AI Assistant is available throughout the platform.
+Gated on `ai:chat`, which administrators and lawyers hold and **court
+representatives do not** — the one place this platform draws a line between
+reading the case file and generating an interpretation of it. **Sending a
+message additionally needs `ai:ask`**, because a message puts a question to the
+RAG pipeline; a caller holding only `ai:chat` reads their history and is told
+plainly that they cannot ask new questions, rather than meeting a 403 on submit.
 
-Capabilities include:
+It has both a destination and an embedded form. `/ai` holds conversations about
+everything the caller can reach; the case workspace renders the same workspace
+pinned to one case, where every answer is built only from that case's documents
+and the conversation list shows only that matter's threads — the same rule the
+embedded document list and case search follow.
 
-- Legal document Q&A
-- Semantic search
-- Summarization
-- Information extraction
-- Report generation
-- Case timeline explanations
+The screen is the conversation list beside the open thread:
 
-Every AI response includes references to the source documents.
+- **Which conversation is open is component state, not a route.** A conversation
+  identifier in the URL would be written to the browser's history and the
+  `Referer` header of anything the page loads next — the same three logs the API
+  refuses to put a question into by making search and messaging POSTs.
+- **The list shows the caller's own threads only**, most recently active first,
+  with active and archived as two states rather than a filter bar. Search matches
+  the title, because that is what the API searches; a box that appeared to search
+  message contents and quietly did not would be worse than none.
+- **A message appears the instant it is sent**, before the server has confirmed
+  anything, and the pending turn is discarded the moment the stored transcript
+  arrives — so an answer is never drawn twice.
+- **The answer streams when the platform allows it**, and falls back to arriving
+  whole when the provider cannot. Three states are shown while it is in flight,
+  and they are the three the API actually reports: *searching your documents*,
+  *read N passages*, and the text itself. A client renders the **final** event
+  rather than the accumulated fragments, because a dangling citation marker has
+  been removed from it and a refusal replaced by the platform's own sentence.
+- **An answer with no supporting evidence says so prominently**, and a truncated
+  one says that it stops early. A reader must never mistake "I found nothing" for
+  an answer that happens to be short, and an answer cut off at the model's output
+  ceiling is the one way this screen could actively mislead.
+- **Citations are shown exactly as the pipeline produced them** — file name,
+  version, page, and the marker the prose cites — with the excerpt collapsed
+  rather than omitted, and relevance as a **percentage with a label, never colour
+  alone**. A source the answer did not cite is listed and *marked*, because a
+  model that forgot a marker has not made the evidence disappear. Each links to
+  its **case**, the one destination its reader is certainly entitled to open.
+- **Suggested follow-ups appear under the last answer only**, and choosing one
+  fills the box rather than sending it: a suggestion is a starting point someone
+  may want to narrow, and one click that silently spends a model call is not a
+  shortcut anyone asked for.
+- **Every answer can be rated helpful or not helpful, and copied.** Pressing the
+  rating already given withdraws it. Rating never alters the answer — feedback is
+  stored separately server-side, which is what the spec requires and what keeps
+  the transcript usable as evaluation evidence.
+- **The composer sends on Enter and breaks the line on Shift+Enter**, and is
+  never disabled while an answer is in flight — only the send button is. Someone
+  who thought of their next question while reading must be able to type it.
+- **`dir="auto"` throughout**, so an Arabic answer renders right-to-left beside a
+  French question without the client detecting script.
+- **The answer is rendered as written, not as Markdown.** Interpreting generated
+  text as markup would mean deciding what to do with a `[1]` citation marker, a
+  `#` from a statute reference, or an underscore in a filename — and rendering
+  generated text as HTML in a legal platform is a much larger decision than it
+  looks.
+
+States:
+
+- Skeletons while a transcript loads, and a typing indicator while an answer is
+  being produced.
+- Distinct empty states for "no conversation open", "ask your first question",
+  and "no conversations yet" — none of them an error.
+- A failure keeps the question on screen with a **retry**, and is never retried
+  automatically: a 503 means retrieval or the model is down and an immediate
+  retry fails the same way, while a request that *did* reach the model would
+  append a second answer.
+
+`AssistantMetricsPanel` sits on `/ai`, gated on `ai:monitor` — the fifth stage of
+the same pipeline, and the one that says whether the four below it are being used.
+
+Business-specific components for this area live in:
+
+```
+components/ai/
+```
 
 ---
 

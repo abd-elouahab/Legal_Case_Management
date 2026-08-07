@@ -142,6 +142,32 @@ export const SEARCH_ENDPOINTS = {
 } as const;
 
 /**
+ * AI Legal Assistant endpoint paths, relative to the version prefix.
+ *
+ * Conversations sit under `/assistant` rather than at the root because they are
+ * that module's resource, and the module is a peer of `/search` and `/rag`
+ * rather than a route on either — the assistant is a different capability
+ * (`ai:chat`) that a deployment may grant without `ai:ask`.
+ *
+ * **Sending a message is a POST**, which is why there is no query-building helper
+ * beside these the way there is for the list endpoints. A question in a URL is
+ * written to the reverse proxy's access log, the browser's history, and the
+ * `Referer` header of anything the page loads next — three logs the application
+ * does not control — and a legal question is at least as sensitive as the passage
+ * it retrieves.
+ */
+export const ASSISTANT_ENDPOINTS = {
+  conversations: "/assistant/conversations",
+  conversation: (id: string) => `/assistant/conversations/${encodeURIComponent(id)}`,
+  messages: (id: string) => `/assistant/conversations/${encodeURIComponent(id)}/messages`,
+  stream: (id: string) => `/assistant/conversations/${encodeURIComponent(id)}/messages/stream`,
+  feedback: (conversationId: string, messageId: string) =>
+    `/assistant/conversations/${encodeURIComponent(conversationId)}/messages/` +
+    `${encodeURIComponent(messageId)}/feedback`,
+  metrics: "/assistant/metrics",
+} as const;
+
+/**
  * Timeline endpoint paths, relative to the version prefix.
  *
  * Read-only, and the shape says so: there is no create, update, or delete path

@@ -279,6 +279,79 @@ class Settings(BaseSettings):
     RAG_PROMPT_TEMPLATE: str = "rag/answer"
     RAG_PROMPT_VERSION: int = 1
 
+    # --- AI legal assistant (conversations) ---
+    # The fifth stage of the AI pipeline: the conversational surface over the RAG
+    # pipeline. It persists conversations and messages, streams answers, passes
+    # citations through unchanged, suggests follow-up questions, and collects
+    # feedback. It generates nothing itself — every answer is the pipeline's.
+    # Disabling it refuses new conversations and new messages; existing history
+    # stays readable, and `POST /rag/answer` is unaffected.
+    ASSISTANT_ENABLED: bool = True
+    # Longest accepted conversation title, in characters. Titles are a label in a
+    # list, not a summary: a long one is truncated in every surface that shows it.
+    ASSISTANT_TITLE_MAX_LENGTH: int = 120
+    # Conversations returned per page when a request does not ask for a number,
+    # and the ceiling a request may ask for.
+    ASSISTANT_PAGE_SIZE: int = 20
+    ASSISTANT_MAX_PAGE_SIZE: int = 100
+    # Messages returned per page of a conversation transcript. Larger than the
+    # conversation page because a transcript is read as a whole: paging every ten
+    # turns would make the common case several round trips.
+    ASSISTANT_MESSAGE_PAGE_SIZE: int = 50
+    ASSISTANT_MAX_MESSAGE_PAGE_SIZE: int = 200
+    # Prior turns (a user question plus its answer counts as two messages) carried
+    # into a follow-up question so it can be resolved against what came before.
+    # Bounded because "avoid unnecessary history growth" is a spec requirement:
+    # every carried turn widens the retrieval query, and a question resolved
+    # against a conversation from an hour ago retrieves that conversation's
+    # subject rather than this question's.
+    ASSISTANT_CONTEXT_MESSAGES: int = 4
+    # Ceiling on the carried history, in characters, applied after the turn limit.
+    # Two limits rather than one because the turn count bounds *how far back* and
+    # this bounds *how much* — one long answer must not fill the retrieval query.
+    ASSISTANT_CONTEXT_MAX_CHARACTERS: int = 800
+    # Messages one conversation may hold. A conversation is a working thread, not
+    # an archive: past the ceiling the user starts a new one, which also keeps the
+    # transcript loadable in one page-sized request.
+    ASSISTANT_MAX_MESSAGES: int = 500
+    # Whether answers may be streamed to the client when the configured provider
+    # supports it. Turning it off makes every answer arrive whole, which is the
+    # same fallback a provider that cannot stream produces.
+    ASSISTANT_STREAMING_ENABLED: bool = True
+    # Whether a successful, grounded answer is followed by suggested next
+    # questions. A second, small model call per answer — so it is a switch an
+    # operator can turn off on a metered or rate-limited key, and a failure to
+    # produce suggestions never fails the answer they would have followed.
+    ASSISTANT_SUGGESTIONS_ENABLED: bool = True
+    # How many follow-up questions are suggested. Small on purpose: a list of ten
+    # is a menu to read rather than a shortcut to take.
+    ASSISTANT_SUGGESTION_COUNT: int = 3
+    # Longest suggested follow-up, in characters. Must not exceed
+    # RAG_QUESTION_MAX_LENGTH — a suggestion the user cannot send is worse than no
+    # suggestion.
+    ASSISTANT_SUGGESTION_MAX_LENGTH: int = 160
+    # Deadline for the suggestion call. Deliberately small: suggestions are a
+    # convenience that arrives after the answer, and one that takes as long as
+    # the answer costs more than it saves.
+    ASSISTANT_SUGGESTION_TIMEOUT_SECONDS: int = 15
+    # Ceiling on the suggestion call's output. Three short questions are perhaps
+    # 60 tokens, so this looks absurdly generous — and 256 was **not enough**.
+    # A live run against gemini-2.5-flash returned a single suggestion cut off
+    # mid-word: the model is a *reasoning* model, its internal thinking is
+    # charged against this same budget, and on that call the thoughts consumed
+    # roughly 250 of 256 tokens before a single visible one was emitted. The
+    # ceiling therefore has to cover the model's deliberation as well as its
+    # answer, and it is not a cost — nothing is billed for headroom that is not
+    # used. A truncated reply is now also *detected* rather than merely made
+    # unlikely (see `core.assistant.parse_suggestions`), because a provider that
+    # thinks more on some prompts than on others cannot be sized around exactly.
+    ASSISTANT_SUGGESTION_MAX_OUTPUT_TOKENS: int = 1024
+    # Which prompt template produces those suggestions, and which version of it.
+    # Versioned in the filename exactly as the answer prompt is, for the same
+    # reason: a prompt change must be reviewable as a diff of the text sent.
+    ASSISTANT_SUGGESTION_PROMPT_TEMPLATE: str = "assistant/followups"
+    ASSISTANT_SUGGESTION_PROMPT_VERSION: int = 1
+
     # --- Prompt templates ---
     # Which prompt backend to use (see `services/prompts.py`). Templates live in
     # `apps/api/prompts/` as versioned `.j2` files under source control.
@@ -464,6 +537,16 @@ class Settings(BaseSettings):
         "LLM_MAX_OUTPUT_TOKENS",
         "LLM_TIMEOUT_SECONDS",
         "LLM_MAX_ATTEMPTS",
+        "ASSISTANT_TITLE_MAX_LENGTH",
+        "ASSISTANT_PAGE_SIZE",
+        "ASSISTANT_MAX_PAGE_SIZE",
+        "ASSISTANT_MESSAGE_PAGE_SIZE",
+        "ASSISTANT_MAX_MESSAGE_PAGE_SIZE",
+        "ASSISTANT_MAX_MESSAGES",
+        "ASSISTANT_SUGGESTION_MAX_LENGTH",
+        "ASSISTANT_SUGGESTION_TIMEOUT_SECONDS",
+        "ASSISTANT_SUGGESTION_MAX_OUTPUT_TOKENS",
+        "ASSISTANT_SUGGESTION_PROMPT_VERSION",
     )
     @classmethod
     def _require_positive(cls, value: int, info: ValidationInfo) -> int:
@@ -520,6 +603,55 @@ class Settings(BaseSettings):
             raise ValueError("LLM_TEMPERATURE must be between 0.0 and 2.0")
         if self.LLM_RETRY_BACKOFF_SECONDS < 0:
             raise ValueError("LLM_RETRY_BACKOFF_SECONDS must not be negative")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_assistant_limits(self) -> Settings:
+        """Keep the assistant's budgets coherent with the pipeline beneath it.
+
+        Five couplings, and every one of them is invisible until a user is
+        already mid-conversation:
+
+        * a **page size above its ceiling** would make every unqualified list
+          request fail against a bound the caller never chose — the same
+          misconfiguration :meth:`_validate_search_limits` refuses for search;
+        * a **suggestion longer than a question** is a suggestion the user
+          cannot send: clicking it would be refused by the very endpoint it was
+          offered by;
+        * the **suggestion deadline** must fit inside the provider's own, or the
+          smaller number it is supposed to impose would never take effect;
+        * **carried history** must fit inside the question budget, because a
+          follow-up is resolved by prefixing that history to the question and the
+          result is what the retrieval query becomes;
+        * a **conversation ceiling below one page** of messages would make the
+          transcript endpoint unable to return a full conversation.
+        """
+        if self.ASSISTANT_PAGE_SIZE > self.ASSISTANT_MAX_PAGE_SIZE:
+            raise ValueError("ASSISTANT_PAGE_SIZE must not exceed ASSISTANT_MAX_PAGE_SIZE")
+        if self.ASSISTANT_MESSAGE_PAGE_SIZE > self.ASSISTANT_MAX_MESSAGE_PAGE_SIZE:
+            raise ValueError(
+                "ASSISTANT_MESSAGE_PAGE_SIZE must not exceed ASSISTANT_MAX_MESSAGE_PAGE_SIZE"
+            )
+        if self.ASSISTANT_SUGGESTION_MAX_LENGTH > self.RAG_QUESTION_MAX_LENGTH:
+            raise ValueError(
+                "ASSISTANT_SUGGESTION_MAX_LENGTH must not exceed RAG_QUESTION_MAX_LENGTH"
+            )
+        if self.ASSISTANT_SUGGESTION_TIMEOUT_SECONDS > self.LLM_TIMEOUT_SECONDS:
+            raise ValueError(
+                "ASSISTANT_SUGGESTION_TIMEOUT_SECONDS must not exceed LLM_TIMEOUT_SECONDS"
+            )
+        if self.ASSISTANT_CONTEXT_MAX_CHARACTERS >= self.RAG_QUESTION_MAX_LENGTH:
+            raise ValueError(
+                "ASSISTANT_CONTEXT_MAX_CHARACTERS must be smaller than RAG_QUESTION_MAX_LENGTH"
+            )
+        if self.ASSISTANT_MAX_MESSAGES < self.ASSISTANT_MESSAGE_PAGE_SIZE:
+            raise ValueError(
+                "ASSISTANT_MAX_MESSAGES must not be smaller than ASSISTANT_MESSAGE_PAGE_SIZE"
+            )
+        if self.ASSISTANT_CONTEXT_MESSAGES < 0:
+            raise ValueError("ASSISTANT_CONTEXT_MESSAGES must not be negative")
+        if self.ASSISTANT_SUGGESTION_COUNT < 0:
+            raise ValueError("ASSISTANT_SUGGESTION_COUNT must not be negative")
         return self
 
     @model_validator(mode="after")

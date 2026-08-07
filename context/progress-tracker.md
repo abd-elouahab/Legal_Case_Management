@@ -5,31 +5,27 @@ change.
 
 ## Current Phase
 
-- **RAG Pipeline complete (spec `12-rag-pipeline.md`).** See the entry at the top
-  of *Completed*.
+- **AI Legal Assistant complete (spec `13-ai-legal-assistant.md`).** See the
+  entry at the top of *Completed*.
 
 ## Current Goal
 
-- **Next: the AI Legal Assistant** (`13-ai-legal-assistant.md`,
-  `ai-architecture.md`'s next stage). The RAG pipeline is complete, and what it
-  returns — a grounded answer, its language, its citations with document,
-  version, page, and case, and whether the documents supported an answer at all —
-  is exactly what a conversation turn is made of. **Nothing about conversations,
-  message history, streaming, follow-up suggestions, or feedback was built
-  here**, as the RAG spec requires: no module in the feature imports a
-  conversation, a message, or a session, a test asserts the state dictionary has
-  no key for one, and another asserts the API exposes exactly two `/rag` paths.
-  **The three things the assistant must reuse** are `RagService.answer` — which
-  already owns retrieval, prompt construction, invocation, and citation, so the
-  assistant must not re-implement any of the four and `13-ai-legal-assistant.md`
-  puts all four out of its scope — `LLMProvider.stream`, which exists on the
-  protocol and is deliberately unused by the pipeline because a streaming answer
-  cannot emit citations before it has finished deciding which sources it used,
-  and `citation_document_ids` in `services/rag.py`, which is there for the
-  assistant's "sources: 3 documents" line and the report agent's equivalent.
-  **The one thing it must add** is where a question and its answer are persisted:
-  `architecture.md` already lists *AI Conversations* under PostgreSQL, and the
-  RAG pipeline deliberately persists nothing.
+- **Next: Reports** (`ai-workflow-rules.md`'s step 10, and
+  `ai-architecture.md`'s Report Generation Agent). The assistant is complete, and
+  what it established is the shape a report agent will reuse: a versioned prompt
+  for a *new* purpose rendered through the same `PromptLibrary`, generation
+  through the same `LLMProvider`, and **grounding through `RagService` rather
+  than through anything of its own**. Two things in the pipeline were built for
+  it specifically and are still unused: `citation_document_ids` in
+  `services/rag.py`, which is there for a report section's "sources: 3
+  documents" line, and the note in `services/rag_graph.py` that report
+  generation is *its own graph reusing these nodes*, not a branch in the
+  question-answering one. The permissions already exist — `ai:generate-report`
+  and `reports:generate` have both been defined since Authorization shipped —
+  and `architecture.md` already lists *Reports* under PostgreSQL. **What the
+  assistant deliberately did not build** is summarization, information
+  extraction, compliance analysis, translation, and multi-agent routing; the
+  spec puts all five out of its scope and none of them was started.
 
 ## Open Questions
 
@@ -70,6 +66,415 @@ change.
   the whole run.
 
 ## Completed
+
+- **AI Legal Assistant (spec `13-ai-legal-assistant.md`)** — the fifth stage of
+  the AI pipeline and the conversational surface over the fourth: a message is
+  resolved against the conversation it belongs to, handed to the RAG pipeline,
+  streamed back as it is produced, and persisted with its citations, its
+  suggested next questions, and the provenance an evaluation needs. **Nothing
+  about report generation, compliance analysis, translation, summarization,
+  voice, or multi-agent routing was implemented** — the spec puts all six out of
+  scope, and the feature ends at a persisted turn.
+  - **No new dependencies, backend or frontend.** A consequence of the design
+    rather than luck: every external thing this feature touches — the model
+    provider, the prompt library, the search service, the vector database — is
+    reached through the RAG pipeline, which already owns all four. **One
+    migration** (`f2a76c40d91b`) and **three tables**.
+  - **Every answer is the pipeline's, and that is structural rather than
+    disciplinary.** `13-ai-legal-assistant.md` forbids duplicating *"retrieval,
+    prompt construction, or orchestration logic already implemented by the RAG
+    Pipeline"*, and `AssistantService` holds a `RagService` and nothing else that
+    could produce an answer: no search service, no embedder, no vector searcher,
+    no prompt library for answering, and no document repository. So the whole
+    authorization chain — conversation → pipeline → search → document → case — is
+    inherited, and asserted from three directions: the service's collaborator
+    set, an import check on the source, and an HTTP test showing a filter naming
+    another party's case is refused **403 by the search service, unchanged**.
+  - **Three tables, and the third is the interesting one.** `conversations` is
+    the thread, `conversation_messages` is one row per turn, and
+    `message_feedback` is a rating of one answer. A message could have been a
+    JSON array on the conversation and that would have been wrong three times
+    over — feedback points at a *message*, pagination pages messages, and the
+    "support future message editing without redesign" the spec asks for is an
+    `UPDATE` of one row rather than a rewrite of an array (the `edited_at` and
+    `original_content` columns exist now, unwritten, because adding them later
+    is the migration the spec is asking to avoid). And feedback gets its own
+    table specifically so that ***"feedback should not modify conversation
+    history"* is structural**: rating writes to a table the transcript is not
+    read from, so it cannot alter one even by accident. Asserted at both layers.
+  - **Ownership is the shape of every query, not a policy module.** Every read in
+    `repositories/conversation.py` takes an `owner_id` and puts it in the `WHERE`
+    clause; there is deliberately **no method that resolves a conversation by
+    identifier alone**, so no call site in the platform can forget to scope one.
+    That is why there is **no `assistant_access.py`** — the second module in this
+    chain not to add one, after the RAG pipeline, and for the mirror-image
+    reason: the pipeline's rule already lived somewhere else, and this feature's
+    rule is a single equality the query itself asserts.
+  - **A conversation the caller does not own is 404, not 403 — the one place on
+    this platform that conceals rather than refuses.** Every other module answers
+    403, because a lawyer who follows a colleague's link to a case needs to know
+    the case exists and that they should ask to be assigned. A conversation is
+    the opposite: it is one user's private working material, nobody is ever meant
+    to share a link to one, and confirming that another user's thread *exists* is
+    itself the disclosure the spec forbids. A test asserts that a real
+    conversation belonging to someone else and an identifier that never existed
+    produce the **same status and the same error code**.
+  - **Sending a message requires `ai:chat` *and* `ai:ask`; reading a transcript
+    requires only `ai:chat`.** A message does both — it opens the conversational
+    surface and it puts a question to the pipeline — so a deployment that granted
+    one and withheld the other must not reach the pipeline through this door.
+    Reading what was already answered asks nothing new of it. Exercised by
+    narrowing the lawyer's policy at runtime and asserting the **refusal**,
+    rather than by inspecting the route declaration.
+  - **It is the first AI feature to add no permission at all.** `ai:chat`,
+    `ai:ask`, and `ai:monitor` all already existed — the first since
+    Authorization shipped, the second and third from the RAG pipeline — and this
+    feature is precisely the surface the first was named for.
+  - **Deletion is logical, and the transcript is what justifies it.** A
+    conversation carries the citations of advice a lawyer may have acted on, so
+    `DELETE` sets `deleted_at`, the row is excluded from every read, and a future
+    retention job reclaims it. Archiving is the reversible half. The dialog's
+    copy says what the user actually experiences ("will no longer appear
+    anywhere… you will not be able to reopen it") rather than either "deleted
+    permanently", which would be false, or "kept", which would sound recoverable.
+  - **A follow-up is resolved against what came before it, and the design was
+    forced by the pipeline rather than chosen.** `RagRequest.question` is *both*
+    the retrieval query and the text the model is asked to answer — so history
+    cannot simply be prepended, because the model would answer the *previous*
+    question again. What is prepended instead is a short, labelled reference to
+    the earlier question, which reads to a model as "this follows on from X, now
+    answer Y" and to the embedder as "X and Y are the same subject": one string,
+    correct for both uses. Only earlier **user questions** travel, never answers —
+    an answer is a paragraph and would dominate both. Two independent bounds,
+    because they limit different things: the turn count bounds *how far back*,
+    the character budget bounds *how much*, and the budget is reserved out of the
+    pipeline's question limit so a resolved follow-up can never be refused by the
+    endpoint that built it.
+  - **The trigger is length, and that is a judgement call stated rather than
+    hidden.** A question below 90 characters is read against the turn before it;
+    anything longer stands alone. A list of anaphoric words would have to be
+    maintained per language and would still miss *"Et le délai ?"*, which contains
+    no pronoun at all. The cost of resolving a question that did not need it is
+    bounded and in the safe direction — it *broadens* the retrieval query with
+    terms from the same matter, adding candidates rather than replacing them, and
+    every candidate is still scoped to the caller's cases. A model-based rewriter
+    substitutes for one pure function and changes nothing above it.
+  - **The user's literal message is what is stored and shown**; the resolved text
+    exists only for the pipeline, and what was carried is reported as a *count*
+    (`context_turns`) on the answer. Showing the platform's preamble in a
+    transcript would be showing someone words they did not write.
+  - **The answer language is settled from the literal message, never the resolved
+    one.** A follow-up is resolved by prefixing a French or Arabic label to it,
+    and detecting the language of *that* would let the platform's own preamble
+    decide what language a user is answered in.
+  - **The title comes from the user's first question, and deliberately not from a
+    model.** Three reasons compound: a title is the one place a hallucination
+    would be invisible, because nobody re-reads a list row against the
+    conversation it names — a plausible wrong subject would simply *become* what
+    that thread is called; it would double the model calls the first message of
+    every conversation costs, on a provider whose free tier allows twenty a day;
+    and the user's own words are by construction the most faithful description of
+    what they asked. It is editable, which is the spec's own remedy, and
+    `title_is_custom` means a name someone chose is never overwritten.
+  - **Follow-up suggestions are a new prompt for a new purpose, not a duplicate
+    of an old one.** `assistant/followups.v1.{system,user}.j2`, versioned in the
+    filename exactly as the answer prompt is, rendered through the *same*
+    `PromptLibrary` and generated through the *same* `LLMProvider`. The spec
+    forbids duplicating prompt construction *"already implemented by the RAG
+    Pipeline"* — and proposing a next question is something the pipeline does not
+    do. Three decisions inside it:
+    - **nothing is suggested for an ungrounded answer, and no call is made.**
+      Suggestions must never invent unsupported facts, and an answer that found
+      no supporting document supports no follow-up either — every question a
+      model produced from it would be a guess about material the platform does
+      not have. It is also the cheapest correct behaviour;
+    - **the document names are sent and the passages are not.** The answer was
+      already built from those passages, so a question grounded in the answer is
+      grounded in them, and sending the full context twice would double the cost
+      of every exchange for a list of three short questions;
+    - **every failure returns an empty list.** A timeout, a missing template, a
+      missing credential, an unparseable reply, and an exception the module
+      cannot name all produce no suggestions and a log line. An answer the user
+      is already waiting for must never be lost to the convenience after it.
+    Parsing is all *rejection* rules rather than repair rules, because a
+    suggestion is sent verbatim: an over-long one is **dropped, never clipped** (a
+    truncated question changes meaning), duplicates and anything already asked go,
+    and the list is capped — a menu of ten is something to read rather than a
+    shortcut to take.
+  - **Suggestions are a switch, and the reason is quota.** On gemini-2.5-flash's
+    free tier they **halve** the questions a day allows, so
+    `ASSISTANT_SUGGESTIONS_ENABLED=false` is the right setting for such a
+    deployment — recorded in `.env.example` beside the setting rather than left
+    to be discovered.
+  - **Streaming was added to the *pipeline*, not to the assistant, and that is
+    the load-bearing decision of the feature.** An assistant that streamed on its
+    own would have to retrieve, build a prompt, call a provider, verify the
+    reply, and attach citations — which is `services/rag.py` written twice, and
+    exactly what the spec forbids. So `RagService.stream` is the same nodes in
+    the same order with generation replaced by an incremental call, and the
+    assistant relays what comes out. It is **not** a LangGraph traversal, and the
+    reason is stated rather than glossed: `invoke` returns a *final state*, and
+    emitting fragments out of the middle of a node needs a generator. The two are
+    kept in step by tests that assert they visit the same nodes and take the same
+    branch after retrieval.
+  - **The refusal sentinel never reaches a reader as text.** A streamed answer is
+    emitted as it arrives, but the platform replaces `INSUFFICIENT_EVIDENCE` with
+    its own sentence — so a naive relay would show `INSUFFICIENT_EVID…` and then
+    swap it for a paragraph of French, which looks like a malfunction and briefly
+    exposes an internal token. `sentinel_prefix_pending` withholds fragments
+    while the accumulated text could still be the sentinel, in **both**
+    directions: text that is still *becoming* it and text that already *is* it.
+    The second is the half a naive implementation gets wrong, and a test caught
+    exactly that during development. What it does not catch — a model that
+    prefixes the sentinel with prose — is stated as the honest limit of a guard
+    that cannot see the future.
+  - **The stream is primed before the status line is sent.** The route pulls the
+    first event, which is emitted once retrieval has run, so every request
+    rejection (403 for an inaccessible filter, 404 for an unknown conversation,
+    409 for an archived one, 422 for an unanswerable question, 503 for an outage)
+    keeps its **own HTTP status** instead of being smuggled into an SSE frame. A
+    failure *after* that becomes an `error` event, because the status line has
+    already gone.
+  - **Streaming falls back to a whole answer when the provider cannot stream**,
+    and only when it fails **before the first fragment**. A failure after that is
+    not retried and not fallen back on: text has already been delivered, and
+    restarting would either duplicate it or replace it with a differently worded
+    answer mid-paragraph.
+  - **A streamed answer carries no token usage**, and that is stated rather than
+    papered over: a provider reports usage on a *finished* response and there is
+    not one. The monitoring view counts metered runs separately, so a deployment
+    that streams everything reports honest `null` totals instead of a figure that
+    silently omits its real traffic.
+  - **A streamed exchange persists the question before the answer exists**,
+    unlike the blocking path, which writes both in one transaction. A browser that
+    closes mid-stream would otherwise lose a question it had already sent and seen
+    echoed on screen. The asymmetry is deliberate and tested from both sides: the
+    blocking path leaves *nothing* behind on failure, the streaming path leaves
+    the question.
+  - **Metrics come from two places on purpose, and the split is the point.**
+    Conversation counts, conversation length, and feedback statistics are
+    **queried from the database** — they are properties of persisted rows, and
+    counting them in a process would reset on restart *and* be wrong. Request
+    counts, latency, and failures accumulate **in the process** behind
+    `AssistantMetricsRecorder`, exactly as search's and RAG's do, with `since`
+    reporting the window. `helpful_rate` is `None` rather than `0` when nobody
+    has rated anything, because `0` would read as "every answer was unhelpful";
+    `rated_messages_rate` is reported beside it because a 90% helpful rate over
+    four ratings is not a measurement.
+  - **The assistant's latency is measured, not the pipeline's**, and the two are
+    reported on different endpoints: this one includes resolving the conversation,
+    reading its history, and persisting both turns — what the user actually
+    waited for — and the gap between it and `/rag/metrics` is this feature's own
+    overhead.
+  - **No timeline event is published**, and that is a decision rather than an
+    omission. The timeline is a *case's* history, published to by the services
+    that change a case; a conversation belongs to a user. Recording "asked the
+    assistant a question" on a case's audit trail would also put one lawyer's
+    private research in front of everyone else assigned to the matter.
+  - **No question, answer, title, or citation reaches a log**, correlated by the
+    *same* salted fingerprint a search or a pipeline run for that text produces,
+    so an operator can trace a failing question across all three surfaces while
+    learning nothing about the matter. Feedback logs *whether* a note was left,
+    never the note.
+  - **Modules** (all new): `core/assistant.py` (titling, previews, follow-up
+    resolution, suggestion parsing — pure, no I/O), `models/conversation.py`,
+    `repositories/conversation.py`, `services/assistant.py`,
+    `services/assistant_metrics.py`, `services/suggestions.py`,
+    `schemas/conversation.py`, `api/v1/assistant/router.py`, and
+    `apps/api/prompts/assistant/followups.v1.{system,user}.j2`. Two additions to
+    the pipeline: `RagService.stream` and `core.rag.sentinel_prefix_pending`.
+  - **Six endpoints**, and a test asserts there is no seventh: `POST|GET
+    /assistant/conversations`, `GET|PATCH|DELETE /assistant/conversations/{id}`,
+    `GET|POST .../messages`, `POST .../messages/stream`, `PUT|DELETE
+    .../messages/{id}/feedback`, and `GET /assistant/metrics`. A seventh is how
+    report generation or a second retrieval surface would arrive early.
+  - **Errors** (`core/exceptions.py`): `ConversationNotFoundError` (404),
+    `ConversationMessageNotFoundError` (404), `ConversationArchivedError` (409),
+    `ConversationFullError` (409), `InvalidFeedbackTargetError` (422),
+    `AssistantDisabledError` (503). There is deliberately **no error for an
+    answer that found no supporting evidence** — it is a successful message,
+    persisted, shown, and rateable like any other — and **no per-resource denial**,
+    for the reason given above.
+  - **Configuration:** `ASSISTANT_ENABLED`, `ASSISTANT_TITLE_MAX_LENGTH` (120),
+    `ASSISTANT_PAGE_SIZE` (20) / `ASSISTANT_MAX_PAGE_SIZE` (100),
+    `ASSISTANT_MESSAGE_PAGE_SIZE` (50) / `ASSISTANT_MAX_MESSAGE_PAGE_SIZE` (200),
+    `ASSISTANT_CONTEXT_MESSAGES` (4), `ASSISTANT_CONTEXT_MAX_CHARACTERS` (800),
+    `ASSISTANT_MAX_MESSAGES` (500), `ASSISTANT_STREAMING_ENABLED`,
+    `ASSISTANT_SUGGESTIONS_ENABLED`, `ASSISTANT_SUGGESTION_COUNT` (3),
+    `ASSISTANT_SUGGESTION_MAX_LENGTH` (160),
+    `ASSISTANT_SUGGESTION_TIMEOUT_SECONDS` (15),
+    `ASSISTANT_SUGGESTION_MAX_OUTPUT_TOKENS` (256), and the suggestion prompt's
+    name and version. All documented in `.env.example`. **Six couplings are
+    validated at startup** rather than discovered mid-conversation: each page
+    size against its ceiling, a suggestion's length against the question limit (a
+    suggestion the user cannot send is worse than none), the suggestion deadline
+    against the provider's, carried history against the question budget, and the
+    conversation ceiling against one page of messages.
+  - **Frontend:** `types/assistant.ts` (which **imports the pipeline's citation
+    shape rather than redeclaring it**), `lib/validation/assistant.ts`,
+    `lib/api/assistant.ts` (typed client, snake_case ↔ camelCase in one place,
+    plus the one SSE reader on the platform), `hooks/use-assistant.ts`,
+    `components/ai/` (`assistant-workspace`, `assistant-chat`, `chat-message`,
+    `chat-composer`, `citation-list`, `follow-up-suggestions`,
+    `message-feedback`, `conversation-list`, `rename-conversation-dialog`,
+    `delete-conversation-dialog`, `case-assistant`, `assistant-metrics-panel`),
+    and the real `app/(protected)/ai/` page in place of its placeholder.
+    `ai:ask` and `ai:monitor` were added to `types/authorization.ts`, which had
+    never carried them.
+  - **`streamMessage` is the one client call that does not go through
+    `apiRequest`**, and the reason is stated where it lives: that helper reads
+    the whole body and parses it as JSON, which is exactly what must not happen
+    when the point of the endpoint is that the body is still being written. It
+    pays for that by repeating three things — the Bearer header, the refresh
+    cookie, and error normalization — and **deliberately does not refresh-and-
+    replay a 401**, because replaying a *message* would ask the same question
+    twice, costing a second model call and appending a second turn.
+  - **Which conversation is open is component state, not a route.** A
+    conversation identifier in the URL would be written to the browser's history
+    and the `Referer` header of anything the page loads next — the same three
+    logs the API refuses to put a question into by making search and messaging
+    POSTs.
+  - **The client renders the `final` event, not the accumulated deltas**, because
+    a dangling citation marker has been removed from it and a refusal replaced.
+    The deltas are a progress indicator that happens to be readable.
+  - **Three eslint findings were fixed by removing effects rather than
+    suppressing them** — `react-hooks/set-state-in-effect` on the rename dialog,
+    the delete dialog, and the workspace's initial selection. The dialog's form
+    is now *keyed* by the conversation so its state is initialized rather than
+    synchronized; the workspace *derives* the open conversation
+    (`chosenId ?? items[0]?.id`) rather than setting it from an effect, which
+    also gives deletion its behaviour for free.
+  - **One pre-existing backend test was updated, and only because the design
+    worked.** `test_the_api_exposes_no_conversation_endpoint` asserted that *no
+    path anywhere on the platform* contained "conversation", "chat", "message",
+    or "feedback" — correct while none existed, and the check that would have
+    caught the chat interface arriving inside Feature 12. It is now
+    `test_the_rag_module_exposes_no_conversation_endpoint`, narrowed to what it
+    was always about: the pipeline is not the chat interface.
+    `tests/integration/test_assistant.py` asserts the separation from the other
+    side, exactly as `test_search.py` did for indexing. One frontend test was
+    updated for the same kind of reason: the case workspace's AI Assistant
+    placeholder was replaced by the real component.
+  - **Two real defects were found by the tests during development**, and both are
+    recorded because neither was obvious:
+    - `sentinel_prefix_pending` released the refusal token the instant it
+      *completed*, because the guard only withheld text that was still shorter
+      than the sentinel. Fixed to withhold in both directions;
+    - a brand-new conversation could be stranded in the middle of the list.
+      `last_message_at` is `NULL` until something is said, so ordering falls
+      through to `created_at` — which is a *server default*, at whatever
+      precision the database keeps, and two conversations opened in the same
+      second tied and fell back to a random-UUID tiebreak. Fixed by stamping
+      `created_at` in the service, which is the same remedy `TimelineService`
+      records for the same reason.
+  - **Two classes of test double are new.** `ScriptedFollowUpSuggester` (a second
+    metered model call, substituted for the reason `ScriptedLLMProvider` was),
+    and `ScriptedLLMProvider` gained `stream_chunks` / `stream_raises` /
+    `stream_raises_after` — which is what makes a *genuinely incremental* reply
+    testable, and therefore the sentinel guard and the mid-answer failure path
+    testable at all. A whole-answer stream cannot exercise either. The live
+    module adds a third that is not a double at all: `CountingProvider` wraps the
+    **real** Gemini provider and counts its calls, which is how "an ungrounded
+    answer costs one request rather than two" becomes checkable against the thing
+    that actually bills.
+  - **Validation:** **2629 backend tests pass**, of which **275 are this
+    feature's**, in seven new files: 54 for `core/assistant.py`, 69 for the
+    service, 42 for the schemas, 15 for the metrics recorder, 22 for the
+    suggester, 69 integration tests over real HTTP, and 4 live checks that are
+    skipped by default. The pre-existing suite is therefore 2354 — note that the
+    RAG entry below records 2346, and the eight-test difference has not been
+    chased down; the figures above are the ones counted directly from
+    `pytest --collect-only` rather than derived from it. **547 frontend tests**
+    pass (up from 502 — 45 of them for this feature). `ruff` clean across `apps/api`
+    and `tests`; `mypy --strict` clean on `apps/api` (128 source files); `tsc` and
+    ESLint clean; the production build succeeds and prerenders every route
+    including `/ai`. The migration chain stays **linear with one head**, and the
+    new revision's SQL was generated offline against the PostgreSQL dialect —
+    which is the only way to check it at all here, because the test database is
+    SQLite and has no `CREATE TYPE` for the three enums to fail on. That is the
+    exact trap the OCR migration shipped with and a live run caught.
+  - **The integration tests run against a corpus built by the real indexing
+    pipeline and answered by the real RAG pipeline**, so a citation returned there
+    points at a passage that travelled upload → extract → chunk → embed → store →
+    retrieve → answer → persist. Verified over HTTP: every route answers **401**
+    with a `WWW-Authenticate: Bearer` challenge anonymously; a **court
+    representative is refused 403** with a body naming neither permission nor
+    role; metrics are refused to a lawyer and served to an administrator; a
+    lawyer stripped of `ai:ask` can open a conversation and **cannot send a
+    message**; another user's conversation and one that never existed answer with
+    the **same status and the same error code**; a conversation is created,
+    renamed, archived (still readable, closed to new messages), restored, and
+    deleted (204, then 404); a question is answered with citations carrying
+    document, version, page, and case; a follow-up is read against the earlier
+    question while the transcript echoes what was typed; an unassigned lawyer is
+    answered from nothing; an Arabic question retrieves the Arabic filing and is
+    answered in Arabic; the model's sentinel never reaches the transcript; a
+    provider outage answers **503 naming its cause** and quotes neither the
+    question nor the SDK; the stream emits `retrieval` → `delta` → `final` with
+    the right headers, persists both turns, falls back when the provider cannot
+    stream, keeps its HTTP status for a rejection, and carries Arabic unescaped;
+    feedback is stored, updated in place, withdrawn idempotently, refused on a
+    user's own question, and **leaves the transcript byte-identical**; the
+    metrics view exposes no question, answer, title, case, or filename; a
+    citation carries exactly its ten documented fields; and the OpenAPI document
+    exposes exactly six `/assistant` paths with no `search`, `retrieve`,
+    `passage`, `prompt`, or `index` among them.
+  - **4/4 live checks passed against real Gemini + real bge-m3**
+    (`tests/ai/test_assistant_live.py`, opt-in behind `LLM_API_KEY` *and*
+    `RUN_LIVE_AI_TESTS=1`, 7 requests per run). They are the strongest validation
+    in this feature because they are the only ones that could fail for a reason
+    the design did not anticipate — and **two of them did, on the first run**:
+    - **streaming is real**: a summary question produced a **933-character
+      answer in 4.1 s across multiple provider fragments**, relayed as
+      `retrieval` → several `delta` → `final`, with the concatenated deltas
+      equal to the stored answer, still grounded, still cited, and still
+      persisted as two turns in order;
+    - a streamed answer **reports no token usage**, confirming the limitation
+      this document states rather than leaving it assumed;
+    - the shipped follow-up prompt produced **suggestions that are sendable**:
+      within the length limit, phrased as questions, in the answer's script,
+      none repeating the question just answered, and all distinct from one
+      another — which is the characteristic failure this test exists to detect;
+    - an **ungrounded answer costs one request, not two**: the suggester
+      short-circuits before calling the provider, which on a twenty-a-day budget
+      is the difference between ten questions and twenty;
+    - and a **short follow-up is answered as itself**: *"Et sous quel délai
+      est-il restitué ?"*, resolved against *"Quel est le montant du dépôt de
+      garantie ?"*, came back with the thirty-day figure rather than the deposit
+      amount — which is the entire premise of conversational context here, and a
+      property of the *model* that no hermetic test can establish.
+  - **Live validation found two real defects, and both are exactly the kind a
+    hermetic suite cannot see.**
+    - **A truncated suggestion was offered as something to send.**
+      `gemini-2.5-flash` is a reasoning model and charges its internal thinking
+      against `max_output_tokens`; at the original ceiling of 256 the thoughts
+      consumed roughly 250 tokens and left **nine visible ones**, producing the
+      single suggestion *"Quel est le domicile du bailleur pour le"* — cut off
+      mid-sentence, and short, unique, and well-formed enough to pass every rule
+      the parser had. Fixed in two places, because either alone would be
+      insufficient: the ceiling is now **1024**, sized for the model rather than
+      for three short questions (headroom is not billed), and a reply the
+      provider reports as truncated now **loses its last line**, because a
+      provider that thinks harder on some prompts than others cannot be sized
+      around exactly. Three regression tests pin it.
+    - **`ASSISTANT_STREAMING_ENABLED` did nothing.** It was documented as a
+      switch, reported on the metrics endpoint, and consulted by no server code —
+      documentation for a behaviour that did not exist. Turning it off now serves
+      the streaming endpoint from the blocking pipeline, emitting the **same
+      three-event shape** so a client needs no branch for it. Noticed while
+      writing the live module rather than by it, which is its own small argument
+      for writing one.
+  - **One assertion in the live module was wrong and was corrected rather than
+    kept.** The streaming test first asked *"Quand le loyer doit-il être payé ?"*
+    and failed on `len(fragments) > 1` — because the model answered in one
+    sentence of 128 characters and the provider delivered it in a single chunk.
+    That is not a streaming failure: a chunked transport is under no obligation
+    to split a sentence, and no answer that short can demonstrate anything about
+    incremental delivery, so the assertion was really about the answer's length.
+    The question now asks for a summary across four articles, which cannot come
+    back in one chunk unless the transport genuinely is not incremental. Recorded
+    because the tempting fix — relaxing the assertion to `>= 1` — would have left
+    a test that passes whether or not the feature works.
 
 - **RAG Pipeline (spec `12-rag-pipeline.md`)** — the fourth stage of the AI
   pipeline: a question is validated, the passages that could answer it are

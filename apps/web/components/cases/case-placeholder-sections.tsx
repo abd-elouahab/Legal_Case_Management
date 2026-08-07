@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Bot, FileText, StickyNote } from "lucide-react";
+import { FileText, StickyNote } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -14,10 +14,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
  * Each card says plainly that the feature is not built yet, so nobody mistakes an
  * empty card for a loading failure.
  *
- * **Documents and Timeline no longer have cards here.** Both modules shipped, so
- * the case details page renders the real list
- * (`components/documents/case-documents`) and the real history
- * (`components/timeline/case-timeline`) in their place — a placeholder beside a
+ * **Documents, Timeline, and the AI Assistant no longer have cards here.** All
+ * three modules shipped, so the case details page renders the real list
+ * (`components/documents/case-documents`), the real history
+ * (`components/timeline/case-timeline`), and the real assistant
+ * (`components/ai/case-assistant`) in their place — a placeholder beside a
  * working feature would read as a bug.
  */
 
@@ -34,13 +35,6 @@ const SECTIONS: PlaceholderSection[] = [
     title: "Notes",
     description: "Working notes shared between the administrator and the assigned team.",
     icon: StickyNote,
-  },
-  {
-    key: "ai",
-    title: "AI Assistant",
-    description:
-      "Question answering, summaries, and information extraction grounded in this case's documents.",
-    icon: Bot,
   },
   {
     key: "reports",

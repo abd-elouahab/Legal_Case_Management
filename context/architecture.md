@@ -95,8 +95,22 @@
   **It has no repository and no model**, because a question changes nothing and
   is not an entity. Its retrieval collaborator is `SearchService` and nothing
   else — see the RAG Pipeline section below for why that single fact is the
-  whole of its authorization story. The AI Assistant, the report agent, and the
+  whole of its authorization story. The report agent and the
   compliance/translation/summary agents are later features that consume it.
+- `modules/assistant` — The AI Legal Assistant: conversations, messages,
+  streaming, follow-up suggestions, and response feedback. Implemented inside
+  `apps/api` (`core/assistant.py`, `models/conversation.py`,
+  `repositories/conversation.py`, `services/assistant.py`,
+  `services/assistant_metrics.py`, `services/suggestions.py`,
+  `schemas/conversation.py`, `api/v1/assistant/router.py`, plus
+  `apps/api/prompts/assistant/`) and `apps/web` (`components/ai/`,
+  `app/(protected)/ai/`, embedded in `app/(protected)/cases/[id]`), following
+  the same layering as Cases, Documents, and Search. It is the **conversational
+  surface over the RAG pipeline** and generates nothing itself: every answer
+  comes from `RagService.answer` or `RagService.stream`, and the assistant holds
+  no search service, no embedder, no vector searcher, and no prompt library for
+  answering. It is the first stage of the AI pipeline to **persist what a user
+  said** — everything below it is derived from a document.
 - `modules/reports` — AI-generated reports, legal summaries, exports, and report history.
 - `modules/notifications` — Real-time notifications, email notifications, WhatsApp alerts, and reminder scheduling.
 - `modules/users` — Administrator, lawyer, and court representative management.
@@ -150,7 +164,12 @@ Stores structured business data:
 - Notifications
 - Timeline Events
 - Audit Logs
-- AI Conversations
+- AI Conversations (one thread per user, with its counters and its last-message
+  preview denormalized for the list row)
+- AI Conversation Messages (one row per turn — the question verbatim, or the
+  pipeline's answer with its citations, suggestions, and provenance as JSON)
+- AI Message Feedback (one rating per assistant message, in its own table so
+  that rating an answer cannot alter the transcript it is read from)
 - Language Preferences
 
 ---
@@ -380,6 +399,21 @@ Role-Based Access Control, implemented per
     shipped; granting the pipeline underneath both would be the same access by
     another route. `ai:monitor` gates the platform-wide pipeline metrics, which
     are administrative and deliberately not case-scoped.
+  - **The AI Legal Assistant adds no permission at all**, and it is the first
+    feature in this chain not to. `ai:chat` was defined when Authorization
+    shipped and is exactly this surface; `ai:ask` is the pipeline underneath it;
+    `ai:monitor` is the operational view. **Sending a message requires both
+    `ai:chat` and `ai:ask`**, because a message does both — a deployment that
+    grants one and withholds the other must not reach the pipeline through this
+    door — while *reading* a transcript requires only `ai:chat`, since it asks
+    nothing new of the pipeline. There is also **no `assistant_access.py`**: the
+    other modules need one because "may this caller reach this row" is a
+    question about case assignments that several services ask, and here it is a
+    single equality that every query in `repositories/conversation.py` asserts
+    in its own `WHERE` clause. A conversation the caller does not own is
+    **404, not 403** — the one place on the platform that conceals rather than
+    refuses, because confirming that another user's private thread exists is
+    itself the disclosure the spec forbids.
 - **`AuthorizationService`** (`services/authorization.py`) evaluates every
   access decision — require role / permission / any / all — in both a boolean
   (`has_*`) and a raising (`require_*`) form. It is stateless and pure.
@@ -758,6 +792,98 @@ Legal Assistant and the AI Report Agent will both consume.
 - **Two endpoints only** (`POST /api/v1/rag/answer`, `GET /api/v1/rag/metrics`),
   and a test asserts there is no third: conversations, streaming, follow-up
   suggestions, and feedback are the assistant's.
+- **Streaming lives here, not in the assistant.** `RagService.stream` is the
+  same nodes in the same order with generation replaced by an incremental call,
+  and it exists at this layer because the alternative — an assistant that
+  streamed on its own — would have to retrieve, build a prompt, call a provider,
+  verify the reply, and attach citations, which is this whole module written
+  twice. It is not a LangGraph traversal, because `invoke` returns a *final
+  state* and emitting fragments out of the middle of a node needs a generator;
+  the two are kept in step by a test that asserts they visit the same nodes and
+  take the same branch. A streamed answer carries **no token usage**, because a
+  provider reports usage on a finished response and there is not one.
+
+### AI Legal Assistant
+
+Implemented per `context/feature-specs/13-ai-legal-assistant.md`. The fifth stage
+of the AI pipeline and the conversational surface over the fourth: it begins at a
+message a user typed and **ends at a persisted turn** — the question, the
+pipeline's answer, its citations, and the questions worth asking next.
+
+- **Every answer is the pipeline's, and that is structural rather than
+  disciplinary.** `AssistantService` holds a `RagService` and nothing else that
+  could produce one: no search service, no embedder, no vector searcher, no
+  prompt library, and no document repository. So the spec's *"must not duplicate
+  retrieval, prompt construction, or orchestration logic already implemented by
+  the RAG Pipeline"* is inherited rather than promised, and the authorization
+  chain — conversation → pipeline → search → document → case — holds by the shape
+  of the dependency graph.
+- **Three tables, and each earns its own.** `conversations` is the thread,
+  `conversation_messages` is one row per turn, and `message_feedback` is a rating
+  of one answer. The third is separate specifically so that *"feedback should not
+  modify conversation history"* is structural: rating writes to a table the
+  transcript is not read from, so it cannot alter one even by accident.
+- **Ownership is the shape of every query, not a policy module.** Every read in
+  `repositories/conversation.py` takes an `owner_id` and puts it in the `WHERE`
+  clause; there is deliberately no method that resolves a conversation by
+  identifier alone, so no call site can forget to scope one.
+- **Deletion is logical, and it is the transcript that justifies it.** A
+  conversation carries the citations of advice a lawyer may have acted on, so
+  `DELETE` sets `deleted_at`; the row is excluded from every read and a future
+  retention job reclaims it. Archiving is the reversible half — out of the
+  working list, closed to new messages, still readable.
+- **A follow-up is resolved against what came before it, deterministically.**
+  `core/assistant.py` prefixes a short question with a labelled reference to the
+  earlier question, bounded by both a turn count and a character budget. Prefixing
+  rather than concatenating is forced by the pipeline: its `question` is *both*
+  the retrieval query and the text the model is asked to answer, so raw history
+  would make the model answer the previous question again. Only earlier **user
+  questions** travel — an answer is a paragraph and would dominate both. The
+  limits are stated rather than hidden: it broadens rather than rewrites, which is
+  the safe direction, and a model-based rewriter substitutes for one function.
+- **The title comes from the user's first question, never from a model.** A
+  hallucinated title is the one hallucination nobody would ever check, it would
+  double the model calls the first message of every conversation costs, and the
+  user's own words are by construction the most faithful description. It is
+  editable, and a title someone chose is never overwritten.
+- **Follow-up suggestions are a second, versioned prompt** (`assistant/followups`)
+  through the *same* prompt library and the same provider — a new prompt for a
+  purpose the pipeline does not serve, not a duplicate of one it does. They are
+  never produced for an ungrounded answer (there is nothing to ground a follow-up
+  in, and no call is made), and **every failure returns an empty list**: an answer
+  the user is already waiting for must not be lost to the convenience after it.
+  A reply the provider reports as **truncated loses its last line**, because a
+  cut-off reply ends mid-line and its final entry is half a question — short,
+  unique, and indistinguishable from a real one by every length rule.
+- **An output ceiling has to cover a reasoning model's thinking, not just its
+  answer.** `gemini-2.5-flash` charges its internal deliberation against
+  `max_output_tokens`, so `ASSISTANT_SUGGESTION_MAX_OUTPUT_TOKENS` is sized for
+  the model rather than for three short questions — 256 left nine visible tokens
+  and produced a suggestion cut off mid-word. Found by a live run; unreachable
+  from a hermetic one, where the double returns whatever string the test wrote.
+- **Streaming is Server-Sent Events, and the stream is primed before the status
+  line is sent.** The route pulls the first event — emitted once retrieval has
+  run — so every request rejection (403, 404, 409, 422, 503) keeps its own HTTP
+  status instead of being smuggled into an event. The refusal sentinel is
+  **withheld while the accumulated text could still be it**, so a reader never
+  sees an internal token flash by; the `final` event is authoritative, because a
+  dangling citation marker has been removed from it.
+- **A streamed exchange persists the question before the answer exists**, unlike
+  the blocking path, which writes both in one transaction. A browser that closes
+  mid-stream would otherwise lose a question it had already sent and seen echoed.
+- **`ASSISTANT_STREAMING_ENABLED=false` changes what the server does**, not what
+  a client is asked to do: the streaming endpoint is served from the blocking
+  pipeline and emits the same three-event sequence, so a client needs no branch
+  for it. An operator turning streaming off because a proxy buffers responses
+  needs the API to actually stop streaming.
+- **Metrics come from two places on purpose.** Conversation counts, conversation
+  length, and feedback statistics are **queried** — they are properties of
+  persisted rows, and counting them in a process would reset on restart *and* be
+  wrong. Request counts, latency, and failures accumulate **in the process**
+  behind `AssistantMetricsRecorder`, exactly as search's and RAG's do, with
+  `since` reporting the window.
+- **No question, answer, title, or citation reaches a log**, and the logs carry
+  the same salted fingerprint a search or a pipeline run for that text produces.
 
 ### Timeline & Audit Trail
 

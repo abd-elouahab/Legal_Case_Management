@@ -18,12 +18,15 @@ from core.security import TokenPayload
 from db.session import get_db
 from models.user import User
 from repositories.case import CaseRepository
+from repositories.conversation import ConversationRepository
 from repositories.document import DocumentRepository
 from repositories.indexing import IndexingRepository
 from repositories.ocr import OcrRepository
 from repositories.search import SearchRepository
 from repositories.timeline import TimelineRepository
 from repositories.user import UserRepository
+from services.assistant import AssistantService
+from services.assistant_metrics import AssistantMetricsRecorder, get_assistant_metrics
 from services.auth import AuthService
 from services.case import CaseService
 from services.chunking import Chunker, get_chunker
@@ -45,6 +48,7 @@ from services.rag_metrics import RagMetricsRecorder, get_rag_metrics
 from services.search import SearchService
 from services.search_metrics import SearchMetricsRecorder, get_search_metrics
 from services.search_ranking import Ranker, get_ranker
+from services.suggestions import FollowUpSuggester, get_follow_up_suggester
 from services.timeline import TimelineService
 from services.token_revocation import TokenRevocationStore
 from services.user import UserService
@@ -409,6 +413,67 @@ def get_rag_service(
 
 
 RagServiceDep = Annotated[RagService, Depends(get_rag_service)]
+
+
+def get_conversation_repository(session: DbSession) -> ConversationRepository:
+    """Provide a request-scoped conversation repository."""
+    return ConversationRepository(session)
+
+
+def get_follow_up_suggester_dependency() -> FollowUpSuggester:
+    """Provide the configured follow-up suggester.
+
+    A dependency rather than a module-level singleton so an integration test can
+    override it with a scripted one and exercise the endpoints **without an API
+    key and without paying a vendor per assertion** — the same reason the LLM
+    provider is one.
+    """
+    return get_follow_up_suggester()
+
+
+def get_assistant_metrics_recorder() -> AssistantMetricsRecorder:
+    """Provide the process-wide assistant metrics recorder.
+
+    Process-wide rather than per request for the same reason the search and RAG
+    recorders are: a counter rebuilt on every request counts to one. A test
+    overrides this so assertions about the metrics endpoint do not depend on
+    traffic another test produced.
+    """
+    return get_assistant_metrics()
+
+
+def get_assistant_service(
+    conversations: Annotated[ConversationRepository, Depends(get_conversation_repository)],
+    rag: Annotated[RagService, Depends(get_rag_service)],
+    suggester: Annotated[FollowUpSuggester, Depends(get_follow_up_suggester_dependency)],
+    metrics: Annotated[AssistantMetricsRecorder, Depends(get_assistant_metrics_recorder)],
+) -> AssistantService:
+    """Provide the AI assistant with its collaborators injected.
+
+    **The RAG service is the assistant's only route to an answer, and that is the
+    load-bearing line in this function.** ``13-ai-legal-assistant.md`` forbids
+    duplicating retrieval, prompt construction, and orchestration, and this is
+    where that would be undone: injecting a ``SearchService``, a
+    ``VectorSearcher``, or a ``PromptLibrary`` here would give the assistant a way
+    to build an answer without the pipeline that scopes, grounds, and cites it. It
+    takes none of them, so the chain — conversation → pipeline → search → document
+    → case — holds structurally rather than by discipline.
+
+    The suggester is the one exception, and a narrow one: it holds a provider and
+    a prompt library because proposing a *next question* is not something the
+    pipeline does, but it is handed only an answer that has already been produced
+    and cited, so it can reach no passage the caller could not already read.
+
+    There is deliberately **no timeline recorder**: the timeline is a *case's*
+    history, published to by the services that change a case, and a conversation
+    belongs to a user rather than to a matter. Recording "asked the assistant a
+    question" on a case's audit trail would also put one lawyer's private research
+    in front of everyone else assigned to it.
+    """
+    return AssistantService(conversations, rag, suggester=suggester, metrics=metrics)
+
+
+AssistantServiceDep = Annotated[AssistantService, Depends(get_assistant_service)]
 
 
 def get_ocr_service(

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from api.v1.assistant.router import router as assistant_router
 from api.v1.auth.router import router as auth_router
 from api.v1.authorization.router import router as authorization_router
 from api.v1.cases.router import router as cases_router
@@ -57,6 +58,15 @@ api_router.include_router(search_router, prefix="/search", tags=["search"])
 # assistant: there is no conversation here, and `12-rag-pipeline.md` puts the
 # chat interface out of scope.
 api_router.include_router(rag_router, prefix="/rag", tags=["rag"])
+
+# The AI Legal Assistant is the conversational surface *over* the pipeline above,
+# and it is its own module under its own prefix for the same reason search and RAG
+# are: it is a different capability (`ai:chat`, which a deployment may grant
+# without `ai:ask`) with different resources. Every answer it returns is produced
+# by `RagService` — it retrieves nothing, builds no answer prompt, and calls no
+# model — so the two prefixes are one pipeline seen from two distances: a single
+# stateless question, and a conversation made of them.
+api_router.include_router(assistant_router, prefix="/assistant", tags=["assistant"])
 
 # `GET /cases/{case_id}/timeline` lives under the case prefix but belongs to the
 # timeline module, so it is registered from there rather than added to the case

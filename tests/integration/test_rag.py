@@ -723,13 +723,34 @@ class TestNoChatInterface:
 
         assert paths == {ANSWER_URL, METRICS_URL}
 
-    def test_the_api_exposes_no_conversation_endpoint(self, client: TestClient) -> None:
+    def test_the_rag_module_exposes_no_conversation_endpoint(self, client: TestClient) -> None:
+        """The pipeline itself holds no conversation, and its paths say so.
+
+        This test asserted that *no path anywhere on the platform* contained
+        "conversation", "chat", "message", or "feedback" — correct while none
+        existed, and the check that would have caught the chat interface arriving
+        inside Feature 12. The AI Legal Assistant (Feature 13) is where all four
+        legitimately arrive, under ``/assistant``, so the assertion is narrowed to
+        what it was always about: **the RAG pipeline is not the chat interface**.
+        ``tests/integration/test_assistant.py`` asserts the separation from the
+        other side — that the assistant reaches an answer only through the
+        pipeline — exactly as ``test_search.py`` did for indexing.
+        """
         from main import app
 
-        paths = " ".join(app.openapi()["paths"])
+        rag_paths = " ".join(
+            path
+            for path, operations in app.openapi()["paths"].items()
+            if path.startswith(f"{settings.API_V1_PREFIX}/rag")
+            or any(
+                "rag" in (operation.get("tags") or [])
+                for operation in operations.values()
+                if isinstance(operation, dict)
+            )
+        )
 
         for forbidden in ("conversation", "chat", "message", "feedback"):
-            assert forbidden not in paths
+            assert forbidden not in rag_paths
 
     def test_no_rag_response_schema_mentions_a_conversation(self, client: TestClient) -> None:
         from main import app

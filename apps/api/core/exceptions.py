@@ -801,6 +801,110 @@ class RagDisabledError(AppException):
 
 
 # --------------------------------------------------------------------------- #
+# AI Legal Assistant errors
+#
+# **There is deliberately no per-resource denial here**, and it is the one place
+# on this platform where a 404 rather than a 403 is the right answer. Every other
+# module refuses a resource the caller cannot reach with
+# :class:`CaseAccessDeniedError` and its siblings, because a lawyer who follows a
+# colleague's link to a case needs to know the case exists and that they should
+# ask to be assigned. A conversation is the opposite: it is one user's private
+# working material, nobody is ever meant to share a link to one, and confirming
+# that another user's conversation *exists* is itself the disclosure the spec
+# forbids ("The AI Assistant must never expose conversations belonging to another
+# user"). So a conversation the caller does not own is simply not found — which is
+# also what the repository returns, since every read there is keyed by owner.
+#
+# **And there is no error for an answer that found no supporting evidence.** That
+# is a successful message, exactly as it is a successful run of the pipeline; it
+# is persisted, shown, and rateable like any other.
+# --------------------------------------------------------------------------- #
+
+
+class ConversationNotFoundError(AppException):
+    """No conversation with that identifier belongs to this caller.
+
+    Covers three situations on purpose — it does not exist, it was deleted, or it
+    belongs to somebody else — because telling them apart is precisely the
+    disclosure this feature must not make. See the section note above.
+    """
+
+    status_code = status.HTTP_404_NOT_FOUND
+    error_code = "conversation_not_found"
+    message = "Conversation not found."
+
+
+class ConversationMessageNotFoundError(AppException):
+    """No message with that identifier exists in this caller's conversation."""
+
+    status_code = status.HTTP_404_NOT_FOUND
+    error_code = "conversation_message_not_found"
+    message = "Message not found."
+
+
+class ConversationArchivedError(AppException):
+    """A message was sent to a conversation the user has archived.
+
+    409 rather than 422: nothing about the request is malformed, and the
+    conversation is not permanently unsuitable — it is a *state* conflict the
+    caller resolves by restoring the thread or starting a new one, which the
+    message says.
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "conversation_archived"
+    message = "This conversation is archived. Restore it, or start a new one, to continue."
+
+
+class ConversationFullError(AppException):
+    """The conversation has reached the platform's message ceiling.
+
+    409 for the same reason: a state conflict rather than a bad request. The
+    ceiling exists because a conversation is a working thread rather than an
+    archive — and because an unbounded thread eventually cannot be loaded in one
+    request.
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "conversation_full"
+    message = "This conversation has reached its message limit. Start a new one to continue."
+
+    def __init__(self, limit: int) -> None:
+        super().__init__(
+            f"This conversation has reached its limit of {limit} messages. Start a new one to "
+            f"continue."
+        )
+
+
+class InvalidFeedbackTargetError(AppException):
+    """Feedback was left on a message the user wrote themselves.
+
+    422 because the identifier is a *path segment naming the wrong kind of
+    resource*: the message exists and the caller may read it, but rating one's own
+    question is not a judgement about the assistant, and silently accepting it
+    would put noise into the evaluation data the spec says to persist.
+    """
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    error_code = "invalid_feedback_target"
+    message = "Only the assistant's answers can be rated."
+
+
+class AssistantDisabledError(AppException):
+    """The AI assistant is switched off for this deployment.
+
+    503 rather than 404: the capability exists and the request is valid — the
+    deployment has turned the conversational surface off, which is a temporary
+    condition an operator controls. Existing conversations stay readable; only
+    new ones and new messages are refused.
+    """
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    error_code = "assistant_disabled"
+    message = "The AI assistant is currently disabled on this platform."
+
+
+# --------------------------------------------------------------------------- #
 # Timeline errors
 #
 # Only two, because the timeline is read-only over HTTP: events are published by

@@ -35,6 +35,12 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     "timeline:create",
     "reports:view",
     "reports:generate",
+    // Both AI grants, because a message needs both: `ai:chat` is the
+    // conversational surface and `ai:ask` is putting the question to the
+    // pipeline. The court role holds neither — that is the one place this
+    // platform draws a line between reading the case file and generating an
+    // interpretation of it.
+    "ai:ask",
     "ai:chat",
     "ai:generate-report",
     "notifications:view",
@@ -585,6 +591,185 @@ export function searchMetricsPayload(overrides: Record<string, unknown> = {}) {
     default_limit: 10,
     max_limit: 50,
     min_score: 0.0,
+    enabled: true,
+    ...overrides,
+  };
+}
+
+// --------------------------------------------------------------------------- //
+// AI Legal Assistant fixtures
+// --------------------------------------------------------------------------- //
+
+/**
+ * One citation in the API's wire format.
+ *
+ * Deliberately the *RAG pipeline's* shape, because that is exactly what the
+ * assistant returns: the spec requires citations to be displayed without
+ * modification, and a fixture with a different shape here would be testing a
+ * payload the server never sends.
+ */
+export function assistantCitationPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    marker: 1,
+    document_id: "33333333-3333-4333-8333-333333333333",
+    document_name: "bail-commercial.pdf",
+    document_version: 1,
+    page_number: 4,
+    case_id: "22222222-2222-4222-8222-222222222222",
+    score: 0.8421,
+    excerpt:
+      "Article 4 : Loyer et charges. Le loyer mensuel est payable d'avance le premier " +
+      "jour de chaque mois, au domicile du bailleur.",
+    excerpt_truncated: false,
+    referenced: true,
+    ...overrides,
+  };
+}
+
+/** One message in the API's wire format. */
+export function conversationMessagePayload(overrides: Record<string, unknown> = {}) {
+  const role = (overrides.role as string | undefined) ?? "assistant";
+  const isAssistant = role === "assistant";
+
+  return {
+    id: "77777777-7777-4777-8777-777777777777",
+    conversation_id: "66666666-6666-4666-8666-666666666666",
+    sequence: isAssistant ? 2 : 1,
+    role,
+    content: isAssistant
+      ? "Le loyer mensuel est payable d'avance le premier jour de chaque mois [1]."
+      : "Quand le loyer est-il payable ?",
+    language: "fr",
+    citations: isAssistant ? [assistantCitationPayload()] : [],
+    suggestions: isAssistant ? ["Quelle est la durée du bail ?"] : [],
+    citation_count: isAssistant ? 1 : 0,
+    document_count: isAssistant ? 1 : 0,
+    grounded: isAssistant ? true : null,
+    insufficient_evidence: isAssistant ? false : null,
+    truncated: false,
+    provider: isAssistant ? "gemini" : null,
+    model: isAssistant ? "gemini-2.5-flash" : null,
+    prompt_name: isAssistant ? "rag/answer" : null,
+    prompt_version: isAssistant ? 1 : null,
+    duration_ms: isAssistant ? 2800 : null,
+    retrieval_ms: isAssistant ? 210 : null,
+    generation_ms: isAssistant ? 2400 : null,
+    prompt_tokens: isAssistant ? 828 : null,
+    completion_tokens: isAssistant ? 24 : null,
+    total_tokens: isAssistant ? 852 : null,
+    retrieved_count: isAssistant ? 3 : null,
+    context_count: isAssistant ? 3 : null,
+    context_turns: 0,
+    top_score: isAssistant ? 0.8421 : null,
+    edited_at: null,
+    created_at: "2026-08-06T10:00:00Z",
+    feedback: null,
+    ...overrides,
+  };
+}
+
+/** One conversation in the API's wire format. */
+export function conversationPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "66666666-6666-4666-8666-666666666666",
+    title: "Quand le loyer est-il payable ?",
+    title_is_custom: false,
+    status: "active",
+    language: null,
+    case_id: null,
+    message_count: 2,
+    last_message_at: "2026-08-06T10:00:00Z",
+    last_message_preview: "Le loyer mensuel est payable d'avance…",
+    created_at: "2026-08-06T09:59:00Z",
+    updated_at: "2026-08-06T10:00:00Z",
+    ...overrides,
+  };
+}
+
+/** A conversation with its transcript, as `GET /assistant/conversations/{id}` returns it. */
+export function conversationDetailPayload(
+  messages: Array<Record<string, unknown>> = [
+    conversationMessagePayload({ role: "user" }),
+    conversationMessagePayload(),
+  ],
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    ...conversationPayload({ message_count: messages.length }),
+    messages,
+    has_more_messages: false,
+    ...overrides,
+  };
+}
+
+/** A page of conversations, as `GET /assistant/conversations` returns it. */
+export function conversationPagePayload(
+  items: Array<Record<string, unknown>> = [conversationPayload()],
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    items,
+    total_records: items.length,
+    page: 1,
+    page_size: 20,
+    total_pages: 1,
+    ...overrides,
+  };
+}
+
+/** A page of messages, as `GET /assistant/conversations/{id}/messages` returns it. */
+export function conversationMessagePagePayload(
+  items: Array<Record<string, unknown>> = [conversationMessagePayload()],
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    items,
+    total_records: items.length,
+    page: 1,
+    page_size: 50,
+    total_pages: 1,
+    ...overrides,
+  };
+}
+
+/** One exchange, as `POST /assistant/conversations/{id}/messages` returns it. */
+export function messageExchangePayload(overrides: Record<string, unknown> = {}) {
+  return {
+    conversation: conversationPayload(),
+    user_message: conversationMessagePayload({ role: "user" }),
+    assistant_message: conversationMessagePayload(),
+    ...overrides,
+  };
+}
+
+/** Assistant metrics, as `GET /assistant/metrics` returns them. */
+export function assistantMetricsPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    since: "2026-08-01T09:00:00Z",
+    total_conversations: 12,
+    active_conversations: 9,
+    archived_conversations: 3,
+    total_messages: 68,
+    average_conversation_length: 5.67,
+    total_requests: 34,
+    successful_requests: 32,
+    failed_requests: 2,
+    success_rate: 94.12,
+    failure_rate: 5.88,
+    streamed_requests: 28,
+    average_response_ms: 2840.5,
+    average_response_seconds: 2.841,
+    grounded_answers: 27,
+    insufficient_evidence: 5,
+    grounding_rate: 84.38,
+    total_feedback: 11,
+    helpful_feedback: 9,
+    not_helpful_feedback: 2,
+    helpful_rate: 81.82,
+    rated_messages_rate: 34.38,
+    failures_by_code: { llm_unavailable: 2 },
+    suggestions_enabled: true,
+    streaming_enabled: true,
     enabled: true,
     ...overrides,
   };
