@@ -5,38 +5,67 @@ change.
 
 ## Current Phase
 
+- **Real-Time Events & Synchronization complete (spec
+  `15-real-time-synchronization.md`).** See the entry at the top of *Completed*.
 - **AI Report Generation complete (spec `14-ai-report-agent.md`).** See the entry
-  at the top of *Completed*.
+  in *Completed*.
 
 ## Current Goal
 
-- **Next: Real-Time Synchronization** (`ai-workflow-rules.md`'s step 11).
-  `architecture.md` invariant 2 requires every case update to be synchronized
-  immediately across authorized users, and the stack table already names FastAPI
-  WebSockets with Redis Pub/Sub. Two things the AI pipeline built are waiting for
-  it: report generation is background work a user currently **polls** for
-  (`useReports` re-fetches while anything on the page is active), and the
-  timeline is invalidated by that poll rather than pushed. A WebSocket channel
-  would replace both with an event, and the shapes are already there — a report's
-  progress is two integers on a row, and `TimelineRecorder` is a narrow publish
-  protocol. `services/websocket/` and `api/v1/websocket/` are still empty
-  directories.
-- **Done: Reports** (`ai-workflow-rules.md`'s step 10). Two of the three things
-  the pipeline had reserved for it were used as intended: the note in
-  `services/rag_graph.py` that report generation is *its own graph*, and the
-  permissions defined since Authorization shipped. The third —
-  `citation_document_ids` in `services/rag.py` — **is still unused**, and now for
-  a reason rather than by omission: a report's "sources: N documents" line is
-  computed over the *report's* de-duplicated ledger rather than over a single
-  answer's citations, so the helper answers a question this feature does not ask.
-  It stays for a future caller; it is four lines and deleting it would be churn.
-- **Still not built, and still out of scope:** summarization as a distinct
-  capability, information extraction, compliance analysis, translation,
-  multi-language reports, executive dashboards, scheduled report generation, and
-  the voice assistant.
+- **Next: Notifications (In-App)** (`ai-workflow-rules.md`'s step 12). It is the
+  first feature designed to consume the event dispatcher rather than to be called
+  directly, and the seam is waiting for it: `EventSubscriber` is a protocol, and
+  `core/lifespan.py` is the one place a second consumer is registered — one class
+  plus one line, with no business module changing. It is also where **persistence
+  of an event** properly enters the platform: real-time synchronization is
+  ephemeral by design (a client that missed something refetches), while
+  `code-standards.md` requires notifications to be *"persistent and
+  recoverable"*. `apps/api/api/v1/notifications/` and
+  `apps/api/services/notifications/` are still empty directories.
+- **Done: Real-Time Synchronization** (`ai-workflow-rules.md`'s step 11). Both
+  things the AI pipeline had left waiting for it are now available, and neither
+  was removed: report generation still polls *and* streams its progress
+  section-by-section over the channel, and the timeline is now pushed as well as
+  invalidated by the poll. The polling is deliberately kept — it is what makes
+  the spec's "graceful degradation" a property of the application rather than a
+  claim, and it is what every screen falls back to when the socket is
+  unavailable.
+- **Still not built, and still out of scope:** notifications, email delivery,
+  WhatsApp delivery, dashboard analytics, scheduled jobs, collaborative editing,
+  presence *visualization*, summarization as a distinct capability, information
+  extraction, compliance analysis, translation, and the voice assistant.
 
 ## Open Questions
 
+- **Real-Time Synchronization raised one genuine question, and it is a
+  *product* one rather than a technical one: how fresh must an authorization
+  decision be on a long-lived connection?** Resolving a case row for every event
+  for every connection is a database query per delivery, which the spec's own
+  Performance section rules out. What ships is a **30-second grant TTL**
+  (`REALTIME_AUTHORIZATION_TTL_SECONDS`), re-resolved against the database
+  *including the account* — so a deactivated user's socket goes quiet — with `0`
+  supported for deployments that want a check on literally every delivery. The
+  residual window is bounded and worth stating plainly: **a lawyer un-assigned
+  from a case may keep receiving that case's *notifications* for up to 30
+  seconds.** It never leaks the changed data — every REST read behind an event is
+  authorized afresh — and the immediate-revocation path is unaffected, since
+  deactivating an account bumps `session_generation`. **If the intended policy is
+  "instant", the setting is the whole change.**
+- **Redis Pub/Sub is not used, and `architecture.md` now says so.** The stack
+  table listed Redis for "WebSocket Pub/Sub"; what ships is an **in-process**
+  dispatcher, so an event reaches only the clients connected to *that* API
+  instance. With one instance that is the whole platform. With several it is not,
+  and the fix is a `RedisEventBridge` implementing `EventSubscriber` — one class
+  plus one line in `core/lifespan.py`, with no business module, connection, or
+  client changing. **Presence has the same shape**: a connection is held by one
+  process, so the roster is per instance until a shared registry arrives with the
+  bridge. Both rows of the stack table were corrected rather than left describing
+  an intention.
+- **`timeline:create` is still granted to every role and used by nothing** (see
+  below) — unchanged by this feature, but worth noting that real-time
+  synchronization did *not* become the caller: the timeline is published to from
+  inside the services that change a case, and an event says the history grew
+  rather than writing to it.
 - **AI Report Generation raised none that needed asking, and one that needed
   *finding*.** The spec named the templates, the formats, the states, and the
   metrics; everything else followed from `ai-architecture.md` and from what the
@@ -95,6 +124,119 @@ change.
   the whole run.
 
 ## Completed
+
+- **Real-Time Events & Synchronization (spec `15-real-time-synchronization.md`)**
+  — the platform's event backbone, and the first thing built here that is
+  *infrastructure for other features* rather than a feature. Business modules
+  publish typed domain events to a central dispatcher; a WebSocket layer delivers
+  them to the connected clients authorized to receive them. **Nothing about
+  notifications, email, WhatsApp, dashboard analytics, scheduled jobs, or
+  collaborative editing was implemented** — the spec puts all six out of scope,
+  and the deliverable ends at a reusable channel.
+  - **No new dependency, backend or frontend.** WebSockets are FastAPI's own and
+    the browser's own. `websockets` is already pinned in the tree (by
+    `langgraph-sdk`, at `<16`) and uvicorn's support works on that version.
+  - **No table, no migration, and no repository** — the first module since
+    Semantic Search with none, and for a sharper reason. An event is not
+    something anyone reads back: a client that missed one **refetches**, which is
+    authoritative where a replayed event is only a hint. Persisting events would
+    be write amplification on the platform's highest-frequency operation to store
+    something derived from data already in PostgreSQL. What *is* durable is the
+    timeline entry beside each event.
+  - **Two narrow protocols, and nothing sees both except the dispatcher.**
+    `EventPublisher` (one method) is what the case, document, OCR, indexing,
+    report, and timeline services take — never `EventDispatcher` — so none of
+    them can register a consumer, enumerate who is listening, or reach a socket.
+    `EventSubscriber` is what a consumer implements. The spec's *"business
+    modules should publish events but should never know who consumes them"* is a
+    property of the dependency graph, and a test asserts the application wires
+    the real dispatcher rather than the no-op default.
+  - **The two halves are joined in exactly one place** — `core/lifespan.py` —
+    which is also the whole of what Notifications will need to add.
+  - **Payload screening is in the dispatcher, once.** `normalize_payload` bounds
+    a payload to 20 flat scalar keys and **strips** the ones naming document
+    contents (`text`, `full_text`, `sections`, `citations`, `answer`,
+    `question`, …). A publisher that forgets produces a log line rather than a
+    disclosure. Visible in every payload: a case event carries the case *number*
+    and never its title, a document event carries identifiers and the file's
+    shape and never its filename, a report event carries counters and never a
+    section.
+  - **Authorization is per topic, per delivery, and owns no policy of its own.**
+    `services/realtime_access.py` delegates: topic → case / document / report →
+    the module that already decides. A grant carries when it was authorized and
+    is re-resolved past `REALTIME_AUTHORIZATION_TTL_SECONDS` (30) — **including
+    the account**, so a deactivated user's open socket goes quiet — and a
+    refusal *revokes* the subscription rather than skipping one event. `0` means
+    re-check on every delivery and is supported.
+  - **A document event fans into its case's topic; a report event never does.**
+    One subscription keeps a whole case workspace live, which is safe precisely
+    because document access *is* case access one hop out. A report is about a
+    case and carries its identifier and still does not fan in, because it belongs
+    to its author — so the rule is a set of *scopes* (`CASE_FANOUT_SCOPES`)
+    rather than a rule about `case_id`. The case's participants learn from the
+    timeline that a report exists; only its author watches it being written.
+  - **There is no conversation topic at all**, which is the strongest available
+    way to honour *"never expose conversations belonging to another user"*:
+    `EventScope` has no member that could carry one. The assistant keeps
+    streaming over its own authenticated SSE response, to the one caller who
+    asked.
+  - **The socket authenticates with its first frame, never its URL.** A browser
+    cannot set an `Authorization` header on a WebSocket; a query parameter would
+    write a bearer token into the reverse proxy's access log and the browser's
+    history (the three logs `11-semantic-search.md` made search a POST to stay
+    out of), and a cookie would make it CSRF-reachable. An accepted socket may
+    send one kind of frame and is closed after `REALTIME_AUTH_TIMEOUT_SECONDS`.
+    It consults the **same** Redis denylist an HTTP request does — a revoked
+    token this door accepted would be a way around `/auth/logout`.
+  - **The channel is read-only:** five client frame types and none mutates
+    anything. Its HTTP surface is one status probe and two administrative reads,
+    and a test asserts there is no fourth path and no non-GET method.
+  - **Three threads' worth of concerns kept apart.** Publishers run on request and
+    worker threads; sockets live on the event loop. The manager owns a dispatch
+    thread between them, so `handle()` is a queue put, **no database work ever
+    runs on the loop**, and every queue is bounded — a burst that cannot be
+    delivered is dropped and *counted*.
+  - **A slow consumer is closed rather than buffered**, because dropping silently
+    desynchronizes a client that believes it is live and an unbounded queue makes
+    one stalled reader into the process's memory problem.
+  - **Duplicates are suppressed at both ends**, since a reconnect legitimately
+    re-offers events: a stable event id plus a monotonic sequence, a bounded
+    server-side window, the client's own window, and a *gap* in the sequence as
+    the signal to refetch.
+  - **Presence is tracked and deliberately not shown.** The roster counts
+    connections per account, is gated on `realtime:monitor`, and never reports
+    what anyone follows — that would be a live index of who is working on which
+    matter. Visualization is out of scope by the spec.
+  - **Two permissions**, `realtime:connect` (in `BASE_PERMISSIONS`, and the
+    narrowest on the platform — it grants access to nothing on its own) and
+    `realtime:monitor` (administrative, like every other `*:monitor`).
+  - **Frontend:** `lib/realtime/client.ts` (reconnect with full jitter,
+    re-subscription on every `ready`, reference-counted subscriptions, duplicate
+    suppression, gap detection), `lib/realtime/sync.ts` (the one table mapping an
+    event to the caches it makes stale), `components/realtime/realtime-provider.tsx`,
+    `hooks/use-realtime.ts`, and a header indicator that **renders nothing while
+    updates are live** — a permanently-green dot is furniture people learn to
+    ignore.
+  - **An event invalidates a cache; it never patches one.** The cached resource is
+    an authorized read scoped to that caller; the event is a notification
+    delivered to everyone following it. Patching would render data that never
+    passed an authorization check.
+  - **Nothing depends on the channel.** Every list, pipeline, and report still
+    polls, so `REALTIME_ENABLED=false`, a failed connection, a blocked WebSocket,
+    and a refused subscription all leave the application exactly as usable as it
+    was. That is what makes graceful degradation a property rather than a claim.
+  - **Validation:** `ruff` clean, `mypy` clean (151 files), `tsc --noEmit` clean,
+    ESLint clean, `next build` succeeds. **3141 backend tests pass** (198 of them
+    for this feature) and **613 frontend tests pass** (23 for this feature) — `tests/unit/test_event_utils.py`,
+    `test_event_dispatcher.py`, `test_realtime_protocol.py`,
+    `test_realtime_connection.py`, `test_realtime_access.py`,
+    `test_realtime_manager.py`, `tests/integration/test_realtime.py`, and
+    `apps/web/tests/realtime.test.ts` — covering the spec's Testing section
+    item by item: clients connect, authentication works, authorization is
+    enforced (per case, per document, per report, per user, and on **re**-check
+    after a deactivation or an un-assignment), events are published, events are
+    delivered, reconnect works, duplicates are avoided, progress streams, and
+    unauthorized users receive nothing.
 
 - **AI Report Generation (spec `14-ai-report-agent.md`)** — the sixth stage of
   the AI pipeline and the **second consumer of the fourth**, the first that is

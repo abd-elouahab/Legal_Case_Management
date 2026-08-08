@@ -41,6 +41,7 @@ class PermissionGroup(StrEnum):
     REPORTS = "reports"
     NOTIFICATIONS = "notifications"
     AI = "ai"
+    REALTIME = "realtime"
     SETTINGS = "settings"
 
 
@@ -182,6 +183,31 @@ class Permission(StrEnum):
     #: every questioner holds, exactly like ``search:monitor`` and
     #: ``indexing:monitor``.
     AI_MONITOR = "ai:monitor"
+
+    # --- Real-time events ---------------------------------------------------- #
+    #: Open a WebSocket connection and receive live updates. Note that holding it
+    #: grants **nothing on its own** — it is the narrowest permission on the
+    #: platform in that respect. Every event is delivered on a *topic*, and a
+    #: topic is authorized per resource by :mod:`services.realtime_access`, which
+    #: owns no policy of its own: it delegates to
+    #: :class:`~services.case_access.CaseAccessPolicy` and
+    #: :class:`~services.document_access.DocumentAccessPolicy`, exactly as
+    #: ``ocr_access``, ``indexing_access``, and ``search_access`` do. So this
+    #: permission opens a socket that, by itself, carries no events at all.
+    #:
+    #: Granted to every role through :data:`~core.roles.BASE_PERMISSIONS`, for the
+    #: same reason ``notifications:view`` is: `architecture.md` invariant 2 says
+    #: every case update is synchronized immediately to its authorized users, and
+    #: withholding this from a role would mean that role's screens silently stop
+    #: updating while every other role's do.
+    REALTIME_CONNECT = "realtime:connect"
+    #: Read platform-wide connection and delivery metrics — active connections,
+    #: event throughput, delivery latency, failed deliveries, reconnects — and the
+    #: presence roster. Not scoped to a case or a user, so it is deliberately an
+    #: administrative capability rather than something every connected client
+    #: holds, exactly like ``ocr:monitor``, ``search:monitor``, ``ai:monitor``,
+    #: and ``reports:monitor``.
+    REALTIME_MONITOR = "realtime:monitor"
 
     # --- Settings ----------------------------------------------------------- #
     SETTINGS_VIEW = "settings:view"

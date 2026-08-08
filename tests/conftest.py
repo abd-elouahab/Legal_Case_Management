@@ -71,27 +71,45 @@ class InMemoryRevocationStore:
 
 
 @pytest.fixture
-def db_session() -> Iterator[Session]:
-    """A SQLite in-memory session with the full schema created."""
+def db_engine():  # type: ignore[no-untyped-def]
+    """A SQLite in-memory engine with the full schema created.
+
+    Separate from :func:`db_session` because two consumers need the *engine*
+    rather than a session: the request-scoped session below, and the WebSocket
+    layer, which opens a short session per question because a connection
+    outlives any request. Sharing one ``Session`` object between them would
+    hand the same non-thread-safe object to a worker thread.
+    """
     import models  # noqa: F401  -- registers models on Base.metadata
     from db.base import Base
 
     engine = create_engine(
         "sqlite://",
         # A single shared connection so the in-memory database survives across
-        # sessions opened during one test.
+        # sessions opened during one test — and is visible to every session,
+        # whichever thread opens it.
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    try:
+        yield engine
+    finally:
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
+@pytest.fixture
+def db_session(db_engine) -> Iterator[Session]:  # type: ignore[no-untyped-def]
+    """A SQLite in-memory session with the full schema created."""
+    session_factory = sessionmaker(
+        bind=db_engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
     session = session_factory()
     try:
         yield session
     finally:
         session.close()
-        Base.metadata.drop_all(engine)
-        engine.dispose()
 
 
 class InMemoryLoginThrottle:
@@ -1815,6 +1833,56 @@ def auth_service(  # type: ignore[no-untyped-def]
 
 
 @pytest.fixture
+def session_factory(db_engine):  # type: ignore[no-untyped-def]
+    """A session factory backed by the test's engine.
+
+    The WebSocket layer cannot hold a request-scoped session — a connection
+    outlives any request — so it opens one per question through a factory. This
+    is the test's half of that contract, and it builds a **real session per
+    call** rather than handing out the shared one: authorization runs in a worker
+    thread, and a ``Session`` is not thread-safe, so sharing would be a race
+    dressed up as a fixture. The engine is the same, so both see the same rows.
+    """
+    factory = sessionmaker(
+        bind=db_engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
+    return factory
+
+
+@pytest.fixture
+def connection_manager(session_factory):  # type: ignore[no-untyped-def]
+    """A connection manager whose authorization runs against the test database.
+
+    Its own instance rather than the process-wide one, for the reason the metrics
+    recorders get their own: the shared manager is registered on the dispatcher
+    at startup and holds whatever connections previous tests left, so assertions
+    about *this* test's subscriptions would count somebody else's.
+    """
+    from services.event_metrics import InMemoryRealtimeMetrics
+    from services.realtime_access import RealtimeAccessPolicy
+    from websocket.manager import ConnectionManager
+
+    return ConnectionManager(
+        access=RealtimeAccessPolicy(session_factory),
+        metrics=InMemoryRealtimeMetrics(),
+    )
+
+
+@pytest.fixture
+def event_publisher():  # type: ignore[no-untyped-def]
+    """A recording event publisher, replacing the process-wide dispatcher.
+
+    Overridden per test so that "did archiving a case announce it?" is an
+    assertion about a list, and so that one test's events cannot be counted by
+    another's — the same reason the search, RAG, and assistant metrics recorders
+    are overridden rather than shared.
+    """
+    from services.events import RecordingEventPublisher
+
+    return RecordingEventPublisher()
+
+
+@pytest.fixture
 def api_client(
     db_session: Session,
     revocations: InMemoryRevocationStore,
@@ -1832,6 +1900,9 @@ def api_client(
     follow_up_suggester: ScriptedFollowUpSuggester,
     assistant_metrics,  # type: ignore[no-untyped-def]
     report_queue: RecordingIndexQueue,
+    event_publisher,  # type: ignore[no-untyped-def]
+    session_factory,  # type: ignore[no-untyped-def]
+    connection_manager,  # type: ignore[no-untyped-def]
 ) -> Iterator[TestClient]:
     """A TestClient whose external collaborators are all doubles.
 
@@ -1850,6 +1921,7 @@ def api_client(
         get_assistant_metrics_recorder,
         get_document_storage,
         get_embedder_dependency,
+        get_event_publisher,
         get_follow_up_suggester_dependency,
         get_index_job_queue,
         get_llm_provider_dependency,
@@ -1859,10 +1931,12 @@ def api_client(
         get_rag_metrics_recorder,
         get_report_job_queue,
         get_search_metrics_recorder,
+        get_session_factory,
         get_token_revocation_store,
         get_vector_searcher_dependency,
         get_vector_store_dependency,
     )
+    from api.v1.websocket.router import get_manager
     from db.session import get_db
     from main import app
 
@@ -1886,6 +1960,16 @@ def api_client(
     # assertion is about the *outcome*, and a test that waits for a worker is a
     # test that will eventually be flaky.
     app.dependency_overrides[get_report_job_queue] = lambda: report_queue
+    # The dispatcher is process-wide and the WebSocket manager subscribes to it at
+    # startup, so leaving it in place would make one test's uploads visible to
+    # another's assertions about throughput. The recorder keeps what was
+    # published without delivering it anywhere.
+    app.dependency_overrides[get_event_publisher] = lambda: event_publisher
+    # The WebSocket endpoint resolves its own sessions (a connection is not a
+    # request), so overriding `get_db` alone would leave it reaching for the real
+    # PostgreSQL. These two are what make the socket testable at all.
+    app.dependency_overrides[get_session_factory] = lambda: session_factory
+    app.dependency_overrides[get_manager] = lambda: connection_manager
     try:
         with TestClient(app) as test_client:
             yield test_client

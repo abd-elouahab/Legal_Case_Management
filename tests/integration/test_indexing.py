@@ -1212,7 +1212,7 @@ class TestDependencyWiring:
     def test_the_ocr_service_schedules_through_the_indexing_service(
         self, db_session: Any, document_storage: Any
     ) -> None:
-        from api.deps import get_indexing_service, get_ocr_service
+        from api.deps import get_event_publisher, get_indexing_service, get_ocr_service
         from repositories.case import CaseRepository
         from repositories.document import DocumentRepository
         from repositories.indexing import IndexingRepository
@@ -1240,6 +1240,7 @@ class TestDependencyWiring:
             get_vector_store(),
             NullJobQueue[IndexJob](name="indexing"),
             timeline,
+            get_event_publisher(),
         )
         ocr = get_ocr_service(
             results,
@@ -1249,6 +1250,7 @@ class TestDependencyWiring:
             NullOcrJobQueue(),
             timeline,
             indexing,
+            get_event_publisher(),
         )
 
         assert isinstance(ocr._indexing, IndexingService)

@@ -76,6 +76,34 @@
 - Every state change must update connected users immediately.
 - Synchronization logic must remain independent from business logic.
 
+Implemented per `15-real-time-synchronization.md`. The rules that follow are what
+those five mean in this codebase, and each is enforced by a type or a boundary
+rather than by review:
+
+- **Publish through the dispatcher; never touch a socket.** A business module
+  depends on the `EventPublisher` protocol (one method) and can therefore not
+  reach a subscriber, a connection, or the WebSocket layer. Importing anything
+  from `websocket/` outside `core/lifespan.py` and the endpoint is a mistake.
+- **Name every event once**, in `core.events.DomainEventType`, and give it a
+  scope in `EVENT_SCOPES`. A publisher never writes an event string, and a type
+  with no scope fails closed rather than being delivered to a guess.
+- **Publish beside the durable write, never instead of it.** A timeline entry is
+  the case's permanent history; an event is an ephemeral "this just changed".
+  Deriving one from the other would tie an audit record to a transport.
+- **Payloads carry identifiers and status, never content.** The dispatcher
+  strips the keys that name document contents, but a publisher should not be
+  relying on that: send what identifies the thing, and let the client refetch it
+  through the API that authorizes the read.
+- **Never trust a client-supplied topic.** A subscription is authorized per
+  resource before it is granted, and re-authorized before delivery once its
+  grant is stale.
+- **An event refreshes a client's cache; it never patches it.** The cached
+  resource is an authorized read scoped to that caller; the event is a
+  notification delivered to everyone following it.
+- **Nothing may depend on the channel.** Every feature keeps working with it
+  switched off, which is what makes graceful degradation a property rather than
+  an aspiration.
+
 ---
 
 ## Notifications
@@ -207,6 +235,9 @@
 - `modules/localization/` — Arabic, French, translations, and RTL support.
 - `services/ai/` — AI agents, RAG pipeline, embeddings, prompts, and LLM integrations.
 - `services/workers/` — Background jobs, OCR, indexing, reminders, and scheduled tasks.
+- `apps/api/websocket/` — The WebSocket layer: frame encoding, one connection, and
+  the connection manager. The manager is the event dispatcher's one subscriber
+  today; nothing outside this directory, the lifespan, and the endpoint imports it.
 - `packages/shared/` — Shared types, DTOs, validation schemas, utilities, and constants.
 - `packages/ui/` — Shared UI components.
 - `infrastructure/` — Docker, Nginx, monitoring, deployment, and CI/CD.
@@ -220,3 +251,11 @@
 - Every important business action (case creation, lawyer assignment, document upload, court update, report generation, etc.) must emit a domain event.
 - Other modules (Notifications, AI, Audit Logs, Timeline) should react to these events instead of being called directly.
 - This keeps the platform loosely coupled and makes it easier to add future integrations without modifying existing business logic.
+
+**The dispatcher is `apps/api/services/events.py`, and it is the only publication
+point.** A new consumer — Notifications, Email, WhatsApp, analytics, audit —
+implements `EventSubscriber` and is registered in `core/lifespan.py`. It requires
+no change to any business module, because none of them knows that consumers
+exist: they hold `EventPublisher`, which has one method and no way to ask who is
+listening. A feature that finds itself needing to call another feature directly
+should publish instead.

@@ -38,9 +38,21 @@ __all__ = [
 #: user's own alerts and preferences from them, which no role description asks
 #: for. Managing *other* users' notification configuration is a separate
 #: permission (``notifications:manage``) and is not part of this baseline.
+#:
+#: ``realtime:connect`` joins them for the same reason and one more.
+#: `architecture.md` invariant 2 and `code-standards.md`'s "Real-Time
+#: Collaboration" section both say every state change reaches its authorized
+#: users immediately; a role without this would watch stale screens while every
+#: other role's updated, which is a defect rather than a policy. And unlike the
+#: two above, this one **grants no access to anything**: the socket it opens
+#: carries only events on topics that are authorized per resource, against the
+#: case and document policies the caller is already subject to. A court
+#: representative connected with it receives exactly the updates for the cases
+#: they could already open, and nothing else.
 BASE_PERMISSIONS: frozenset[Permission] = frozenset(
     {
         Permission.NOTIFICATIONS_VIEW,
+        Permission.REALTIME_CONNECT,
         Permission.SETTINGS_VIEW,
     }
 )

@@ -6,6 +6,8 @@ and turns a Bearer token into the authenticated :class:`~models.user.User`.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from typing import Annotated
 
 from fastapi import Depends, Request
@@ -15,7 +17,7 @@ from sqlalchemy.orm import Session
 from core.config import settings
 from core.exceptions import MissingTokenError
 from core.security import TokenPayload
-from db.session import get_db
+from db.session import SessionLocal, get_db
 from models.user import User
 from repositories.case import CaseRepository
 from repositories.conversation import ConversationRepository
@@ -34,6 +36,7 @@ from services.chunking import Chunker, get_chunker
 from services.document import DocumentService
 from services.document_storage import DocumentStorageService
 from services.embedding import Embedder, get_embedder
+from services.events import EventPublisher, get_event_dispatcher
 from services.indexing import IndexingService, IndexJob
 from services.indexing_worker import index_queue
 from services.job_queue import JobQueue
@@ -107,6 +110,46 @@ def get_user_service(
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 
 
+def get_session_factory() -> Callable[[], AbstractContextManager[Session]]:
+    """Provide the application's database session factory.
+
+    Distinct from :data:`DbSession`, and needed for exactly one caller: the
+    **WebSocket endpoint**. A connection is not a request — it lives for hours —
+    so it cannot hold a request-scoped session: that would pin a pooled database
+    connection for the length of somebody's afternoon and serve increasingly
+    stale rows from its identity map. What the socket needs is the ability to
+    open a short session, ask one question, and close it.
+
+    A dependency rather than an import of ``SessionLocal`` at the call site, for
+    the reason every other collaborator here is one: an integration test
+    overrides it and exercises the real endpoint, the real protocol, and the real
+    authorization policy against its own database.
+    """
+    return SessionLocal
+
+
+def get_event_publisher() -> EventPublisher:
+    """Provide the process-wide event dispatcher, as a **publisher**.
+
+    Process-wide rather than per request for the reason the job queues are: the
+    WebSocket manager subscribed to the instance that existed at startup, and a
+    dispatcher rebuilt per request would have no consumers — every event would be
+    published into an empty room.
+
+    Typed as :class:`~services.events.EventPublisher` rather than as
+    :class:`~services.events.EventDispatcher`, and that is the load-bearing line
+    in this function. Every business service below takes the narrow protocol, so
+    none of them can register a subscriber, enumerate who is listening, or reach a
+    connection — which is the isolation ``15-real-time-synchronization.md``
+    requires (*"business modules should publish events but should never know who
+    consumes them"*) made a property of the type rather than a convention.
+
+    A test overrides this with a recorder, so "did archiving a case announce it?"
+    is an assertion about a list rather than about a socket.
+    """
+    return get_event_dispatcher()
+
+
 def get_timeline_repository(session: DbSession) -> TimelineRepository:
     """Provide a request-scoped timeline repository."""
     return TimelineRepository(session)
@@ -115,6 +158,7 @@ def get_timeline_repository(session: DbSession) -> TimelineRepository:
 def get_timeline_service(
     events: Annotated[TimelineRepository, Depends(get_timeline_repository)],
     cases: Annotated[CaseRepository, Depends(get_case_repository)],
+    publisher: Annotated[EventPublisher, Depends(get_event_publisher)],
 ) -> TimelineService:
     """Provide the timeline service with its collaborators injected.
 
@@ -122,8 +166,14 @@ def get_timeline_service(
     to a caller party to that case — a rule the timeline repository has no
     business knowing about, and one that must not be re-implemented against a
     second copy of the case query.
+
+    The event publisher is injected because appending to a case's history is
+    itself something a connected client needs to know about: it is what makes an
+    activity feed refresh without polling. See
+    :class:`~services.timeline.TimelineService` for why that is one event rather
+    than one per entry type.
     """
-    return TimelineService(events, cases)
+    return TimelineService(events, cases, publisher=publisher)
 
 
 TimelineServiceDep = Annotated[TimelineService, Depends(get_timeline_service)]
@@ -133,6 +183,7 @@ def get_case_service(
     cases: Annotated[CaseRepository, Depends(get_case_repository)],
     users: Annotated[UserRepository, Depends(get_user_repository)],
     timeline: Annotated[TimelineService, Depends(get_timeline_service)],
+    events: Annotated[EventPublisher, Depends(get_event_publisher)],
 ) -> CaseService:
     """Provide the case management service.
 
@@ -147,7 +198,7 @@ def get_case_service(
     is wired in — the service's own default records nothing — so a test asserts
     that this function supplies it.
     """
-    return CaseService(cases, users, timeline=timeline)
+    return CaseService(cases, users, timeline=timeline, events=events)
 
 
 CaseServiceDep = Annotated[CaseService, Depends(get_case_service)]
@@ -249,6 +300,7 @@ def get_indexing_service(
     vectors: Annotated[VectorStore, Depends(get_vector_store_dependency)],
     queue: Annotated[JobQueue[IndexJob], Depends(get_index_job_queue)],
     timeline: Annotated[TimelineService, Depends(get_timeline_service)],
+    events: Annotated[EventPublisher, Depends(get_event_publisher)],
 ) -> IndexingService:
     """Provide the indexing service with its collaborators injected.
 
@@ -273,6 +325,7 @@ def get_indexing_service(
         vectors,
         queue,
         timeline=timeline,
+        events=events,
     )
 
 
@@ -504,6 +557,7 @@ def get_report_service(
     rag: Annotated[RagService, Depends(get_rag_service)],
     queue: Annotated[JobQueue[ReportJob], Depends(get_report_job_queue)],
     timeline: Annotated[TimelineService, Depends(get_timeline_service)],
+    events: Annotated[EventPublisher, Depends(get_event_publisher)],
 ) -> ReportService:
     """Provide the report agent with its collaborators injected.
 
@@ -527,7 +581,7 @@ def get_report_service(
     because a conversation is one lawyer's private research — a report is case
     work product, and the people on the matter are entitled to know one exists.
     """
-    return ReportService(reports, cases, rag, queue, timeline=timeline)
+    return ReportService(reports, cases, rag, queue, timeline=timeline, events=events)
 
 
 ReportServiceDep = Annotated[ReportService, Depends(get_report_service)]
@@ -541,6 +595,7 @@ def get_ocr_service(
     queue: Annotated[OcrJobQueue, Depends(get_ocr_job_queue)],
     timeline: Annotated[TimelineService, Depends(get_timeline_service)],
     indexing: Annotated[IndexingService, Depends(get_indexing_service)],
+    events: Annotated[EventPublisher, Depends(get_event_publisher)],
 ) -> OcrService:
     """Provide the OCR service with its collaborators injected.
 
@@ -562,7 +617,14 @@ def get_ocr_service(
     class, so it cannot reach the read, re-index, or monitoring side.
     """
     return OcrService(
-        results, documents, storage, engine, queue, timeline=timeline, indexing=indexing
+        results,
+        documents,
+        storage,
+        engine,
+        queue,
+        timeline=timeline,
+        indexing=indexing,
+        events=events,
     )
 
 
@@ -575,6 +637,7 @@ def get_document_service(
     storage: Annotated[DocumentStorageService, Depends(get_document_storage)],
     timeline: Annotated[TimelineService, Depends(get_timeline_service)],
     ocr: Annotated[OcrService, Depends(get_ocr_service)],
+    events: Annotated[EventPublisher, Depends(get_event_publisher)],
 ) -> DocumentService:
     """Provide the document management service with its collaborators injected.
 
@@ -593,7 +656,7 @@ def get_document_service(
     narrow :class:`~services.ocr.OcrScheduler` protocol rather than on this
     class, so it cannot reach the read, retry, or monitoring side.
     """
-    return DocumentService(documents, cases, storage, timeline=timeline, ocr=ocr)
+    return DocumentService(documents, cases, storage, timeline=timeline, ocr=ocr, events=events)
 
 
 DocumentServiceDep = Annotated[DocumentService, Depends(get_document_service)]

@@ -36,6 +36,7 @@ import structlog
 from sqlalchemy.exc import IntegrityError
 
 from core.cases import build_case_number, can_transition
+from core.events import DomainEventType, case_topic
 from core.exceptions import (
     CaseNotFoundError,
     CaseNumberGenerationError,
@@ -53,6 +54,7 @@ from repositories.user import UserRepository
 from schemas.case import CaseCreate, CaseListQuery, CaseUpdate
 from schemas.errors import ErrorDetail
 from services.case_access import ASSIGNMENT_FIELDS, CaseAccessPolicy
+from services.events import EventPublisher, NullEventPublisher
 from services.timeline import NullTimelineRecorder, TimelineRecorder
 
 logger = structlog.get_logger(__name__)
@@ -156,6 +158,7 @@ class CaseService:
         access: CaseAccessPolicy | None = None,
         *,
         timeline: TimelineRecorder | None = None,
+        events: EventPublisher | None = None,
     ) -> None:
         self._cases = cases
         self._users = users
@@ -166,6 +169,16 @@ class CaseService:
         # application always injects the real one — see `api.deps.get_case_service`,
         # and the test that asserts it does.
         self._timeline: TimelineRecorder = timeline or NullTimelineRecorder()
+        # The **event** half, and it is deliberately a second, separate
+        # collaborator rather than something derived from the timeline. The two
+        # answer different questions and are not substitutes: the timeline is the
+        # case's permanent, readable *history*, written to PostgreSQL and read
+        # back by a lawyer weeks later; an event is an ephemeral *"this just
+        # changed"* delivered to whoever is looking at the case right now.
+        # Deriving one from the other would tie a durable audit record to a
+        # transport, and would leave a failed timeline write silently costing the
+        # user their live update as well.
+        self._events: EventPublisher = events or NullEventPublisher()
 
     # ------------------------------------------------------------- reading #
 
@@ -249,6 +262,13 @@ class CaseService:
                 "priority": created.priority.value,
                 "category": created.category,
             },
+        )
+        self._announce(
+            created,
+            DomainEventType.CASE_CREATED,
+            actor=actor,
+            status=created.status.value,
+            priority=created.priority.value,
         )
         # An assignment made at creation is still an assignment. Without these,
         # a case opened with its lawyer already named would carry no record of who
@@ -377,9 +397,48 @@ class CaseService:
                 description=f"{actor.full_name} archived the case.",
                 metadata={"from": previous_status.value, "to": saved.status.value},
             )
+            self._announce(
+                saved,
+                DomainEventType.CASE_ARCHIVED,
+                actor=actor,
+                previous_status=previous_status.value,
+                status=saved.status.value,
+            )
         return saved
 
     # ------------------------------------------------------------- helpers #
+
+    def _announce(
+        self,
+        legal_case: Case,
+        event_type: DomainEventType,
+        *,
+        actor: User,
+        **payload: Any,
+    ) -> None:
+        """Publish one domain event about this case.
+
+        Every call site sits **beside** a :meth:`TimelineRecorder.record` call
+        rather than inside it, so what the case's permanent history says and what
+        a connected screen is told stay independently readable — and so the one
+        event this feature adds that has *no* timeline entry (there is none in
+        this service, but there is in the report agent) does not need a second
+        mechanism.
+
+        The payload carries the **case number and the changed values**, and
+        deliberately not the title, the description, the court, or the client:
+        the number identifies the case for a client that already has it on
+        screen, while the rest is the confidential matter itself and belongs in
+        the authorized read the client makes next. This is the same line
+        `code-standards.md` draws for logs, applied to a wire.
+        """
+        self._events.publish(
+            event_type=event_type,
+            topic=case_topic(legal_case.id),
+            case_id=legal_case.id,
+            actor_id=actor.id,
+            payload={"case_number": legal_case.case_number, **payload},
+        )
 
     def _require_case(self, case_id: uuid.UUID) -> Case:
         legal_case = self._cases.get_by_id(case_id)
@@ -579,6 +638,12 @@ class CaseService:
                 description=f"{actor.full_name} updated the {_join_labels(descriptive)}.",
                 metadata={"fields": descriptive},
             )
+            # The field *labels*, never their values: "the title and the court
+            # name changed" is what tells a client to refetch, while the new
+            # title is the confidential matter it refetches under authorization.
+            self._announce(
+                legal_case, DomainEventType.CASE_UPDATED, actor=actor, fields=descriptive
+            )
 
     def _publish_status_change(
         self, legal_case: Case, previous: CaseStatus, *, actor: User
@@ -615,6 +680,24 @@ class CaseService:
             description=description,
             metadata={"from": previous.value, "to": legal_case.status.value},
         )
+        # The domain vocabulary makes the same three-way distinction the timeline
+        # does, and for the same reason: a client that has to infer "archived"
+        # from a status field is a client that will get it wrong the first time a
+        # status is added.
+        if legal_case.status is CaseStatus.ARCHIVED:
+            announced = DomainEventType.CASE_ARCHIVED
+        elif previous is CaseStatus.ARCHIVED:
+            announced = DomainEventType.CASE_RESTORED
+        else:
+            announced = DomainEventType.CASE_STATUS_CHANGED
+
+        self._announce(
+            legal_case,
+            announced,
+            actor=actor,
+            previous_status=previous.value,
+            status=legal_case.status.value,
+        )
 
     def _publish_priority_change(
         self, legal_case: Case, previous: CasePriority, *, actor: User
@@ -632,6 +715,13 @@ class CaseService:
                 f"to {humanize(legal_case.priority.value)}."
             ),
             metadata={"from": previous.value, "to": legal_case.priority.value},
+        )
+        self._announce(
+            legal_case,
+            DomainEventType.CASE_PRIORITY_CHANGED,
+            actor=actor,
+            previous_priority=previous.value,
+            priority=legal_case.priority.value,
         )
 
     def _record_assignment(
@@ -665,6 +755,18 @@ class CaseService:
                     "previous_assignee_name": previous.full_name if previous else None,
                 },
             )
+            # The assignee's **identifier**, never their name. The timeline names
+            # people because it is read by the people on the matter; this reaches
+            # every screen following the case, and a name is personal data that
+            # the authorized read after it will supply anyway.
+            self._announce(
+                legal_case,
+                DomainEventType.CASE_ASSIGNMENT_CHANGED,
+                actor=actor,
+                position=position.label,
+                assignee_id=assignee.id,
+                assigned=True,
+            )
             return
 
         # Cleared. If there was nobody there to begin with, the request changed
@@ -684,6 +786,14 @@ class CaseService:
                 "assignee_name": previous.full_name,
                 "position": position.label,
             },
+        )
+        self._announce(
+            legal_case,
+            DomainEventType.CASE_ASSIGNMENT_CHANGED,
+            actor=actor,
+            position=position.label,
+            assignee_id=previous.id,
+            assigned=False,
         )
 
     @staticmethod

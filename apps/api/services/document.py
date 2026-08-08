@@ -46,6 +46,7 @@ from typing import Any
 import structlog
 
 from core.documents import build_storage_key, is_previewable
+from core.events import DomainEventType, document_topic
 from core.exceptions import (
     CaseNotFoundError,
     DocumentNotFoundError,
@@ -62,6 +63,7 @@ from schemas.document import DocumentListQuery, DocumentUpdate, DocumentUploadFo
 from services.document_access import DocumentAccessPolicy
 from services.document_storage import DocumentStorageService, ObjectStream
 from services.document_validation import ValidatedUpload
+from services.events import EventPublisher, NullEventPublisher
 from services.ocr import NullOcrScheduler, OcrScheduler
 from services.timeline import NullTimelineRecorder, TimelineRecorder
 
@@ -89,6 +91,25 @@ class DocumentDownload:
     version: int
 
 
+#: Timeline event → the domain event announced alongside it.
+#:
+#: Four of the five, and the omission is deliberate: **a download is not
+#: announced.** ``08-timeline.md`` records who took a copy of a legal document
+#: because that is accountability a case's participants are entitled to read
+#: later, but a download changes nothing about the document — so a live update
+#: for one would tell every connected screen to refetch a list that has not
+#: changed, while broadcasting that a named colleague is reading a particular
+#: file right now. `15-real-time-synchronization.md` asks for exactly the
+#: opposite on both counts: *"avoid unnecessary broadcasts"* and *"deliver only
+#: relevant events"*.
+_ANNOUNCED_DOCUMENT_EVENTS: dict[TimelineEventType, DomainEventType] = {
+    TimelineEventType.DOCUMENT_UPLOADED: DomainEventType.DOCUMENT_UPLOADED,
+    TimelineEventType.DOCUMENT_UPDATED: DomainEventType.DOCUMENT_UPDATED,
+    TimelineEventType.DOCUMENT_REPLACED: DomainEventType.DOCUMENT_REPLACED,
+    TimelineEventType.DOCUMENT_DELETED: DomainEventType.DOCUMENT_DELETED,
+}
+
+
 class DocumentService:
     """Coordinates the document lifecycle."""
 
@@ -101,6 +122,7 @@ class DocumentService:
         *,
         timeline: TimelineRecorder | None = None,
         ocr: OcrScheduler | None = None,
+        events: EventPublisher | None = None,
     ) -> None:
         self._documents = documents
         self._cases = cases
@@ -113,6 +135,9 @@ class DocumentService:
         # script, a unit test that is not about extraction) schedules nothing
         # rather than needing a guard at each call site.
         self._ocr: OcrScheduler = ocr or NullOcrScheduler()
+        # Same pattern again. See `CaseService.__init__` for why the domain event
+        # is published beside the timeline entry rather than derived from it.
+        self._events: EventPublisher = events or NullEventPublisher()
 
     # ------------------------------------------------------------- reading #
 
@@ -570,17 +595,20 @@ class DocumentService:
         description: str,
         extra: dict[str, Any] | None = None,
     ) -> None:
-        """Announce a document event on its case's timeline.
+        """Announce a document event on its case's timeline, and to live clients.
 
         Every document event carries the same identifying metadata, assembled
         here so five call sites cannot each remember a different subset of it;
         ``extra`` adds whatever is specific to one of them.
 
-        **The filename appears here and nowhere in the application log.** That is
+        **The filename appears in the timeline entry and nowhere else.** That is
         the spec's separation, not an oversight: the timeline is served only to
         users already entitled to the document's case, while a log line goes to an
-        operator who has no such entitlement — and a filename can name a client or
-        a matter.
+        operator who has no such entitlement, and a real-time event reaches every
+        screen following the case — and a filename can name a client or a matter.
+        The domain event below therefore carries identifiers and the file's
+        *shape*, and the client resolves the name through the authorized read it
+        makes next.
         """
         self._timeline.record(
             case_id=document.case_id,
@@ -595,6 +623,23 @@ class DocumentService:
                 "file_extension": document.file_extension,
                 "file_size": document.file_size,
                 **(extra or {}),
+            },
+        )
+
+        announced = _ANNOUNCED_DOCUMENT_EVENTS.get(event_type)
+        if announced is None:
+            return
+
+        self._events.publish(
+            event_type=announced,
+            topic=document_topic(document.id),
+            case_id=document.case_id,
+            actor_id=actor.id,
+            payload={
+                "document_id": document.id,
+                "category": document.category.value,
+                "version": document.version,
+                "file_extension": document.file_extension,
             },
         )
 

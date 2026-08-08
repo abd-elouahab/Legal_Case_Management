@@ -22,6 +22,7 @@ from api.v1.search.router import router as search_router
 from api.v1.timeline.router import case_timeline_router
 from api.v1.timeline.router import router as timeline_router
 from api.v1.users.router import router as users_router
+from api.v1.websocket.router import router as realtime_router
 
 api_router = APIRouter()
 
@@ -83,3 +84,16 @@ api_router.include_router(reports_router, prefix="/reports", tags=["reports"])
 # router. Tagged `timeline`, so OpenAPI groups it with the module that owns it.
 api_router.include_router(case_timeline_router, prefix="/cases", tags=["timeline"])
 api_router.include_router(timeline_router, prefix="/timeline", tags=["timeline"])
+
+# Real-time synchronization is its own module under its own prefix, and — unlike
+# every router above it — it is **not a feature's API**. It is the transport every
+# feature's updates travel on: the WebSocket at `/realtime/ws`, plus the two
+# administrative reads that say whether it is healthy and who is connected.
+#
+# It is deliberately *not* mounted under `/cases`, `/documents`, or `/reports`,
+# even though those are what its events are about. A socket per feature would be
+# a socket per open panel in a browser that allows a handful in total, and the
+# whole point of a central dispatcher is that one channel carries everything the
+# caller is entitled to. Which events reach it is decided by subscription and by
+# per-resource authorization, not by which URL it was opened at.
+api_router.include_router(realtime_router, prefix="/realtime", tags=["realtime"])

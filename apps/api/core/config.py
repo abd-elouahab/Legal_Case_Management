@@ -438,6 +438,61 @@ class Settings(BaseSettings):
     REPORT_PDF_FONT_SIZE: int = 10
     REPORT_PDF_MARGIN: int = 56
 
+    # --- Real-time events & synchronization ---
+    # The platform's event backbone: business modules publish domain events to a
+    # central dispatcher, and the WebSocket layer delivers them to the connected
+    # clients authorized to receive them. Disabling it refuses new WebSocket
+    # connections and makes the dispatcher a no-op; **nothing else changes** —
+    # every feature keeps working through its REST API, which is what
+    # "graceful degradation when offline" means on the server side too.
+    REALTIME_ENABLED: bool = True
+    # How long an accepted socket may stay unauthenticated. The credential
+    # arrives in the first frame rather than in the URL (see `core/realtime.py`
+    # for why), so this window is the whole surface that choice creates —
+    # generous enough for a round trip on a slow link, short enough that an idle
+    # unauthenticated socket is not a resource anyone can hold.
+    REALTIME_AUTH_TIMEOUT_SECONDS: int = 10
+    # Connections one account may hold at once. A user legitimately has several —
+    # two tabs and a phone — and past this the oldest is closed rather than the
+    # newest refused, because the newest is the one the user is looking at.
+    REALTIME_MAX_CONNECTIONS_PER_USER: int = 5
+    # Connections this process accepts in total. A ceiling rather than a target:
+    # each connection costs a task and a queue, and an unbounded count is how one
+    # misbehaving client takes the API's event loop down with it.
+    REALTIME_MAX_CONNECTIONS: int = 1000
+    # Topics one connection may follow. A case workspace subscribes to its case
+    # and the documents on screen; a list page subscribes to nothing. Past this a
+    # client is following more than a person can be looking at.
+    REALTIME_MAX_SUBSCRIPTIONS: int = 200
+    # Events buffered per connection before it is considered a slow consumer and
+    # closed. Bounded because the alternative to dropping a client that is not
+    # reading is holding its backlog in the API's memory until it is.
+    REALTIME_SEND_QUEUE_SIZE: int = 256
+    # Seconds between server keepalive frames. Well under the 60s idle timeout
+    # most reverse proxies and load balancers apply, so an open-but-quiet
+    # connection is not closed underneath a user reading a case.
+    REALTIME_HEARTBEAT_SECONDS: int = 25
+    # How long a missed heartbeat is tolerated before the connection is dropped.
+    # A multiple of the interval, so one lost frame on a flaky link does not cost
+    # a reconnect. Must be greater than REALTIME_HEARTBEAT_SECONDS.
+    REALTIME_IDLE_TIMEOUT_SECONDS: int = 90
+    # Client frames accepted per minute per connection. A client sends an
+    # `authenticate`, a handful of `subscribe`s, and a `ping` every half minute;
+    # this is two orders of magnitude above that, and it is what stops a socket
+    # being used to make the server do authorization lookups in a loop.
+    REALTIME_MAX_FRAMES_PER_MINUTE: int = 120
+    # How long a granted topic subscription is trusted before it is re-checked
+    # against the database. The spec requires authorization *before every
+    # delivery*, and this is how that is honoured without a query per event per
+    # connection: a grant older than this is re-resolved on the next event for
+    # that topic, and a caller who has since lost access stops receiving it. Zero
+    # means "re-check on every event", which is correct and expensive.
+    REALTIME_AUTHORIZATION_TTL_SECONDS: int = 30
+    # Event identifiers remembered per connection for duplicate suppression. A
+    # reconnecting client is legitimately offered events it already has; this is
+    # the server's half of not sending one twice, and the client keeps its own.
+    REALTIME_DEDUPE_WINDOW: int = 512
+
     # --- Prompt templates ---
     # Which prompt backend to use (see `services/prompts.py`). Templates live in
     # `apps/api/prompts/` as versioned `.j2` files under source control.
@@ -646,6 +701,15 @@ class Settings(BaseSettings):
         "REPORT_MAX_PAGE_SIZE",
         "REPORT_PDF_FONT_SIZE",
         "REPORT_PDF_MARGIN",
+        "REALTIME_AUTH_TIMEOUT_SECONDS",
+        "REALTIME_MAX_CONNECTIONS_PER_USER",
+        "REALTIME_MAX_CONNECTIONS",
+        "REALTIME_MAX_SUBSCRIPTIONS",
+        "REALTIME_SEND_QUEUE_SIZE",
+        "REALTIME_HEARTBEAT_SECONDS",
+        "REALTIME_IDLE_TIMEOUT_SECONDS",
+        "REALTIME_MAX_FRAMES_PER_MINUTE",
+        "REALTIME_DEDUPE_WINDOW",
     )
     @classmethod
     def _require_positive(cls, value: int, info: ValidationInfo) -> int:
@@ -782,6 +846,34 @@ class Settings(BaseSettings):
             raise ValueError("REPORT_PAGE_SIZE must not exceed REPORT_MAX_PAGE_SIZE")
         if not -1.0 <= self.REPORT_SECTION_MIN_SCORE <= 1.0:
             raise ValueError("REPORT_SECTION_MIN_SCORE must be between -1.0 and 1.0")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_realtime_limits(self) -> Settings:
+        """Keep the connection budgets coherent with one another.
+
+        Three couplings, and each is invisible until users are already connected:
+
+        * an **idle timeout at or below the heartbeat interval** drops every
+          connection on schedule — the server's own keepalive would arrive after
+          the deadline it exists to reset;
+        * a **per-user ceiling above the process ceiling** is not a ceiling: one
+          account could fill the process and the narrower limit would never
+          apply;
+        * a **negative authorization TTL** is not a shorter re-check window, it is
+          an undefined one. Zero is meaningful (re-check on every delivery) and is
+          therefore allowed.
+        """
+        if self.REALTIME_IDLE_TIMEOUT_SECONDS <= self.REALTIME_HEARTBEAT_SECONDS:
+            raise ValueError(
+                "REALTIME_IDLE_TIMEOUT_SECONDS must be greater than REALTIME_HEARTBEAT_SECONDS"
+            )
+        if self.REALTIME_MAX_CONNECTIONS_PER_USER > self.REALTIME_MAX_CONNECTIONS:
+            raise ValueError(
+                "REALTIME_MAX_CONNECTIONS_PER_USER must not exceed REALTIME_MAX_CONNECTIONS"
+            )
+        if self.REALTIME_AUTHORIZATION_TTL_SECONDS < 0:
+            raise ValueError("REALTIME_AUTHORIZATION_TTL_SECONDS must not be negative")
         return self
 
     @model_validator(mode="after")

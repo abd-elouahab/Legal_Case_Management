@@ -4,6 +4,7 @@ import * as React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { SessionProvider } from "@/components/auth/session-provider";
+import { RealtimeProvider } from "@/components/realtime/realtime-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -15,12 +16,19 @@ import { TooltipProvider } from "@/components/ui/tooltip";
  * stays a thin Server Component. Order (outer → inner):
  *
  *   ThemeProvider (next-themes) → QueryClientProvider (TanStack Query)
- *     → SessionProvider (auth lifecycle) → TooltipProvider (Radix)
- *       → children (+ Toaster overlay)
+ *     → SessionProvider (auth lifecycle) → RealtimeProvider (live updates)
+ *       → TooltipProvider (Radix) → children (+ Toaster overlay)
  *
  * `SessionProvider` sits inside `QueryClientProvider` because signing out clears
  * the query cache, and above everything that reads the session so a single
  * session restore serves the whole tree.
+ *
+ * `RealtimeProvider` sits inside both, and needs both: it opens the socket only
+ * once a session exists (the connection authenticates with that session's access
+ * token) and turns every event it receives into an invalidation on that query
+ * client. It renders nothing and blocks nothing — a deployment with the channel
+ * off, or a browser that cannot open a socket, leaves every screen working
+ * exactly as it did before, on the polling each feature already does.
  *
  * The platform is dark-only for now; the theme is forced in the root layout.
  */
@@ -63,7 +71,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     >
       <QueryClientProvider client={queryClient}>
         <SessionProvider>
-          <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+          <RealtimeProvider>
+            <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+          </RealtimeProvider>
         </SessionProvider>
         <Toaster />
       </QueryClientProvider>

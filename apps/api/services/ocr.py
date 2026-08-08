@@ -50,6 +50,7 @@ from typing import Any, Protocol
 import structlog
 
 from core.config import settings
+from core.events import DomainEventType, document_topic
 from core.exceptions import (
     DocumentNotFoundError,
     DocumentStorageError,
@@ -80,6 +81,7 @@ from repositories.document import DocumentRepository
 from repositories.ocr import OcrRepository, OcrStatusCounts
 from schemas.ocr import OcrListQuery
 from services.document_storage import DocumentStorageService
+from services.events import EventPublisher, NullEventPublisher
 from services.indexing import IndexScheduler, NullIndexScheduler
 from services.ocr_access import OcrAccessPolicy
 from services.ocr_engine import Extraction, OcrEngine, OcrEngineError, get_ocr_engine
@@ -161,6 +163,21 @@ class NullOcrScheduler:
         return None
 
 
+#: Timeline event → the domain event announced alongside it.
+#:
+#: Three of the four the timeline records. ``OCR_RETRIED`` is deliberately absent
+#: and costs a client nothing: a retry is immediately followed by
+#: ``OCR_STARTED``, so announcing both would deliver two events for one
+#: transition — which is precisely the duplication
+#: `15-real-time-synchronization.md` asks to avoid, arriving from the publisher
+#: rather than from the transport.
+_ANNOUNCED_OCR_EVENTS: dict[TimelineEventType, DomainEventType] = {
+    TimelineEventType.OCR_STARTED: DomainEventType.OCR_STARTED,
+    TimelineEventType.OCR_COMPLETED: DomainEventType.OCR_COMPLETED,
+    TimelineEventType.OCR_FAILED: DomainEventType.OCR_FAILED,
+}
+
+
 class OcrService:
     """Coordinates the OCR lifecycle."""
 
@@ -175,6 +192,7 @@ class OcrService:
         *,
         timeline: TimelineRecorder | None = None,
         indexing: IndexScheduler | None = None,
+        events: EventPublisher | None = None,
     ) -> None:
         self._results = results
         self._documents = documents
@@ -187,6 +205,9 @@ class OcrService:
         self._access = access or OcrAccessPolicy()
         self._timeline: TimelineRecorder = timeline or NullTimelineRecorder()
         self._indexing: IndexScheduler = indexing or NullIndexScheduler()
+        # Same pattern again. See `CaseService.__init__` for why the domain event
+        # is published beside the timeline entry rather than derived from it.
+        self._events: EventPublisher = events or NullEventPublisher()
 
     # ---------------------------------------------------------- scheduling #
 
@@ -938,6 +959,32 @@ class OcrService:
                 "ocr_result_id": result.id,
                 "ocr_status": result.status.value,
                 **(extra or {}),
+            },
+        )
+
+        announced = _ANNOUNCED_OCR_EVENTS.get(event_type)
+        if announced is None:
+            return
+
+        # Published on the **document's** topic, not the case's, and a case
+        # follower still receives it: see `core.events.CASE_FANOUT_SCOPES` for
+        # why that is safe and why it is what lets a case workspace watch every
+        # file on it with one subscription.
+        #
+        # `page_count` and `character_count` are the shape of the work, which is
+        # what a progress indicator needs. **No page of text**, obviously, and
+        # nothing that would let one be reconstructed.
+        self._events.publish(
+            event_type=announced,
+            topic=document_topic(document.id),
+            case_id=document.case_id,
+            actor_id=actor.id if actor is not None else None,
+            payload={
+                "document_id": document.id,
+                "document_version": result.document_version,
+                "ocr_status": result.status.value,
+                "page_count": result.page_count,
+                "error_code": result.error_code,
             },
         )
 

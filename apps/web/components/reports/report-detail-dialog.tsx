@@ -28,6 +28,7 @@ import {
   useReport,
   useReportCompletionSync,
 } from "@/hooks/use-reports";
+import { useRealtimeResource } from "@/hooks/use-realtime";
 import { formatDateTime } from "@/lib/format";
 import { PERMISSION } from "@/types/authorization";
 import { reportFailureLabel, reportTypeLabel } from "@/types/report";
@@ -67,6 +68,19 @@ export function ReportDetailDialog({
 }) {
   const report = useReport(reportId, { enabled: open });
   const regenerate = useRegenerateReport();
+
+  // **A report is followed on its own topic, never on its case's.** A report is
+  // its author's private work product, so the server refuses to fan its events
+  // into the case channel (`CASE_FANOUT_SCOPES` in `apps/api/core/events.py`) —
+  // which means a case follower learns *that* a report exists, from the case
+  // timeline, and only its author watches it being written.
+  //
+  // Subscribed while the dialog is closed too, and deliberately: `reportId` is
+  // set the moment a row is chosen, and the run whose progress this shows was
+  // usually queued from the list behind it. The polling below is unchanged and
+  // remains the fallback — the subscription makes the bar move between polls
+  // rather than replacing them.
+  useRealtimeResource("report", reportId);
 
   // A finished run appends `report_generated` to the case's history, which
   // nothing on the client caused — so the poll's own result is what invalidates

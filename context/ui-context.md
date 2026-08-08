@@ -97,6 +97,7 @@ components/reports/
 components/notifications/
 components/users/
 components/ai/
+components/realtime/
 ```
 
 ---
@@ -753,6 +754,62 @@ components/reports/
 
 ---
 
+### Live Updates
+
+Gated on `realtime:connect`, which **every role holds** — and unusually for this
+platform, the permission grants access to nothing on its own: every update is
+delivered on a topic that is authorized per resource, so the socket a court
+representative opens carries exactly the changes to the cases they could already
+open.
+
+**There is no page for this, and there is deliberately almost no UI.** The
+feature's job is that screens stop being stale, and a synchronization feature the
+user has to think about has failed at it. What it adds to the interface is one
+indicator, and what it changes everywhere else is that lists, badges, progress
+bars, and activity feeds catch up on their own.
+
+- **The connection indicator lives in the top bar and renders nothing while
+  updates are live** — which is nearly always. A permanently-green dot is
+  furniture people learn to ignore, and the one place that would tell them
+  something is wrong is the last place that should be ignorable. It appears in
+  three states, each with an icon *and* a label because `ui-context.md` forbids
+  colour alone: **Connecting**, **Reconnecting** (updates were interrupted; the
+  page still works), and **Updates paused** (they are not coming back on their
+  own — refresh to see other people's changes).
+- **The wording is about the data, never the transport.** "Updates paused", not
+  "WebSocket disconnected". A lawyer needs to know whether the case in front of
+  them is current; the name of the protocol carrying it is not their concern, and
+  naming it invites a support ticket instead of a refresh.
+- **A retry appears only when retrying is meaningful.** The client backs off on
+  its own and gives up after enough consecutive failures; *that* is the state a
+  person can act on, so it is the only one with a button. Offering retry
+  mid-reconnect would invite somebody to reset a backoff that is already working.
+- **The case workspace subscribes once, to its case**, and that covers everything
+  inside it: the case record, every document on it, their extraction and indexing
+  progress, and the activity timeline. Subscribing per document would mean
+  re-subscribing on every page of a document list for no additional access.
+  **Reports are the exception and follow their own topic**, because a report is
+  its author's private work product — the case's participants see from the
+  timeline that one was produced; only its author watches it being written,
+  section by section, as the progress bar moves between polls.
+- **An event refreshes; it never patches.** A `case.status_changed` arrives
+  carrying the new status and the client still refetches, because the cached case
+  is an *authorized read* scoped to that caller while the event is a
+  *notification* delivered to everyone following the case. Rendering data that
+  never passed an authorization check is not a shortcut anyone asked for.
+- **Everything degrades to what existed before.** Every list, pipeline, and report
+  still polls. A deployment with live updates switched off, a failed connection, a
+  browser that blocks WebSockets, and a refused subscription all leave the screen
+  exactly as usable as it was — slower to notice a change, never wrong about one.
+
+Business-specific components for this area live in:
+
+```
+components/realtime/
+```
+
+---
+
 ### Collaboration
 
 Case collaboration displays:
@@ -763,7 +820,9 @@ Case collaboration displays:
 - Shared documents
 - Activity timeline
 
-Real-time updates appear instantly without requiring page refreshes.
+Real-time updates appear instantly without requiring page refreshes — delivered
+by the channel described under **Live Updates** above, with polling as the
+fallback that keeps every one of these correct when it is unavailable.
 
 ---
 

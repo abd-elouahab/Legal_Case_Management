@@ -32,6 +32,7 @@ import { CaseReports } from "@/components/reports/case-reports";
 import { CaseSearch } from "@/components/search/case-search";
 import { CaseTimeline } from "@/components/timeline/case-timeline";
 import { caseErrorMessage, useCase, useRestoreCase } from "@/hooks/use-cases";
+import { useRealtimeResource } from "@/hooks/use-realtime";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { ROUTES } from "@/lib/routes";
 import { PERMISSION } from "@/types/authorization";
@@ -307,6 +308,22 @@ function CaseDetailsContent({ legalCase }: { legalCase: LegalCase }) {
 
 export function CaseDetails({ caseId }: { caseId: string }) {
   const { data, isLoading, isError, error, refetch } = useCase(caseId);
+
+  // **One subscription for the whole workspace.** Following the case delivers
+  // everything that happens inside it — the case itself, every document on it,
+  // their extraction and indexing progress, and its timeline — because a
+  // document event is authorized against exactly the same rule as a case event
+  // (see `CASE_FANOUT_SCOPES` in `apps/api/core/events.py`). Subscribing per
+  // document would mean re-subscribing on every page of the document list, for
+  // no additional access.
+  //
+  // Reports are the deliberate exception and are *not* covered: a report is its
+  // author's private work product, so the panel below follows each of its own.
+  //
+  // Called before the early returns, because a hook must run on every render —
+  // and unconditionally, because the subscription is a hint the socket may
+  // decline rather than something the view depends on.
+  useRealtimeResource("case", caseId);
 
   if (isLoading) return <LoadingState label="Loading case…" />;
 

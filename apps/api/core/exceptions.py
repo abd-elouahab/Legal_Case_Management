@@ -1055,6 +1055,66 @@ class ReportsDisabledError(AppException):
 
 
 # --------------------------------------------------------------------------- #
+# Real-time synchronization errors
+#
+# Only two, and the asymmetry with every other module above is the point: a
+# WebSocket failure is not an HTTP failure. A malformed frame, an unauthorized
+# topic, and a slow consumer are all answered **on the socket** — as an `error`
+# frame or a close code from :mod:`core.realtime` — because by then the HTTP
+# handshake has already succeeded and there is no status line left to set. The
+# two below are the ones that happen on the *REST* surface this feature also
+# exposes: its monitoring and presence views.
+#
+# There is deliberately **no per-resource denial class**. A topic the caller may
+# not follow is refused by :mod:`services.realtime_access`, which owns no policy
+# of its own — it delegates to the case and document policies, whose
+# :class:`CaseAccessDeniedError` and :class:`DocumentAccessDeniedError` already
+# say what a refusal means. Adding a third would be a third rule to keep in step
+# with the first two.
+# --------------------------------------------------------------------------- #
+
+
+class RealtimeDisabledError(AppException):
+    """Real-time synchronization is switched off for this deployment.
+
+    503 rather than 404: the capability exists and the request is valid — the
+    deployment has turned the event channel off, which is a temporary condition
+    an operator controls. **Every other feature is unaffected**, because none of
+    them depends on it: the platform degrades to the REST API it was already
+    built on, which is exactly what the spec's "graceful degradation" requires.
+    """
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    error_code = "realtime_disabled"
+    message = "Live updates are currently disabled on this platform."
+
+
+class EventPublicationError(AppException):
+    """An event could not be built or dispatched.
+
+    Never reaches a client, and that is its whole purpose. Publishing is a
+    side effect of a business change that has **already committed**, so the
+    dispatcher catches this and logs it rather than failing a request that
+    succeeded — the same contract :meth:`~services.timeline.TimelineService.record`
+    keeps, and for the same reason: a 500 on a completed operation invites a retry
+    that duplicates the work.
+
+    It exists as a typed exception rather than a bare ``ValueError`` so the
+    dispatcher can tell "this publisher built a bad event" (a bug to log loudly)
+    from an unexpected fault, and so ``detail`` carries the specifics into the log
+    without any of them reaching a response body.
+    """
+
+    status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+    error_code = "internal_error"
+    message = "An unexpected error occurred."
+
+    def __init__(self, *, detail: str) -> None:
+        self.detail = detail
+        super().__init__()
+
+
+# --------------------------------------------------------------------------- #
 # Timeline errors
 #
 # Only two, because the timeline is read-only over HTTP: events are published by

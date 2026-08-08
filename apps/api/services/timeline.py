@@ -42,6 +42,7 @@ from typing import Any, Protocol
 
 import structlog
 
+from core.events import DomainEventType, case_topic
 from core.exceptions import CaseNotFoundError, TimelineEventNotFoundError
 from core.timeline import (
     InvalidTimelineMetadataError,
@@ -57,6 +58,7 @@ from models.user import User
 from repositories.case import CaseRepository
 from repositories.timeline import TimelineRepository
 from schemas.timeline import TimelineListQuery
+from services.events import EventPublisher, NullEventPublisher
 from services.timeline_access import TimelineAccessPolicy
 
 logger = structlog.get_logger(__name__)
@@ -132,10 +134,26 @@ class TimelineService:
         events: TimelineRepository,
         cases: CaseRepository,
         access: TimelineAccessPolicy | None = None,
+        *,
+        publisher: EventPublisher | None = None,
     ) -> None:
         self._events = events
         self._cases = cases
         self._access = access or TimelineAccessPolicy()
+        # Named ``publisher`` rather than ``events``, because ``self._events`` is
+        # already this service's *repository* — a second meaning for the word in
+        # one class would be a trap for the next reader of either.
+        #
+        # This service publishes exactly one domain event, ``timeline.updated``,
+        # and it is the only publisher on the platform that announces something
+        # about *itself* rather than about a business change. That is deliberate:
+        # a client showing a case's activity feed cannot know from a
+        # ``document.uploaded`` event that the feed grew — several event types
+        # append an entry, some append two, and one (a report) appends one to a
+        # case whose report topic the reader cannot follow. One event that says
+        # "this case's history changed" is what makes the feed refresh correct
+        # without the client re-deriving the mapping.
+        self._publisher: EventPublisher = publisher or NullEventPublisher()
         #: The last timestamp this instance issued — see :meth:`_next_timestamp`.
         self._last_stamp: datetime | None = None
 
@@ -218,6 +236,19 @@ class TimelineService:
             case_id=str(case_id),
             event_type=event_type.value,
             actor_id=str(actor.id) if actor is not None else None,
+        )
+
+        # Announced **after** the row is committed, so a client that refetches on
+        # this event cannot arrive before the entry it was told about exists.
+        # Carries the entry's identifier and type and neither its title nor its
+        # description: those are the business sentences the timeline is read for,
+        # and they quote filenames and name people.
+        self._publisher.publish(
+            event_type=DomainEventType.TIMELINE_UPDATED,
+            topic=case_topic(case_id),
+            case_id=case_id,
+            actor_id=actor.id if actor is not None else None,
+            payload={"event_id": recorded.id, "timeline_event_type": event_type.value},
         )
         return recorded
 

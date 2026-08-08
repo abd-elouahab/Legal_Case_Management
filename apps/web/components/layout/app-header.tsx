@@ -6,6 +6,7 @@ import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { NotificationButton } from "@/components/layout/notification-button";
 import { SearchBar } from "@/components/layout/search-bar";
 import { UserMenu } from "@/components/layout/user-menu";
+import { ConnectionStatusIndicator } from "@/components/realtime/connection-status";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useSidebarStore } from "@/stores/sidebar-store";
@@ -35,6 +36,11 @@ export function AppHeader() {
       <Breadcrumbs className="hidden sm:block" />
 
       <div className="ml-auto flex items-center gap-2">
+        {/* Renders nothing while updates are live, which is nearly always. It is
+            the one control on this bar that appears only when something is
+            wrong — a permanently-green indicator is furniture people learn to
+            ignore. */}
+        <ConnectionStatusIndicator />
         <SearchBar className="hidden md:block" />
         <Separator orientation="vertical" className="mx-1 hidden h-6 md:block" />
         <NotificationButton />

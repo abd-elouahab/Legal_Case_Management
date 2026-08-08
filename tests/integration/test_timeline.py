@@ -128,6 +128,7 @@ class TestDependencyWiring:
         from api.deps import (
             get_case_service,
             get_document_service,
+            get_event_publisher,
             get_indexing_service,
             get_ocr_service,
         )
@@ -162,6 +163,7 @@ class TestDependencyWiring:
             get_vector_store(),
             NullJobQueue[IndexJob](name="indexing"),
             timeline,
+            get_event_publisher(),
         )
         ocr = get_ocr_service(
             results,
@@ -171,11 +173,14 @@ class TestDependencyWiring:
             NullOcrJobQueue(),
             timeline,
             indexing,
+            get_event_publisher(),
         )
 
-        case_service = get_case_service(cases, UserRepository(db_session), timeline)
+        case_service = get_case_service(
+            cases, UserRepository(db_session), timeline, get_event_publisher()
+        )
         document_service = get_document_service(
-            documents, cases, document_storage, timeline, ocr
+            documents, cases, document_storage, timeline, ocr, get_event_publisher()
         )
 
         for service in (case_service, document_service, ocr, indexing):

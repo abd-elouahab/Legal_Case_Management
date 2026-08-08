@@ -68,6 +68,7 @@ from typing import Any
 import structlog
 
 from core.config import settings
+from core.events import DomainEventType, report_topic
 from core.exceptions import (
     AppException,
     CaseNotFoundError,
@@ -109,6 +110,7 @@ from repositories.report import ReportRepository, ReportStatusCounts
 from schemas.rag import RagCitationRead, RagRequest
 from schemas.report import ReportCreate, ReportListQuery
 from schemas.search import SearchFilterInput
+from services.events import EventPublisher, NullEventPublisher
 from services.job_queue import JobQueue, NullJobQueue
 from services.rag import RagOutcome, RagService
 from services.report_access import ReportAccessPolicy
@@ -315,6 +317,25 @@ class CitationLedger:
         return list(self._citations)
 
 
+#: Timeline event → the domain event announced alongside it.
+#:
+#: Three of the four, and ``REPORT_EXPORTED`` is the omission. An export changes
+#: nothing about the report — the same reasoning that keeps a document *download*
+#: off the channel — and the one screen that would care is the one that just
+#: triggered it and already has the file. `15-real-time-synchronization.md` asks
+#: for exactly this restraint: *"deliver only relevant events"*.
+#:
+#: ``REPORT_REQUESTED`` maps to ``report.started`` rather than to a name of its
+#: own, because from a client's point of view queuing a run *is* the run
+#: starting: the row is `pending`, the progress bar has a denominator, and the
+#: next thing that happens is a section landing.
+_ANNOUNCED_REPORT_EVENTS: dict[TimelineEventType, DomainEventType] = {
+    TimelineEventType.REPORT_REQUESTED: DomainEventType.REPORT_STARTED,
+    TimelineEventType.REPORT_GENERATED: DomainEventType.REPORT_GENERATED,
+    TimelineEventType.REPORT_FAILED: DomainEventType.REPORT_FAILED,
+}
+
+
 class ReportService:
     """Coordinates the report generation lifecycle.
 
@@ -332,6 +353,7 @@ class ReportService:
         access: ReportAccessPolicy | None = None,
         *,
         timeline: TimelineRecorder | None = None,
+        events: EventPublisher | None = None,
     ) -> None:
         self._reports = reports
         self._cases = cases
@@ -342,6 +364,14 @@ class ReportService:
         self._queue: JobQueue[ReportJob] = queue or NullJobQueue(name="reports")
         self._access = access or ReportAccessPolicy()
         self._timeline: TimelineRecorder = timeline or NullTimelineRecorder()
+        # Same pattern again — and this is the one service where the two are
+        # genuinely *not* parallel. Every timeline entry has a matching event, but
+        # `REPORT_PROGRESS` has no timeline entry at all: "section 3 of 7 is
+        # written" is a fact about a run in flight, not a fact about the case, and
+        # putting seven of them into a permanent audit trail per report would bury
+        # the history it exists to preserve. That is the spec's Streaming section
+        # met with the same infrastructure as everything else.
+        self._events: EventPublisher = events or NullEventPublisher()
         # Compiled once per instance rather than per report: compilation
         # validates every edge and builds the executor, and neither depends on
         # which report is being generated.
@@ -982,6 +1012,19 @@ class ReportService:
         self._reports.record_progress(
             state["report_id"], completed=len(drafts), total=len(state["plan"])
         )
+        # The streaming half, on the same envelope as every other event. A poll
+        # every four seconds is what this replaces: a report is a burst of model
+        # calls whose sections land seconds apart, so a client watching the bar
+        # move is watching real work rather than a timer.
+        self._announce_progress(
+            report_id=state["report_id"],
+            case_id=state["case_id"],
+            owner=state["actor"],
+            completed=len(drafts),
+            total=len(state["plan"]),
+            section_key=section.key,
+            grounded=grounded,
+        )
 
         logger.info(
             "report_section_written",
@@ -1467,6 +1510,89 @@ class ReportService:
                 "report_status": report.status.value,
                 "language": report.language,
                 **(extra or {}),
+            },
+        )
+
+        announced = _ANNOUNCED_REPORT_EVENTS.get(event_type)
+        if announced is not None:
+            self._announce(report, announced, actor=actor, **(extra or {}))
+
+    def _announce(
+        self,
+        report: Report,
+        event_type: DomainEventType,
+        *,
+        actor: User | None,
+        **payload: Any,
+    ) -> None:
+        """Publish one domain event about this report.
+
+        **On the report's own topic, never the case's**, and that is the one
+        place this feature's routing deliberately diverges from every other. A
+        report is its author's private work product — ``14-ai-report-agent.md``
+        keeps history user-specific — so :data:`~core.events.CASE_FANOUT_SCOPES`
+        excludes :attr:`~core.events.EventScope.REPORT` and only the requester's
+        own connections can follow it. The case's participants still learn that a
+        report was produced, through the timeline entry beside this call, which is
+        exactly the asymmetry the spec asks for: the *fact* is shared, the
+        *content* is not.
+
+        ``case_id`` still travels, because the author's screen needs to know which
+        case workspace to refresh — and it reaches nobody who is not already the
+        author.
+
+        The payload carries the run's shape and never its substance: no title, no
+        section, no citation. :data:`~core.events.FORBIDDEN_PAYLOAD_KEYS` would
+        strip the last two even if a future call site tried.
+        """
+        self._events.publish(
+            event_type=event_type,
+            topic=report_topic(report.id),
+            case_id=report.case_id,
+            actor_id=actor.id if actor is not None else report.requested_by,
+            payload={
+                "report_id": report.id,
+                "report_type": report.report_type.value,
+                "report_status": report.status.value,
+                "language": report.language,
+                **payload,
+            },
+        )
+
+    def _announce_progress(
+        self,
+        *,
+        report_id: uuid.UUID,
+        case_id: uuid.UUID,
+        owner: User,
+        completed: int,
+        total: int,
+        section_key: str,
+        grounded: bool,
+    ) -> None:
+        """Announce one section completing, mid-run.
+
+        Takes identifiers rather than a :class:`~models.report.Report`, because
+        it is called from inside the graph on a background thread and the row is
+        deliberately not carried across one — the same reason
+        :class:`~services.report_graph.ReportState` holds ids.
+
+        ``section_key`` is the template's stable key (``parties``, ``timeline``),
+        never the section's title in the report's language and emphatically never
+        its prose: a client uses it to say *which* part is being written, and the
+        title it renders comes from the template catalogue it already fetched.
+        """
+        self._events.publish(
+            event_type=DomainEventType.REPORT_PROGRESS,
+            topic=report_topic(report_id),
+            case_id=case_id,
+            actor_id=owner.id,
+            payload={
+                "report_id": report_id,
+                "sections_completed": completed,
+                "sections_total": total,
+                "section_key": section_key,
+                "grounded": grounded,
             },
         )
 

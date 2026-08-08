@@ -194,6 +194,27 @@ export const REPORT_ENDPOINTS = {
 } as const;
 
 /**
+ * Real-time synchronization endpoint paths, relative to the version prefix.
+ *
+ * Three, and only two of them are HTTP. `ws` is the channel itself and is
+ * reached through `lib/realtime/client.ts` rather than through `apiRequest` — it
+ * is not a request, and it authenticates with its first frame rather than with a
+ * header (see that module for why neither a query parameter nor a cookie was
+ * acceptable).
+ *
+ * `status` is the one endpoint on the platform a client calls *before* deciding
+ * how to behave: it says whether this deployment offers live updates, so a
+ * client can fall back to polling rather than discovering it by failing to
+ * connect.
+ */
+export const REALTIME_ENDPOINTS = {
+  ws: "/realtime/ws",
+  status: "/realtime/status",
+  metrics: "/realtime/metrics",
+  presence: "/realtime/presence",
+} as const;
+
+/**
  * Timeline endpoint paths, relative to the version prefix.
  *
  * Read-only, and the shape says so: there is no create, update, or delete path

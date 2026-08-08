@@ -10,12 +10,12 @@
 | Internationalization | next-intl | Arabic and French localization with RTL support |
 | Forms | React Hook Form + Zod | Form handling and validation |
 | Backend | FastAPI | REST APIs, business logic, authentication, AI orchestration, and real-time services |
-| Real-Time Communication | FastAPI WebSockets | Synchronize case updates instantly between users |
+| Real-Time Communication | FastAPI WebSockets behind a central **event dispatcher** (`services/events.py`) | Synchronize case updates instantly between users. Business modules publish typed **domain events** (`core/events.py`) to the dispatcher and know nothing about who consumes them; `websocket/manager.py` is its one subscriber today and routes each event to the connections authorized for its topic. The dispatcher is **in-process**: an event reaches only the clients connected to *this* API instance, which is the whole platform at one instance and is why `EventSubscriber` is a protocol — a `RedisEventBridge` is one class plus one line in `api/deps.py`, with no business module, connection, or client changing |
 | ORM | SQLAlchemy + Alembic | Database interaction and migrations |
 | Database | PostgreSQL | Store users, legal cases, lawyers, court information, reports, notifications, audit logs, and metadata |
 | Vector Database | Qdrant | Semantic search and Retrieval-Augmented Generation (RAG) |
 | Object Storage | MinIO | Store legal documents, generated reports, and future voice recordings |
-| Cache & Messaging | Redis | Cache, background queues, WebSocket Pub/Sub, and temporary data |
+| Cache & Messaging | Redis | Cache, background queues, and temporary data. **WebSocket Pub/Sub is not yet on Redis**: Real-Time Synchronization ships the in-process dispatcher described above, and the row is honest about that rather than describing an intent. Redis is what a multi-instance deployment adds behind the same protocol |
 | AI Framework | LangGraph | Multi-agent orchestration. Introduced by the RAG Pipeline (`services/rag_graph.py`), which declares its workflow as a `StateGraph` whose nodes are calls onto `RagService` — so the graph owns the *order* and nothing else, and a future branch (conversation memory, tool calling, a planner) is an edge rather than a redesign. Note that `langgraph-sdk` pins `websockets<16`, which downgrades that package from 17.x; uvicorn's WebSocket support works on both |
 | LLM Provider | `LLMProvider` protocol (`services/llm.py`), **Google Gemini** (`gemini-2.5-flash`) by default | The only module in the platform that imports a model SDK. Two backends ship — `GeminiProvider` over `google-genai`, and `LiteLLMProvider` over the gateway `ai-workflow-rules.md` requires models to stay replaceable through. `litellm` is deliberately **not** in `requirements.txt`: it is imported lazily and its absence is reported as `llm_available: false`, exactly as a missing Tesseract is. Every SDK failure is translated into a `RagFailureCode` at this boundary, and retries with exponential backoff live here rather than in the orchestration |
 | Prompt Templates | Jinja2 behind the `PromptLibrary` protocol (`services/prompts.py`) | Versioned `.j2` files in `apps/api/prompts/`, **not strings in Python**, so a prompt change is reviewable as a diff of the text actually sent to the model. Versioning is in the filename (`answer.v1.system.j2`), so two versions coexist and every answer records which produced it. Rendered with `StrictUndefined` — a prompt that silently lost its context block would produce ungrounded answers that look entirely normal — and with autoescaping **off**, because the output is plain text for a model rather than markup for a browser |
@@ -126,7 +126,21 @@
   `failed` — which is why it has a table, a worker pool, and SQL metrics where
   the assistant has counters. Legal summaries as a *separate* capability,
   compliance analysis, and translation remain unimplemented.
+- `modules/realtime` — The platform's event backbone, and the only module that is
+  *infrastructure for other features* rather than a feature. Implemented inside
+  `apps/api` (`core/events.py`, `core/realtime.py`, `services/events.py`,
+  `services/event_metrics.py`, `services/realtime_access.py`,
+  `websocket/protocol.py`, `websocket/connection.py`, `websocket/manager.py`,
+  `schemas/events.py`, `api/v1/websocket/router.py`) and `apps/web`
+  (`lib/realtime/`, `hooks/use-realtime.ts`, `components/realtime/`), following
+  the same layering as every other module. It **owns no business rule and no
+  entity**: it has no table, no migration, and no repository, because an event is
+  not something anyone reads back — a client that missed one refetches, which is
+  authoritative where a replay would only be a hint.
 - `modules/notifications` — Real-time notifications, email notifications, WhatsApp alerts, and reminder scheduling.
+  Not built. It is specified to subscribe to the dispatcher above rather than to
+  couple to business logic, and it is where *persistence* of an event enters the
+  platform: synchronization is ephemeral by design, a notification is not.
 - `modules/users` — Administrator, lawyer, and court representative management.
   Implemented inside `apps/api` (`services/user.py`, `repositories/user.py`,
   `api/v1/users/`) and `apps/web` (`components/users/`, `app/(protected)/users/`),
@@ -283,7 +297,7 @@ Stores temporary data:
   `jti` with a TTL equal to the token's remaining lifetime)
 - Failed-login counters and lockouts (per account and per client IP, keyed by
   scope with a TTL equal to the failure window / lockout duration)
-- WebSocket Pub/Sub messages
+- WebSocket Pub/Sub messages (**reserved, not yet used** — see the stack table)
 - Background job queues
 - Rate limiting
 - Notification queues
@@ -460,6 +474,30 @@ Role-Based Access Control, implemented per
     `reports:generate` and `ai:generate-report`, in the shape the assistant
     established for `ai:chat` + `ai:ask`; `reports:monitor` is administrative and
     is withheld from lawyers like every other `*:monitor`.
+  - **`realtime:connect` / `realtime:monitor`** are the last pair, and the first
+    of them is the narrowest permission on the platform: **it grants access to
+    nothing.** Every event travels on a *topic*, and a topic is authorized per
+    resource by `services/realtime_access.py`, which — like `ocr_access`,
+    `indexing_access`, `search_access`, and `document_access` before it — owns no
+    policy of its own and delegates: **topic to case / document / report, then to
+    the module that already decides**. So the socket a court representative opens
+    with it carries exactly the updates for the cases they could already open,
+    and nothing else, which is why it sits in `BASE_PERMISSIONS` beside
+    `notifications:view`: a role without it would watch stale screens while every
+    other role's updated, and that is a defect rather than a policy.
+    Two consequences of the chain are worth stating, because they are the only
+    places this feature could have leaked. A **document** event fans into its
+    case's topic (`CASE_FANOUT_SCOPES`), which is safe precisely because document
+    access *is* case access one hop out — so a case follower learns nothing that
+    following the case did not already disclose. A **report** event deliberately
+    does **not**: it is about a case and carries its identifier, but it belongs to
+    the user who generated it, so the fan-in rule is a set of *scopes* rather than
+    a rule about `case_id`. The case's participants learn from the timeline that a
+    report exists; only its author watches it being written.
+    `realtime:monitor` gates the connection metrics and the presence roster, and
+    is administrative like every other `*:monitor` — presence in particular,
+    because who is online is a product decision `15-real-time-synchronization.md`
+    puts out of scope.
   - **The AI Legal Assistant adds no permission at all**, and it is the first
     feature in this chain not to. `ai:chat` was defined when Authorization
     shipped and is exactly this surface; `ai:ask` is the pipeline underneath it;
@@ -1118,6 +1156,94 @@ Implemented per `context/feature-specs/08-timeline.md`:
   are for an operator. That is why a **filename appears in a timeline
   description and never in a log line**: the timeline is served only to users
   already entitled to the case.
+
+### Real-Time Events & Synchronization
+
+Implemented per `context/feature-specs/15-real-time-synchronization.md`. Not a
+stage of the AI pipeline and not a feature in the usual sense: it is the
+**transport every other feature's updates travel on**, and the reusable
+infrastructure Notifications, Email, WhatsApp, Dashboard Analytics, and
+Monitoring are all specified to build on.
+
+- **One dispatcher, two narrow protocols, and nothing that sees both except the
+  dispatcher itself.** `EventPublisher` is what a business module depends on —
+  one method, taking a type, a topic, and a payload. `EventSubscriber` is what a
+  consumer implements. The case, document, OCR, indexing, report, and timeline
+  services take the *publisher* protocol and never the dispatcher, so none of
+  them can register a consumer, enumerate who is listening, or reach a socket.
+  The spec's *"business modules should publish events but should never know who
+  consumes them"* is therefore a property of the dependency graph rather than a
+  convention. **The two halves are joined in exactly one place** —
+  `core/lifespan.py` — which is also where a second consumer will be added.
+- **An event is not persisted, and that is the design rather than an omission.**
+  Synchronization is ephemeral: a client that missed something **refetches**,
+  which is authoritative where a replayed event is only a hint. So there is no
+  table, no migration, and no repository — the first module since Semantic Search
+  to have none. What *is* durable is the timeline entry beside each event, and
+  Notifications is where persistence of an event properly enters the platform.
+- **Publishing never fails a caller, and never waits on one.** An event is a side
+  effect of a change that has already committed, so a subscriber that raises is
+  logged and skipped and a subscriber that is slow hands the event to a queue.
+  `EventDispatcher.publish` is O(subscribers), not O(clients).
+- **Confidential material cannot travel, by construction.** `normalize_payload`
+  bounds a payload to twenty flat, scalar keys and **strips** the ones that name
+  document contents (`text`, `full_text`, `sections`, `citations`, `answer`,
+  `question`, and the rest), in the dispatcher, once — so a publisher that
+  forgets is a log line rather than a disclosure. The consequence is visible in
+  every payload: a case event carries the case *number* and never its title, a
+  document event carries identifiers and the file's shape and never its filename,
+  and a report event carries counters and never a section. The client resolves
+  the rest through the authorized read it makes next, which is the whole point.
+- **Authorization is applied before every delivery, and the bound on that is
+  stated rather than hidden.** A grant carries the moment it was authorized; past
+  `REALTIME_AUTHORIZATION_TTL_SECONDS` (30) it is re-resolved against the
+  database — **including the account**, so a deactivated user's open socket goes
+  quiet — and a refusal *revokes* the subscription rather than skipping one event.
+  Re-resolving on literally every delivery is a supported configuration (`0`) and
+  is one query per event per connection, which is what the TTL exists to avoid.
+  The residual window applies to *notifications that something changed*, never to
+  the changed data: every REST read behind them is authorized afresh.
+- **The socket authenticates with its first frame, never its URL.** A browser
+  cannot set an `Authorization` header on a WebSocket, and the two alternatives
+  are both worse than a round trip: a query parameter writes a bearer token into
+  the reverse proxy's access log and the browser's history — the three logs
+  `11-semantic-search.md` made search a POST to stay out of — and a cookie would
+  make the socket CSRF-reachable, undoing the header scheme `03-authentication.md`
+  chose. An accepted socket may send exactly one kind of frame and is closed after
+  `REALTIME_AUTH_TIMEOUT_SECONDS`.
+- **The channel is read-only.** There are five client frame types and none of them
+  mutates anything; a socket that could would be a second, thinner door onto the
+  same business logic. Its HTTP surface is one status probe and two
+  administrative reads.
+- **Three threads' worth of concerns are kept apart.** Publishers run on request
+  and worker threads; sockets live on the event loop. The manager owns a dispatch
+  thread between them, so `handle()` is a queue put, no database work ever runs on
+  the loop, and every queue in the path is bounded — a burst the platform cannot
+  deliver is dropped and *counted* rather than accumulated in memory.
+- **A slow consumer is closed rather than buffered.** Dropping events silently
+  would desynchronize a client that believes it is live; an unbounded queue makes
+  one client that stopped reading into the process's memory problem. Closing says
+  "reconnect and refetch", which is the only outcome that leaves the client
+  correct.
+- **Duplicates are avoided at both ends, because a reconnect legitimately
+  re-offers events.** Every event carries a stable id and a monotonic sequence:
+  the server suppresses within a bounded per-connection window, the client keeps
+  its own, and a *gap* in the sequence is what tells a client it must refetch.
+- **Presence is tracked and deliberately not shown.** The roster counts
+  connections per account and is gated on `realtime:monitor`; it never reports
+  what anyone is subscribed to, which would be a live index of who is working on
+  which matter. Online indicators, active viewers, and collaborative editing are
+  the features this makes possible and are each a product decision.
+- **No topic, payload, case, or filename reaches a log or a metric.** Connection
+  logs carry a connection id, a user id, and a role; subscription logs carry
+  *counts*; the metrics view reports throughput by event *type* — "eleven
+  documents were uploaded" — where a per-topic breakdown would be a statement
+  about a client's matter.
+- **Nothing depends on it.** Every list, pipeline, and report still polls, so a
+  deployment with `REALTIME_ENABLED=false`, a failed connection, and a browser
+  that blocks WebSockets all leave the application exactly as it was before this
+  feature. The channel makes those polls feel immediate; it is never the reason
+  something is correct.
 
 ## Invariants
 

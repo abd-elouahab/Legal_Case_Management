@@ -52,6 +52,7 @@ from typing import Any, Protocol
 import structlog
 
 from core.config import settings
+from core.events import DomainEventType, document_topic
 from core.exceptions import (
     DocumentIndexNotFoundError,
     DocumentNotFoundError,
@@ -82,6 +83,7 @@ from repositories.ocr import OcrRepository
 from schemas.indexing import IndexListQuery
 from services.chunking import Chunker, ChunkingError, TextChunk, get_chunker
 from services.embedding import Embedder, EmbeddingError, get_embedder
+from services.events import EventPublisher, NullEventPublisher
 from services.indexing_access import IndexingAccessPolicy
 from services.job_queue import JobQueue, NullJobQueue
 from services.timeline import NullTimelineRecorder, TimelineRecorder
@@ -192,6 +194,18 @@ class NullIndexScheduler:
         return None
 
 
+#: Timeline event → the domain event announced alongside it.
+#:
+#: Three of the four, and ``INDEXING_RETRIED`` is absent for the reason
+#: ``OCR_RETRIED`` is: a rebuild is immediately followed by ``INDEXING_STARTED``,
+#: so announcing both would deliver two events for one transition.
+_ANNOUNCED_INDEXING_EVENTS: dict[TimelineEventType, DomainEventType] = {
+    TimelineEventType.INDEXING_STARTED: DomainEventType.INDEXING_STARTED,
+    TimelineEventType.INDEXING_COMPLETED: DomainEventType.INDEXING_COMPLETED,
+    TimelineEventType.INDEXING_FAILED: DomainEventType.INDEXING_FAILED,
+}
+
+
 class IndexingService:
     """Coordinates the document-indexing lifecycle."""
 
@@ -207,6 +221,7 @@ class IndexingService:
         access: IndexingAccessPolicy | None = None,
         *,
         timeline: TimelineRecorder | None = None,
+        events: EventPublisher | None = None,
     ) -> None:
         self._indexes = indexes
         self._documents = documents
@@ -220,6 +235,9 @@ class IndexingService:
         self._queue: JobQueue[IndexJob] = queue or NullJobQueue(name="indexing")
         self._access = access or IndexingAccessPolicy()
         self._timeline: TimelineRecorder = timeline or NullTimelineRecorder()
+        # Same pattern again. See `CaseService.__init__` for why the domain event
+        # is published beside the timeline entry rather than derived from it.
+        self._events: EventPublisher = events or NullEventPublisher()
 
     # ---------------------------------------------------------- scheduling #
 
@@ -1109,6 +1127,28 @@ class IndexingService:
                 "index_id": index.id,
                 "index_status": index.status.value,
                 **(extra or {}),
+            },
+        )
+
+        announced = _ANNOUNCED_INDEXING_EVENTS.get(event_type)
+        if announced is None:
+            return
+
+        # `chunk_count` is the shape of the work and nothing more — it says how
+        # many passages a document was split into, which is what a progress
+        # indicator shows. Not one of them travels, obviously: a chunk *is* the
+        # document's contents.
+        self._events.publish(
+            event_type=announced,
+            topic=document_topic(document.id),
+            case_id=document.case_id,
+            actor_id=actor.id if actor is not None else None,
+            payload={
+                "document_id": document.id,
+                "document_version": index.document_version,
+                "index_status": index.status.value,
+                "chunk_count": index.chunk_count,
+                "error_code": index.error_code,
             },
         )
 
