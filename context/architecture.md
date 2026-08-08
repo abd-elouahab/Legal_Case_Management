@@ -148,6 +148,20 @@
   `services/ocr_queue.py` predates it and is the candidate to fold into it.
 - `packages/shared` — Shared DTOs, schemas, utilities, constants, and API contracts.
 - `infrastructure` — Docker Compose, Nginx, monitoring, deployment scripts, CI/CD, and environment configuration.
+  `infrastructure/docker/api.Dockerfile` is the **API image**, and it is where
+  everything the platform needs but pip cannot install actually gets installed:
+  **Tesseract** with its `fra`/`ara` language packs, **Poppler**, and a font with
+  **Arabic** coverage (`fonts-noto-core`) for PDF report export. Two decisions in
+  it are worth knowing before reading it: **torch is resolved from the CPU
+  index**, because the default Linux wheel bundles ~2.5 GB of CUDA runtime a
+  CPU-only deployment never executes; and the bge-m3 cache lives on a **named
+  volume** (`HF_HOME=/models`), because a 2.3 GB model re-downloaded on every
+  container replacement would make a restart take minutes. The compose service
+  sits behind an **`api` profile**, so `docker compose up -d` keeps meaning "the
+  four backing services" for local development and
+  `docker compose --profile api up -d --build` runs the application too.
+  Migrations are a deploy step rather than a container start step, so replicas
+  cannot race one another on scale-up.
 
 ---
 
@@ -1011,18 +1025,27 @@ compliance analysis, and not translation.
   `project-overview.md` names Arabic as one of the platform's two languages, so
   an export that needed manual setup would be half the intended users locked out.
   ReportLab's built-in Type 1 fonts are Latin-only, so: a font is **discovered**
-  from `ARABIC_FONT_CANDIDATES` when `REPORT_PDF_FONT_PATH` is unset (Noto Naskh,
-  Amiri, FreeSerif, and the macOS/Windows system faces); every candidate is
-  **verified against the font's own character map** rather than trusted by name,
-  because `DejaVuSans.ttf` is on almost every Linux host, is what a naive search
-  finds first, and carries no Arabic at all; and the text is **shaped and
-  reordered** by `arabic-reshaper` + `python-bidi`, which are **required**
-  dependencies — unlike `litellm`, which is an alternative to something that
-  already works, those two are the difference between correct Arabic and mangled
-  Arabic. A configured path that is missing or has no coverage falls back to the
-  search rather than failing. Only when nothing is found anywhere is an Arabic
-  PDF **refused**, with a message naming Markdown and the `fonts-noto-core`
-  package — a legal report that exports as a page of empty boxes is worse than
+  from `ARABIC_FONT_CANDIDATES` when `REPORT_PDF_FONT_PATH` is unset (Amiri,
+  DejaVu, FreeSerif, and the macOS/Windows system faces); every candidate is
+  **verified against the font's own character map** rather than trusted by name;
+  and the text is **shaped and reordered** by `arabic-reshaper` + `python-bidi`,
+  which are **required** dependencies — unlike `litellm`, which is an alternative
+  to something that already works, those two are the difference between correct
+  Arabic and mangled Arabic.
+- **What the font check verifies is not "Arabic", and the difference is the whole
+  reason it exists.** `REQUIRED_CODEPOINTS` demands four things: an Arabic letter,
+  an Arabic **presentation form** (the shaper converts to those *before* drawing,
+  so a font with the base block and not these renders nothing), a Latin capital,
+  and an **em dash**. The last two are what a first attempt got wrong:
+  `NotoNaskhArabic` is the obvious package by name, renders Arabic beautifully,
+  and carries **no Latin and no em dash** — so every case number
+  (`CASE-2026-0001`), filename, page reference, and citation line
+  (`[1] bail.pdf — p. 7 (v1)`) in an Arabic report would have come out as boxes.
+  A bilingual legal document needs one font covering both scripts, which Amiri,
+  DejaVu, FreeSerif, Arial, and Tahoma all do. A configured path that is missing
+  or fails the check falls back to the search rather than failing. Only when
+  nothing is found anywhere is an Arabic PDF **refused**, with a message naming
+  Markdown — a legal report that exports as a page of empty boxes is worse than
   one that does not export.
 - **A reasoning model's thinking is charged against the output ceiling, and a
   section is not a chat reply.** A live run at `LLM_MAX_OUTPUT_TOKENS` (1024)

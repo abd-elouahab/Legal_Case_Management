@@ -67,45 +67,56 @@ _UNSAFE_FILENAME = re.compile(r"[^\w\-. ]+", re.UNICODE)
 #: Longest generated filename stem, before the extension.
 MAX_FILENAME_LENGTH = 80
 
-#: A representative Arabic letter (ARABIC LETTER BEH), used to ask a font whether
-#: it can render Arabic at all.
+#: What a font must map before this renderer will use it for an Arabic report.
 #:
-#: One codepoint rather than a range, deliberately: a font that maps beh maps the
-#: Arabic block, and a font that does not is not a font this platform can use. It
-#: is a *letter* rather than a diacritic or a presentation form, because those are
-#: exactly the things a partial font omits while still claiming the block.
-ARABIC_PROBE_CODEPOINT = 0x0628
+#: Four codepoints, and each one rules out a font that would otherwise look fine:
+#:
+#: * ``U+0628`` ARABIC LETTER BEH — the base Arabic block, the obvious check;
+#: * ``U+FEDF`` ARABIC LETTER LAM INITIAL FORM — a **presentation form**, and the
+#:   one that actually matters. :func:`_shape_rtl` converts text into presentation
+#:   forms *before* it is drawn, so those are the glyphs the engine asks the font
+#:   for. A font carrying the base block and not these renders nothing;
+#: * ``U+0041`` LATIN CAPITAL A and ``U+2014`` EM DASH — because an Arabic legal
+#:   report is **full of Latin**: the case number (``CASE-2026-0001``), every
+#:   citation line (``[1] bail.pdf — p. 7 (v1)``), and the front matter all mix
+#:   scripts. A font that covers Arabic beautifully and has no Latin turns each of
+#:   those into boxes, which is the same defect this check exists to prevent,
+#:   inverted. ``NotoNaskhArabic-Regular.ttf`` is exactly that font, which is why
+#:   it is **not** a candidate below despite being the obvious choice by name.
+REQUIRED_CODEPOINTS: tuple[int, ...] = (0x0628, 0xFEDF, 0x0041, 0x2014)
 
-#: Where to look for a font with Arabic coverage when none is configured.
+#: Where to look for a usable font when none is configured.
 #:
-#: Ordered by preference rather than by platform: a Naskh face designed for body
-#: text first, then general-purpose faces that happen to include Arabic. The list
-#: is deliberately **not** a glob of the font directory — a search that took the
-#: first ``.ttf`` it found would pick up ``DejaVuSans.ttf``, which is on almost
-#: every Linux box and contains no Arabic at all.
+#: Ordered by typographic preference: Amiri is a Naskh face designed for Arabic
+#: body text *and* carries a Latin companion, which makes it the best fit for a
+#: legal document; the rest are general-purpose faces that cover both scripts.
 #:
-#: Every candidate is still verified against its own character map before use, so
-#: an entry here is a *hint* rather than a promise, and adding one cannot break a
-#: deployment that does not have it.
+#: The list is deliberately **not** a glob of the font directory — a search that
+#: took the first ``.ttf`` it found would pick a Latin-only or Arabic-only face,
+#: and both fail silently. Every candidate is verified against its own character
+#: map anyway (see :func:`covers_arabic_report`), so an entry here is a *hint*
+#: rather than a promise and adding one cannot break a host that lacks it.
 ARABIC_FONT_CANDIDATES: tuple[str, ...] = (
-    # Debian/Ubuntu — `fonts-noto-core`, which is what an API image should
-    # install. Noto Naskh is the face Google designed for Arabic body text.
-    "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
-    "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
-    # Debian/Ubuntu — `fonts-hosny-amiri`, a Naskh face widely used for legal and
-    # literary Arabic typesetting.
-    "/usr/share/fonts/truetype/amiri/Amiri-Regular.ttf",
-    # Alpine and Fedora layouts for the same Noto packages.
-    "/usr/share/fonts/noto/NotoNaskhArabic-Regular.ttf",
-    "/usr/share/fonts/google-noto/NotoNaskhArabic-Regular.ttf",
-    # Debian/Ubuntu — `fonts-dejavu` is *not* here on purpose. See the note above.
-    # `ttf-freefont` is, because FreeSerif does carry Arabic.
+    # Debian/Ubuntu — `fonts-hosny-amiri`. A Naskh face widely used for legal and
+    # literary Arabic typesetting, with Latin coverage. Note the `opentype/`
+    # directory and the package-named subdirectory: the file is a `.ttf`, but
+    # Debian ships it under `opentype/fonts-hosny-amiri/` rather than the
+    # `truetype/amiri/` a reasonable person would guess — which is exactly why
+    # these paths are verified against a running image rather than reasoned about.
+    "/usr/share/fonts/opentype/fonts-hosny-amiri/Amiri-Regular.ttf",
+    # Debian/Ubuntu — `fonts-dejavu-core`. Present on very nearly every Linux
+    # host, and it **does** cover Arabic including the presentation forms; the
+    # widespread belief that it does not is out of date.
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    # Debian/Ubuntu — `fonts-freefont-ttf`.
     "/usr/share/fonts/truetype/freefont/FreeSerif.ttf",
+    # Fedora/Alpine layouts for the same two.
+    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/amiri/Amiri-Regular.ttf",
     # macOS.
     "/System/Library/Fonts/Supplemental/Arial.ttf",
     "/Library/Fonts/Arial.ttf",
-    # Windows. Arial and Tahoma both carry full Arabic; Segoe UI is the system
-    # face and carries it too.
+    # Windows. Arial, Tahoma, and Segoe UI all carry both scripts.
     "C:\\Windows\\Fonts\\arial.ttf",
     "C:\\Windows\\Fonts\\tahoma.ttf",
     "C:\\Windows\\Fonts\\segoeui.ttf",
@@ -366,15 +377,17 @@ class PdfReportRenderer:
 
     * **a font has to be found.** :data:`ARABIC_FONT_CANDIDATES` is searched when
       ``REPORT_PDF_FONT_PATH`` is not set, so a normal Debian image (with
-      ``fonts-noto-core``) and a Windows host both work with no configuration.
-      The setting remains, and still wins, as the override for a deployment that
-      wants a particular typeface;
-    * **the font has to actually contain Arabic.** Existing on disk is not
-      coverage: ``DejaVuSans.ttf`` is present on almost every Linux box, is the
-      obvious thing for a search like this to find, and has **no Arabic glyphs at
-      all**. So every candidate is verified against the font's own character map
-      (see :func:`has_arabic_coverage`) before it is accepted — otherwise
-      discovery would reintroduce the silent page of boxes it exists to prevent;
+      ``fonts-hosny-amiri`` or ``fonts-dejavu-core``) and a Windows host both work
+      with no configuration. The setting remains, and still wins, as the override
+      for a deployment that wants a particular typeface;
+    * **the font has to cover the whole document, not just Arabic.** Existing on
+      disk is not coverage, and neither is *Arabic* coverage on its own: the Noto
+      Arabic faces are the obvious thing to reach for by name, render Arabic
+      beautifully, and carry **no Latin letters and no em dash** — which turns
+      every case number, filename, page reference, and citation dash in the
+      report into a box. So every candidate is verified against the font's own
+      character map for all of :data:`REQUIRED_CODEPOINTS` (see
+      :func:`covers_arabic_report`) before it is accepted;
     * **the text has to be shaped.** ReportLab draws glyphs in the order it is
       given them and performs no Arabic joining or bidirectional reordering, so
       ``arabic-reshaper`` and ``python-bidi`` do that first. Both are **required
@@ -692,7 +705,7 @@ class PdfReportRenderer:
         is part of the question, not just parseability — a path pointing at
         ``DejaVuSans.ttf`` is a real font and still the wrong answer.
         """
-        return Path(path).is_file() and has_arabic_coverage(path)
+        return Path(path).is_file() and covers_arabic_report(path)
 
     @staticmethod
     def _modules() -> Any:
@@ -737,21 +750,25 @@ class PdfReportRenderer:
         )
 
 
-def has_arabic_coverage(path: str) -> bool:
-    """Whether a font file actually contains Arabic glyphs.
+def covers_arabic_report(path: str) -> bool:
+    """Whether a font can render an Arabic *report* — not merely Arabic.
 
     Asked of the font's **own character map** rather than of its filename, and
-    that is the point: a font is not Arabic-capable because it is called
-    ``NotoSans`` or because it sits in a directory alongside one that is.
-    ``DejaVuSans.ttf`` is the case that makes this necessary — it is present on
-    almost every Linux host, is the obvious thing a font search finds first, and
-    maps no Arabic codepoint at all.
+    that is the point: a font is not usable because it is called ``NotoNaskhArabic``
+    or because it sits in a directory alongside one that is.
+
+    "Report" rather than "Arabic" is the whole correction here. The obvious check
+    — does it map an Arabic letter — passes for fonts that then render every case
+    number, filename, page reference, and em dash in the document as a box,
+    because the Arabic-only Noto faces carry no Latin at all. And it passes for
+    fonts that map the base Arabic block but not the **presentation forms** that
+    :func:`_shape_rtl` actually produces. :data:`REQUIRED_CODEPOINTS` covers both
+    traps.
 
     Returns ``False`` for anything that cannot be parsed, which is the right
-    answer to "can this render Arabic" for a missing file, a corrupt file, an
-    OpenType/CFF font ReportLab cannot embed, and a directory alike. It is a
-    probe, so it never raises: the caller's next move is to try the next
-    candidate.
+    answer for a missing file, a corrupt file, an OpenType/CFF font ReportLab
+    cannot embed, and a directory alike. It is a probe, so it never raises: the
+    caller's next move is to try the next candidate.
     """
     try:
         from reportlab.pdfbase.ttfonts import TTFont
@@ -763,17 +780,19 @@ def has_arabic_coverage(path: str) -> bool:
         # ReportLab's process-wide registry, which the caller does separately and
         # only for the font it accepts.
         font = TTFont(f"probe-{Path(path).name}", path)
-        return ARABIC_PROBE_CODEPOINT in font.face.charToGlyph
     except Exception:
         return False
 
+    charmap = font.face.charToGlyph
+    return all(codepoint in charmap for codepoint in REQUIRED_CODEPOINTS)
+
 
 def find_arabic_font() -> str | None:
-    """The first font on this host that can actually render Arabic, or ``None``.
+    """The first font on this host that can render an Arabic report, or ``None``.
 
-    Searched in :data:`ARABIC_FONT_CANDIDATES` order, which is preference order
-    rather than platform order, and **verified** rather than assumed — see
-    :func:`has_arabic_coverage`.
+    Searched in :data:`ARABIC_FONT_CANDIDATES` order, which is typographic
+    preference rather than platform order, and **verified** rather than assumed —
+    see :func:`covers_arabic_report`.
 
     Returning ``None`` is a real answer rather than a failure: a French- or
     English-only deployment needs no Arabic font, exports PDFs correctly without
@@ -781,7 +800,7 @@ def find_arabic_font() -> str | None:
     report is exported that the absence becomes a refusal.
     """
     for candidate in ARABIC_FONT_CANDIDATES:
-        if Path(candidate).is_file() and has_arabic_coverage(candidate):
+        if Path(candidate).is_file() and covers_arabic_report(candidate):
             return candidate
     return None
 
@@ -920,9 +939,9 @@ def export_filename(title: str, *, extension: str) -> str:
 
 __all__ = [
     "ARABIC_FONT_CANDIDATES",
-    "ARABIC_PROBE_CODEPOINT",
     "MAX_FILENAME_LENGTH",
     "RENDERER_FACTORIES",
+    "REQUIRED_CODEPOINTS",
     "MarkdownReportRenderer",
     "PdfReportRenderer",
     "RenderableCitation",
@@ -932,9 +951,9 @@ __all__ = [
     "ReportRenderer",
     "ReportRendererUnavailableError",
     "available_formats",
+    "covers_arabic_report",
     "export_filename",
     "find_arabic_font",
     "get_report_renderer",
-    "has_arabic_coverage",
     "reset_report_renderer_cache",
 ]

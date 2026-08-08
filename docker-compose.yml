@@ -86,8 +86,69 @@ services:
       timeout: 5s
       retries: 5
 
+  # The FastAPI backend.
+  #
+  # **Behind a profile, deliberately.** `docker compose up -d` has meant "bring
+  # up the four backing services, then run uvicorn from apps/api" throughout this
+  # project, and that is the loop a developer wants — a code change should not
+  # need an image rebuild. Adding this service unconditionally would silently
+  # turn that command into a multi-gigabyte build. So:
+  #
+  #     docker compose up -d                          # infrastructure only
+  #     docker compose --profile api up -d --build    # infrastructure + API
+  #
+  # Migrations are **not** run by the container (see the Dockerfile's CMD note).
+  # After the first start:
+  #
+  #     docker compose --profile api exec api python -m alembic upgrade head
+  api:
+    profiles: ["api"]
+    build:
+      context: .
+      dockerfile: infrastructure/docker/api.Dockerfile
+    container_name: legal-api
+    restart: unless-stopped
+
+    # Reads the same `.env` the local uvicorn process does, then overrides the
+    # four host names — inside the compose network the services are reachable by
+    # service name, while `.env` names `localhost` for the local workflow.
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio:9000
+      QDRANT_HOST: qdrant
+      # The API is addressed through the published port from the host, so the
+      # browser's origin is still localhost:3000.
+      CORS_ORIGINS: http://localhost:3000
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      # The bge-m3 download (~2.3 GB), kept across container replacements. It is
+      # fetched lazily on the first indexing run, so a fresh volume means the
+      # first index is slow rather than broken.
+      - model_cache:/models
+
+    # `service_healthy` rather than `service_started`: the API probes all four on
+    # startup and logs a warning rather than failing, but starting it before
+    # PostgreSQL accepts connections just means the first requests fail for a
+    # reason nobody needs to debug.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redis_data:
   minio_data:
   qdrant_data:
+  model_cache:

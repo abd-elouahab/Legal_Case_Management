@@ -359,7 +359,16 @@
       "Bash(.venv/Scripts/python.exe -m pip install arabic-reshaper python-bidi)",
       "Bash(.venv/Scripts/python.exe -m pip show arabic-reshaper python-bidi)",
       "Bash(.venv/Scripts/python.exe -m pytest tests/unit/test_report_export.py -p no:cacheprovider --tb=short)",
-      "Bash(.venv/Scripts/python.exe -m pytest tests/integration/test_reports.py -p no:cacheprovider --tb=short)"
+      "Bash(.venv/Scripts/python.exe -m pytest tests/integration/test_reports.py -p no:cacheprovider --tb=short)",
+      "Bash(COMPOSE_PROFILES=api docker compose config --services)",
+      "Bash(docker build *)",
+      "Bash(cd \"d:/Legal Case Management Platform\" && tail -12 /tmp/build.log && echo \"=== IMAGE ===\" && docker images legal-api:verify --format \"{{.Repository}}:{{.Tag}}  {{.Size}}\")",
+      "Bash(docker run --rm --entrypoint sh legal-api:verify -c ' *)",
+      "Bash(docker run --rm --entrypoint python legal-api:verify -c ' *)",
+      "Bash(curl -sS http://localhost:8099/health)",
+      "Bash(curl -sS http://localhost:8099/version)",
+      "Bash(sed -i 's/\\\\*\\\\*2928 backend tests pass\\\\*\\\\* \\(up from 2617 — \\\\*\\\\*311 of them for/**2930 backend tests pass** \\(up from 2617 — **313 of them for/' context/progress-tracker.md)",
+      "Bash(docker rmi *)"
     ],
     "additionalDirectories": [
       "\\tmp"

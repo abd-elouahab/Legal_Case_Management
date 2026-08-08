@@ -28,10 +28,10 @@ from services.report_export import (
     RenderableSection,
     ReportRendererUnavailableError,
     available_formats,
+    covers_arabic_report,
     export_filename,
     find_arabic_font,
     get_report_renderer,
-    has_arabic_coverage,
     reset_report_renderer_cache,
 )
 
@@ -233,38 +233,56 @@ class TestArabicFontDiscovery:
         """Not from its filename, and not from the directory it sits in."""
         found = find_arabic_font()
         if found is None:  # pragma: no cover - environment dependent
-            pytest.skip("no font with Arabic coverage on this host")
+            pytest.skip("no usable font on this host")
 
-        assert has_arabic_coverage(found)
+        assert covers_arabic_report(found)
 
     @pytest.mark.parametrize(
-        "path", ["/nonexistent/font.ttf", "", "/usr", "C:\\Windows\\Fonts"]
+        "path", ["/nonexistent/font.ttf", "", "/usr", "C:\\Windows\\Fonts", "Helvetica"]
     )
     def test_anything_unparseable_has_no_coverage(self, path: str) -> None:
         """A probe, so it answers rather than raising — the caller's next move is
-        to try the next candidate."""
-        assert has_arabic_coverage(path) is False
+        to try the next candidate. ``Helvetica`` is in the list because
+        ReportLab's built-in Type 1 faces are not TrueType files at all, which is
+        precisely why they cannot render Arabic."""
+        assert covers_arabic_report(path) is False
 
-    def test_a_latin_only_font_is_rejected(self) -> None:
-        """`DejaVuSans.ttf` is the case that makes verification necessary: it is
-        on almost every Linux host, is the obvious thing a font search finds
-        first, and maps no Arabic codepoint at all. Asserted against whichever
-        Latin-only font this host actually has."""
-        from reportlab.pdfbase.pdfmetrics import standardFonts
+    def test_the_probe_requires_a_presentation_form_not_just_the_arabic_block(
+        self,
+    ) -> None:
+        """The glyphs actually drawn are presentation forms, because
+        `_shape_rtl` converts to them before rendering. A font carrying the base
+        block and not these renders nothing, so checking `U+0628` alone is not
+        enough."""
+        assert 0x0628 in report_export.REQUIRED_CODEPOINTS
+        assert 0xFEDF in report_export.REQUIRED_CODEPOINTS
 
-        assert "Helvetica" in standardFonts
-        # ReportLab's built-in Type 1 faces are not TrueType files at all, which
-        # is precisely why they cannot be probed — and why they are not
-        # candidates.
-        assert has_arabic_coverage("Helvetica") is False
+    def test_the_probe_requires_latin_as_well_as_arabic(self) -> None:
+        """The trap that a first attempt at this walked into: the Noto Arabic
+        faces render Arabic beautifully and carry **no Latin and no em dash**, so
+        every case number, filename, page reference, and citation dash in an
+        Arabic report would come out as a box — the same defect inverted.
+
+        `[1] bail.pdf — p. 7 (v1)` is what every citation line looks like, and it
+        is almost entirely Latin.
+        """
+        assert 0x0041 in report_export.REQUIRED_CODEPOINTS
+        assert 0x2014 in report_export.REQUIRED_CODEPOINTS
+
+    def test_an_arabic_only_font_would_be_rejected(self) -> None:
+        """Asserted against the *rule* rather than against a font this host may
+        not have: a character map with Arabic and no Latin must not pass."""
+        arabic_only = {0x0628, 0xFEDF}
+
+        assert not all(
+            codepoint in arabic_only for codepoint in report_export.REQUIRED_CODEPOINTS
+        )
 
     def test_no_candidate_is_a_bare_directory_glob(self) -> None:
-        """A search that took the first `.ttf` it found would pick up DejaVu.
-        Every candidate is a specific, named face."""
+        """A search that took the first `.ttf` it found would pick a Latin-only
+        or an Arabic-only face, and both fail silently. Every candidate is a
+        specific, named file."""
         assert all(candidate.lower().endswith(".ttf") for candidate in ARABIC_FONT_CANDIDATES)
-
-    def test_dejavu_is_deliberately_not_a_candidate(self) -> None:
-        assert not any("dejavu" in candidate.lower() for candidate in ARABIC_FONT_CANDIDATES)
 
     def test_the_search_answers_none_rather_than_raising_when_nothing_matches(
         self, monkeypatch: pytest.MonkeyPatch

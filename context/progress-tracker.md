@@ -172,7 +172,7 @@ change.
     *Open Questions* and *Validation*. It also produced one small addition: a
     section that still hits the ceiling is reported as `truncated` and marked
     "Stops early" in the UI, in the shape the assistant flags a truncated answer.
-  - **Validation:** **2928 backend tests pass** (up from 2617 — **311 of them for
+  - **Validation:** **2930 backend tests pass** (up from 2617 — **313 of them for
     reports**, plus one skipped live check) and **590 frontend tests pass** (up
     from 547 — 43 for reports),
     with `ruff`, `mypy --strict`, `tsc --noEmit`, and `eslint` all clean. The
@@ -3763,6 +3763,34 @@ blocking its validation):
   Redis is unavailable. Frontend tests run under Vitest + Testing Library
   (`npm test` in `apps/web`) against a scripted `fetch` double in
   `tests/helpers.ts`.
+- **The API now has a Docker image** (`infrastructure/docker/api.Dockerfile`),
+  which `architecture.md` invariant 13 has required all along and which nothing
+  had provided — `infrastructure/docker` was an empty directory. It was written
+  to carry the Arabic font, and once opened it had to carry the rest of what the
+  platform cannot pip-install, because an image with fonts and no Tesseract would
+  be a broken image and shipping one is worse than shipping none.
+  - **Behind a compose profile**, so `docker compose up -d` still means "the four
+    backing services" and the documented local loop (uvicorn from `apps/api`) is
+    unchanged. `docker compose --profile api up -d --build` brings up the API
+    too. Adding the service unconditionally would have turned a one-second
+    command into a multi-gigabyte build.
+  - **Torch is installed from the CPU index**, which is the single biggest thing
+    about this image: `sentence-transformers` depends on `torch`, and the default
+    Linux wheel bundles the CUDA runtime — roughly **2.5 GB of NVIDIA libraries**
+    a CPU-only deployment never executes. One extra `pip install` line ahead of
+    the requirements resolves it to the CPU build instead. A GPU deployment
+    deletes that line.
+  - **`HF_HOME=/models` on a named volume**, so the ~2.3 GB bge-m3 download
+    survives a container being replaced. It is fetched lazily on first use, so a
+    fresh volume means the first indexing run is slow rather than broken.
+  - **Migrations are deliberately not a container start step.** `alembic upgrade
+    head` is a deploy step; running it from an entrypoint means N replicas
+    racing the same migration on every scale-up.
+  - **A `.dockerignore` was needed and is a secrets boundary as much as a speed
+    one.** The build context is the repo root, so without it the daemon receives
+    `.venv` and `node_modules` first — and, more seriously, `.env` (JWT secret,
+    database password, LLM API key) would be copyable into a layer that anyone
+    who can pull the image can read.
 - **Arabic PDF export works with no configuration, and the three things that
   make it work are each a trap on their own.** ReportLab's built-in Type 1 fonts
   are Latin-only, so `services/report_export.py` (a) **discovers** a font from
@@ -3770,15 +3798,40 @@ blocking its validation):
   each candidate against the font's own character map, and (c) **shapes and
   reorders** the text with `arabic-reshaper` + `python-bidi`, which are now
   required dependencies.
-  - **(b) is the one that is easy to get wrong.** `DejaVuSans.ttf` exists on
-    almost every Linux host, is the first thing a font search finds, and maps
-    **no Arabic codepoint at all** — so a discovery that trusted filenames would
-    have reintroduced the silent page of boxes it exists to prevent. It is
-    explicitly *not* a candidate, and the check is
-    `0x0628 in TTFont(...).face.charToGlyph`.
-  - **For a container image:** `apt-get install -y fonts-noto-core` (or
-    `fonts-hosny-amiri`). There is no Dockerfile in the repo yet — `infrastructure/docker`
-    is still empty — so this is the note that will need to become a line in one.
+  - **(b) is the one that is easy to get wrong, and the first attempt got it
+    wrong in two ways — both caught by rendering inside the actual image and
+    OCR-ing the page.**
+    - **Checking for "Arabic" is not the check.** The probe has to include an
+      Arabic **presentation form** (`U+FEDF`), because `_shape_rtl` converts to
+      those *before* drawing — a font with the base block and not the forms
+      renders nothing. And it has to include **Latin (`U+0041`) and the em dash
+      (`U+2014`)**, because an Arabic legal report is full of Latin: the case
+      number, every filename, every page reference, and every citation line
+      (`[1] bail.pdf — p. 7 (v1)`). `NotoNaskhArabic` is the obvious package by
+      name, renders Arabic beautifully, and has **neither** — the first build
+      shipped it and the OCR came back with `CASE` missing entirely and
+      `bail.pdf — p. 7 (v1)` reduced to `1..71`. `REQUIRED_CODEPOINTS` is now all
+      four, and `fonts-hosny-amiri` (a Naskh face *with* a Latin companion) is
+      what the image installs.
+    - **`DejaVuSans.ttf` does cover Arabic**, including the presentation forms.
+      The widely repeated claim that it does not — which an earlier version of
+      this note asserted — is out of date for Debian's current
+      `fonts-dejavu-core`, verified by probing the font. It is a legitimate
+      fallback candidate, not the trap; the trap was the Arabic-only face.
+    - The paths themselves are worth verifying rather than reasoning about:
+      Debian ships Amiri under `/usr/share/fonts/**opentype**/fonts-hosny-amiri/`
+      despite the files being `.ttf`, so the guessed `truetype/amiri/` path
+      silently never matched and discovery fell through to DejaVu.
+  - **For a container image:** `fonts-hosny-amiri` + `fonts-dejavu-core`, and it
+    is now **applied rather than noted** — `infrastructure/docker/api.Dockerfile`
+    exists and installs them alongside the two system binaries the platform has
+    always required but never had an image for (Tesseract with its `fra`/`ara`
+    packs, and Poppler). See the Docker entry further down.
+  - **Verified inside the built image**, not just on the dev machine: the
+    exporter discovered `Amiri-Regular.ttf`, rendered the report, and the page
+    OCR'd back as `ملخص القضية — CASE-2026-0001`, `نظرة عامة`,
+    `يتعلق النزاع بعقد كراء تجاري [1]`, `المراجع`, and — the line that had been
+    broken — `[1] bail.pdf — p. 7 (v1)`, complete with its em dash.
   - **Verified end to end on Windows**, which is the useful part: the exporter
     discovered `C:\Windows\Fonts\arial.ttf`, rendered an Arabic report, and the
     page was then **rasterised with pdf2image and read back with Tesseract**

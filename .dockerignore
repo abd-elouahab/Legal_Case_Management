@@ -1,0 +1,52 @@
+# What never reaches the Docker build context.
+#
+# The build copies `requirements.txt` and `apps/api` and nothing else, but the
+# *context* is the repo root — so without this file the daemon receives the whole
+# working tree first, including a multi-gigabyte `.venv` and `node_modules`. That
+# is the difference between a build that starts in a second and one that spends a
+# minute uploading files it will discard.
+#
+# It is also a **secrets boundary**, and that is the half worth stating: `.env`
+# holds the deployment's JWT secret, database password, and LLM API key. It is
+# gitignored, so nothing stops it being copied into an image otherwise — and an
+# image is pushed to a registry where a `.env` layer is readable by anyone who
+# can pull it.
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Virtual environments and caches ---
+.venv/
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Frontend: not part of the API image ---
+apps/web/
+node_modules/
+**/node_modules/
+
+# --- Version control and CI ---
+.git/
+.github/
+.gitignore
+.dockerignore
+
+# --- Tests and documentation: not shipped in the runtime image ---
+tests/
+docs/
+context/
+README.md
+LICENSE
+CLAUDE.md
+
+# --- Editor and OS noise ---
+.claude/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
