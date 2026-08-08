@@ -111,7 +111,21 @@
   no search service, no embedder, no vector searcher, and no prompt library for
   answering. It is the first stage of the AI pipeline to **persist what a user
   said** — everything below it is derived from a document.
-- `modules/reports` — AI-generated reports, legal summaries, exports, and report history.
+- `modules/reports` — AI-generated reports, exports, and report history.
+  Implemented inside `apps/api` (`core/reports.py`, `models/report.py`,
+  `repositories/report.py`, `services/report.py`, `services/report_graph.py`,
+  `services/report_access.py`, `services/report_export.py`,
+  `services/report_worker.py`, `schemas/report.py`, `api/v1/reports/router.py`)
+  and `apps/web` (`components/reports/`, `app/(protected)/reports/`, embedded in
+  `app/(protected)/cases/[id]`), following the same layering as Cases,
+  Documents, Search, and the Assistant. It is the **second consumer of the RAG
+  pipeline and the first non-conversational one**: every section of every report
+  is a `RagService.answer` call, so the agent holds no search service, no
+  embedder, no vector searcher, and no prompt library. Unlike the assistant it
+  **persists a run with a lifecycle** — `pending` → `processing` → `completed` |
+  `failed` — which is why it has a table, a worker pool, and SQL metrics where
+  the assistant has counters. Legal summaries as a *separate* capability,
+  compliance analysis, and translation remain unimplemented.
 - `modules/notifications` — Real-time notifications, email notifications, WhatsApp alerts, and reminder scheduling.
 - `modules/users` — Administrator, lawyer, and court representative management.
   Implemented inside `apps/api` (`services/user.py`, `repositories/user.py`,
@@ -170,6 +184,11 @@ Stores structured business data:
   pipeline's answer with its citations, suggestions, and provenance as JSON)
 - AI Message Feedback (one rating per assistant message, in its own table so
   that rating an answer cannot alter the transcript it is read from)
+- Reports (one row per generated report — its lifecycle, its progress counters,
+  its sections and citations as JSONB, and the provenance an evaluation needs.
+  **One table rather than two**: a section is never read, filtered, paged, or
+  referenced on its own, so a `report_sections` table would buy a join on every
+  read and a second place for the section order to live)
 - Language Preferences
 
 ---
@@ -209,10 +228,23 @@ Stores files:
 - DOCX documents
 - Images
 - Scanned files
-- Generated reports
 - OCR outputs
-- Exported documents
 - Future voice recordings
+
+**Generated reports and their exports are deliberately *not* here**, and the
+listing above no longer claims otherwise. A report's content lives in PostgreSQL
+(`reports.sections`), and an export is a **deterministic projection** of that
+row rendered per request by `services/report_export.py`. Storing the rendered
+bytes would create a second copy that goes stale the moment a report is
+regenerated, and would need a lifecycle, a cleanup job, and an authorization
+story of its own — whereas rendering per request makes
+`14-ai-report-agent.md`'s *"exported reports inherit the same permissions as
+their source case"* **structural**: there is no object anyone can be handed a
+URL to, and every byte is produced inside a request that has already resolved
+the report through an owner-scoped query. The trade is a few milliseconds of CPU
+per download against minutes of generation, and it is revisitable — a future
+scheduled-delivery feature that emails a report would be the first genuine
+reason to persist one.
 
 Case documents live in the `MINIO_DOCUMENTS_BUCKET` bucket (`legal-documents` by
 default, created on first upload), keyed
@@ -399,6 +431,21 @@ Role-Based Access Control, implemented per
     shipped; granting the pipeline underneath both would be the same access by
     another route. `ai:monitor` gates the platform-wide pipeline metrics, which
     are administrative and deliberately not case-scoped.
+  - **`reports:view` / `reports:generate` / `reports:monitor`** close the chain,
+    and the first of them is the only permission on the platform that scopes to
+    a **user** rather than to a case. A report is its author's private work
+    product (`14-ai-report-agent.md`: history *"must remain user-specific"*), so
+    every read in `repositories/report.py` is keyed by `requested_by` and there
+    is deliberately **no `reports:view-all`** — an administrator holds
+    `cases:view-all` and still cannot read somebody else's report, because that
+    permission lifts a *row* restriction rather than an ownership one. The
+    consequence is the platform's one deliberate asymmetry in refusals: an
+    inaccessible **case** is a 403 (a lawyer needs to know it exists and to ask
+    for assignment), while another user's **report** is a 404 (confirming it
+    exists is itself the disclosure). Generating requires **both**
+    `reports:generate` and `ai:generate-report`, in the shape the assistant
+    established for `ai:chat` + `ai:ask`; `reports:monitor` is administrative and
+    is withheld from lawyers like every other `*:monitor`.
   - **The AI Legal Assistant adds no permission at all**, and it is the first
     feature in this chain not to. `ai:chat` was defined when Authorization
     shipped and is exactly this surface; `ai:ask` is the pipeline underneath it;
@@ -884,6 +931,121 @@ pipeline's answer, its citations, and the questions worth asking next.
   `since` reporting the window.
 - **No question, answer, title, or citation reaches a log**, and the logs carry
   the same salted fingerprint a search or a pipeline run for that text produces.
+
+### AI Report Generation
+
+Implemented per `context/feature-specs/14-ai-report-agent.md`. The sixth stage of
+the AI pipeline and the **second consumer of the fourth**: it begins at a report
+type chosen for a case and **ends at a persisted, structured, cited document**
+that can be exported. It is deliberately not summarization-as-a-feature, not
+compliance analysis, and not translation.
+
+- **A report section *is* a pipeline answer, and that one fact is the whole
+  design.** The spec forbids duplicating retrieval, prompt construction, or LLM
+  interaction, so the agent calls `RagService.answer` once per section and does
+  none of the three. `ReportService` holds no vector searcher, no embedder, no
+  search service, and no prompt library — so *"it must never query Qdrant
+  directly"* and *"generated reports must never contain unauthorized
+  information"* are inherited from the pipeline rather than restated, exactly as
+  the assistant inherits them.
+- **The agent is its own LangGraph graph** (`services/report_graph.py`), which is
+  the shape `services/rag_graph.py` reserved for it. Five nodes — plan, write
+  section, assemble, validate, finalize — and ``write_section`` is a
+  **self-looping** node whose conditional edge sends control back to itself until
+  the template is exhausted. That loop is the spec's "Large Cases" requirement
+  made structural: a case larger than any context window costs more *iterations*
+  rather than a bigger prompt.
+- **Section instructions are domain data, not prompts.** `14-ai-report-agent.md`
+  lists prompt construction under *Do NOT implement*, and it is obeyed literally:
+  the strings in `core/reports.py` are the *questions the platform asks about a
+  case*, which the pipeline then fences inside its own versioned `rag/answer`
+  template. They are versioned as a set by `REPORT_TEMPLATE_VERSION`, recorded on
+  every report, so an evaluation can group by them the way it groups by a prompt
+  version.
+- **Markers are renumbered, which is not the same as modified.** The pipeline
+  numbers each answer's sources `[1]`…`[n]`, and a report is one document made of
+  a dozen answers — so `CitationLedger` assigns one global numbering,
+  de-duplicates on (document, version, page), and rewrites each section's prose
+  against its own mapping **in one pass**. A source beyond
+  `REPORT_MAX_CITATIONS` gets no marker and its reference is *removed* from the
+  prose, which is the spec's *"reports should never invent citations"* applied to
+  the one place this feature could have invented one.
+- **A section the case file does not cover says so, in the platform's own
+  words**; a report in which *nothing* could be grounded is a **failure**
+  (`insufficient_context`) rather than a document of empty headings. The first is
+  a finding, the second would be a several-hundred-token way of saying "this case
+  has no indexed documents" that a lawyer would read as a considered answer.
+- **A failed section fails the whole run**, which is the opposite of indexing's
+  choice about partial vectors and deliberate: a partial index is a smaller index
+  and still correct, while a partial *report* is a legal document missing sections
+  with nothing on its face to say so. Half a report is not a smaller report.
+- **A report is a persisted run, so its metrics are SQL.** Every figure the spec
+  names — generated reports, average generation time, export count, failed
+  generations, average report size, token usage — is an aggregate over `reports`,
+  which is why `GET /reports/metrics` carries no `since` caveat while search,
+  RAG, and the assistant all do. Those three persist nothing and must count in
+  the process; this one does not.
+- **Its own worker pool**, separate from OCR's and indexing's, and sized by an
+  API quota rather than by a core count: a report is a burst of calls to a
+  metered language model, so `REPORT_WORKER_CONCURRENCY` defaults to **1** and a
+  second worker would only double the rate at which a key is spent.
+- **Two authorization questions with two different answers.** *May this caller
+  generate a report about this case* is a question about the **case**, delegated
+  to `CaseAccessPolicy` by `services/report_access.py` and refused with **403**.
+  *May this caller read this report* is a question about **ownership**, answered
+  by the repository — every read is keyed by `requested_by` — and refused with
+  **404**, because confirming that another user's private work product exists is
+  itself the disclosure the spec forbids. There is deliberately no
+  `reports:view-all`, and an administrator does not read other people's reports.
+- **`reports:monitor` is the one new permission**, following `ocr:monitor`,
+  `indexing:monitor`, `search:monitor`, and `ai:monitor`. Generating requires
+  **both** `reports:generate` and `ai:generate-report`; `ai:ask` is deliberately
+  *not* additionally required, because it gates the ad-hoc question endpoint and a
+  deployment that wants reports without ad-hoc questioning is a coherent policy.
+- **Exports are rendered per request, never stored** — see the MinIO note above.
+  `services/report_export.py` is the seam: `MarkdownReportRenderer` is **always
+  available** (no library behind it, which is what every "try Markdown instead"
+  message rests on) and `PdfReportRenderer` is ReportLab, imported lazily and
+  reported as unavailable rather than fatal.
+- **Arabic PDF export works unconfigured, and getting there took three things.**
+  `project-overview.md` names Arabic as one of the platform's two languages, so
+  an export that needed manual setup would be half the intended users locked out.
+  ReportLab's built-in Type 1 fonts are Latin-only, so: a font is **discovered**
+  from `ARABIC_FONT_CANDIDATES` when `REPORT_PDF_FONT_PATH` is unset (Noto Naskh,
+  Amiri, FreeSerif, and the macOS/Windows system faces); every candidate is
+  **verified against the font's own character map** rather than trusted by name,
+  because `DejaVuSans.ttf` is on almost every Linux host, is what a naive search
+  finds first, and carries no Arabic at all; and the text is **shaped and
+  reordered** by `arabic-reshaper` + `python-bidi`, which are **required**
+  dependencies — unlike `litellm`, which is an alternative to something that
+  already works, those two are the difference between correct Arabic and mangled
+  Arabic. A configured path that is missing or has no coverage falls back to the
+  search rather than failing. Only when nothing is found anywhere is an Arabic
+  PDF **refused**, with a message naming Markdown and the `fonts-noto-core`
+  package — a legal report that exports as a page of empty boxes is worse than
+  one that does not export.
+- **A reasoning model's thinking is charged against the output ceiling, and a
+  section is not a chat reply.** A live run at `LLM_MAX_OUTPUT_TOKENS` (1024)
+  returned **41 visible tokens** — a 151-character section cut off mid-sentence —
+  because roughly 983 went to deliberation first. `REPORT_SECTION_MAX_OUTPUT_TOKENS`
+  is therefore sized for the model rather than for a paragraph, and it is passed
+  through `RagService.answer(..., max_output_tokens=...)` as a **method argument
+  rather than a field on `RagRequest`**: a token ceiling is a provider concept,
+  and the pipeline keeps its wire budgets in characters precisely so the contract
+  does not acquire one. A section that still hits the ceiling is reported as
+  `truncated` rather than presented as complete.
+- **No section, title, or citation reaches a log.** The logs carry identifiers,
+  statuses, section *keys*, counts, and character counts only — a generated
+  interpretation of a case file is at least as sensitive as the passages it was
+  built from, which OCR, indexing, search, RAG, and the assistant each already
+  refuse to log.
+- **The case timeline records that a report exists, never what it says.**
+  Requested, generated, failed, and exported are published to the people already
+  party to the case, which is the collaboration invariants 3 and 9 ask for — and
+  it grants nothing: the report itself stays readable only by its author. This is
+  the opposite of the assistant's choice not to publish at all, and the
+  difference is that a conversation is one lawyer's private research while a
+  report is case work product.
 
 ### Timeline & Audit Trail
 

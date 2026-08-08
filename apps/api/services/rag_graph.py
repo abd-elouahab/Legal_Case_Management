@@ -105,6 +105,18 @@ class RagState(TypedDict, total=False):
     started: float
     deadline: float
 
+    #: Ceiling on the model's output for this run, in provider tokens, or absent
+    #: for the deployment's default.
+    #:
+    #: On the state rather than on the request schema, deliberately: a token
+    #: ceiling is a *provider* concept, and ``12-rag-pipeline.md`` keeps the
+    #: platform's budgets in characters precisely so the wire contract does not
+    #: acquire one. What it is for is a caller that knows its output is longer
+    #: than a chat reply — the Report Generation Agent, whose sections are prose
+    #: rather than an answer, and which discovered on a live run that a reasoning
+    #: model spends most of a small budget thinking before emitting a word.
+    max_output_tokens: int
+
     # --- validate ---
     question: str
     language: str

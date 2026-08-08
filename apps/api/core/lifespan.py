@@ -21,6 +21,7 @@ from core.vector import close_qdrant
 from db.session import dispose_engine
 from services.indexing_worker import start_index_workers, stop_index_workers
 from services.ocr_worker import start_ocr_workers, stop_ocr_workers
+from services.report_worker import start_report_workers, stop_report_workers
 
 logger = structlog.get_logger(__name__)
 
@@ -60,6 +61,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # upload's extraction. The embedding model is *not* loaded here — it is
     # fetched on first use, so a deployment without it still starts.
     start_index_workers()
+    # Same contract again, and a third pool for the third kind of failure: a
+    # report is a burst of calls to a metered language model rather than CPU-bound
+    # extraction or embedding, so it is sized by an API quota instead of by a core
+    # count. Sharing a pool with either would make one report's wait the other
+    # feature's backlog.
+    start_report_workers()
 
     yield
 
@@ -67,6 +74,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # Before the engine is disposed: draining workers still need their sessions.
     # Indexing first: an OCR worker that is still finishing can schedule an
     # indexing job, so draining indexing last would leave that job unaccepted.
+    # Reports first: a report in flight holds a database session and is waiting on
+    # a language model, and draining it after the engine is disposed would strand
+    # its row at `processing` — the one state no other worker will claim.
+    stop_report_workers()
     stop_ocr_workers()
     stop_index_workers()
     close_redis()

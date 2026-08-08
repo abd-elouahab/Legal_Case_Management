@@ -17,6 +17,7 @@ from api.v1.indexing.router import router as indexing_router
 from api.v1.ocr.router import document_ocr_router
 from api.v1.ocr.router import router as ocr_router
 from api.v1.rag.router import router as rag_router
+from api.v1.reports.router import router as reports_router
 from api.v1.search.router import router as search_router
 from api.v1.timeline.router import case_timeline_router
 from api.v1.timeline.router import router as timeline_router
@@ -67,6 +68,15 @@ api_router.include_router(rag_router, prefix="/rag", tags=["rag"])
 # model — so the two prefixes are one pipeline seen from two distances: a single
 # stateless question, and a conversation made of them.
 api_router.include_router(assistant_router, prefix="/assistant", tags=["assistant"])
+
+# AI report generation is the second consumer of the pipeline and the first
+# non-conversational one, so it is its own module under its own prefix — with its
+# own permissions (`reports:*`, which a deployment may grant without `ai:chat`)
+# and its own resources. Every section it produces is a `RagService` answer: it
+# retrieves nothing, builds no answer prompt, and calls no model, exactly as the
+# assistant does not. The difference between the two prefixes is what is
+# persisted — a transcript there, a structured document with a lifecycle here.
+api_router.include_router(reports_router, prefix="/reports", tags=["reports"])
 
 # `GET /cases/{case_id}/timeline` lives under the case prefix but belongs to the
 # timeline module, so it is registered from there rather than added to the case

@@ -99,6 +99,15 @@ EVENT_CATEGORIES: Mapping[TimelineEventType, TimelineEventCategory] = MappingPro
         TimelineEventType.INDEXING_COMPLETED: TimelineEventCategory.DOCUMENT,
         TimelineEventType.INDEXING_FAILED: TimelineEventCategory.DOCUMENT,
         TimelineEventType.INDEXING_RETRIED: TimelineEventCategory.DOCUMENT,
+        # Reports break the pattern the two groups above set, deliberately: a
+        # report is produced *from the case* rather than *to a document*, so it
+        # belongs to the case family. That is also the honest icon — a reader
+        # scanning the timeline for "something happened to a file" must not be
+        # stopped by an event about the matter as a whole.
+        TimelineEventType.REPORT_REQUESTED: TimelineEventCategory.CASE,
+        TimelineEventType.REPORT_GENERATED: TimelineEventCategory.CASE,
+        TimelineEventType.REPORT_FAILED: TimelineEventCategory.CASE,
+        TimelineEventType.REPORT_EXPORTED: TimelineEventCategory.CASE,
     }
 )
 
@@ -139,6 +148,15 @@ DEFAULT_TITLES: Mapping[TimelineEventType, str] = MappingProxyType(
         TimelineEventType.INDEXING_COMPLETED: "Search Indexing Completed",
         TimelineEventType.INDEXING_FAILED: "Search Indexing Failed",
         TimelineEventType.INDEXING_RETRIED: "Search Indexing Requested",
+        # "Report" rather than "AI Report": the case history records what was
+        # produced, and a lawyer reading it cares that a hearing preparation
+        # report exists rather than which machinery wrote it — the same reasoning
+        # that made "Text Extraction" the headline instead of "OCR". The *type*
+        # travels in the description, where it belongs.
+        TimelineEventType.REPORT_REQUESTED: "Report Requested",
+        TimelineEventType.REPORT_GENERATED: "Report Generated",
+        TimelineEventType.REPORT_FAILED: "Report Generation Failed",
+        TimelineEventType.REPORT_EXPORTED: "Report Exported",
     }
 )
 

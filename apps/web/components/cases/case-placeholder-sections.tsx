@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { FileText, StickyNote } from "lucide-react";
+import { StickyNote } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -14,12 +14,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
  * Each card says plainly that the feature is not built yet, so nobody mistakes an
  * empty card for a loading failure.
  *
- * **Documents, Timeline, and the AI Assistant no longer have cards here.** All
- * three modules shipped, so the case details page renders the real list
- * (`components/documents/case-documents`), the real history
- * (`components/timeline/case-timeline`), and the real assistant
- * (`components/ai/case-assistant`) in their place — a placeholder beside a
+ * **Documents, Timeline, the AI Assistant, and Reports no longer have cards
+ * here.** All four modules shipped, so the case details page renders the real
+ * list (`components/documents/case-documents`), the real history
+ * (`components/timeline/case-timeline`), the real assistant
+ * (`components/ai/case-assistant`), and the real report history
+ * (`components/reports/case-reports`) in their place — a placeholder beside a
  * working feature would read as a bug.
+ *
+ * **One card left.** When Notes ships this file goes with it: a section headed
+ * "Coming to this case" with nothing under it is worse than no section.
  */
 
 interface PlaceholderSection {
@@ -35,12 +39,6 @@ const SECTIONS: PlaceholderSection[] = [
     title: "Notes",
     description: "Working notes shared between the administrator and the assigned team.",
     icon: StickyNote,
-  },
-  {
-    key: "reports",
-    title: "Reports",
-    description: "Generated legal reports and exports produced from this case's material.",
-    icon: FileText,
   },
 ];
 

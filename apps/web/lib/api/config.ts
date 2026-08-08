@@ -168,6 +168,32 @@ export const ASSISTANT_ENDPOINTS = {
 } as const;
 
 /**
+ * AI report endpoint paths, relative to the version prefix.
+ *
+ * Reports sit under `/reports` rather than under `/cases/{id}/reports` because a
+ * report belongs to the **user who generated it** as much as to the case it is
+ * about: the history is theirs, and pinning the collection under a case would
+ * make "my reports" a query across every case instead of a list. The case is a
+ * filter on the list, which is what the case workspace sends.
+ *
+ * **Generating is a POST and export is a GET**, and the asymmetry is deliberate:
+ * a generation request creates a resource and costs a model call per section,
+ * while an export is a pure read of one that already exists — so it is safely
+ * repeatable, linkable, and cacheable-by-the-browser-only (the API sends
+ * `no-store`).
+ */
+export const REPORT_ENDPOINTS = {
+  list: "/reports",
+  create: "/reports",
+  templates: "/reports/templates",
+  metrics: "/reports/metrics",
+  detail: (id: string) => `/reports/${encodeURIComponent(id)}`,
+  regenerate: (id: string) => `/reports/${encodeURIComponent(id)}/regenerate`,
+  exportFile: (id: string, format: string) =>
+    `/reports/${encodeURIComponent(id)}/export?format=${encodeURIComponent(format)}`,
+} as const;
+
+/**
  * Timeline endpoint paths, relative to the version prefix.
  *
  * Read-only, and the shape says so: there is no create, update, or delete path

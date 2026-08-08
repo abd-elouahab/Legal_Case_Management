@@ -19,6 +19,7 @@ from models.conversation import (
 from models.document import Document, DocumentCategory, DocumentVersion
 from models.indexing import DocumentIndex, IndexStatus
 from models.ocr import OcrPage, OcrResult, OcrStatus
+from models.report import Report, ReportStatus, ReportType
 from models.timeline import TimelineEvent, TimelineEventCategory, TimelineEventType
 from models.user import User, UserRole, UserStatus
 
@@ -40,6 +41,9 @@ __all__ = [
     "OcrPage",
     "OcrResult",
     "OcrStatus",
+    "Report",
+    "ReportStatus",
+    "ReportType",
     "TimelineEvent",
     "TimelineEventCategory",
     "TimelineEventType",

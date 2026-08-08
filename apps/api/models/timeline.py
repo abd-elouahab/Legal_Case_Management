@@ -124,6 +124,25 @@ class TimelineEventType(StrEnum):
     INDEXING_FAILED = "indexing_failed"
     INDEXING_RETRIED = "indexing_retried"
 
+    # --- AI report events ---------------------------------------------------- #
+    #
+    # Added by ``14-ai-report-agent.md``, the third module to extend the registry
+    # — again with **no migration**. Unlike the OCR and indexing groups these are
+    # **case** events rather than document events: a report is produced *from* the
+    # case as a whole rather than happening *to* one file, so filing it under the
+    # document family would put a folder-sized event behind a file icon.
+    #
+    # Note what these entries do and do not disclose. They record that a report of
+    # a given type was produced for the case, to the people already party to it —
+    # which is the collaboration `architecture.md` invariant 3 and 9 ask for. They
+    # do **not** make the report itself readable: its content stays scoped to the
+    # user who generated it, because `14-ai-report-agent.md` requires report
+    # history to remain user-specific.
+    REPORT_REQUESTED = "report_requested"
+    REPORT_GENERATED = "report_generated"
+    REPORT_FAILED = "report_failed"
+    REPORT_EXPORTED = "report_exported"
+
 
 #: ``JSONB`` on PostgreSQL, plain ``JSON`` everywhere else.
 #:

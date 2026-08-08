@@ -49,6 +49,23 @@ ignore_missing_imports = true
 module = ["litellm.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# ReportLab ships no type stubs and no PEP 561 marker. It is a *declared*
+# dependency (see requirements.txt) and the only module that imports it is
+# `services/report_export.py`, behind the `ReportRenderer` protocol.
+module = ["reportlab.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Arabic shaping and bidirectional reordering for PDF export. Both are
+# *optional* (see services/report_export.py): they matter only for Arabic PDFs,
+# they are not in requirements.txt, they are imported lazily, and their absence
+# is logged rather than being fatal. So they are legitimately absent from a
+# normal checkout, and mypy must not fail the build over them — the same
+# reasoning as `litellm` above.
+module = ["arabic_reshaper.*", "bidi.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 pythonpath = ["apps/api"]
 testpaths = ["tests"]

@@ -1621,6 +1621,178 @@ def make_conversation(db_session: Session):  # type: ignore[no-untyped-def]
     return _make
 
 
+# --------------------------------------------------------------------------- #
+# AI report generation fixtures
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def report_queue(db_session: Session, rag_service):  # type: ignore[no-untyped-def]
+    """A queue that records report jobs and runs them against the test doubles.
+
+    The runner builds a :class:`~services.report.ReportService` the same way
+    :func:`services.report_worker.run_report_job` does — real repositories, real
+    timeline, real access policy — but on the test session and with the test's
+    RAG pipeline, whose only substituted parts are the embedder, the vector
+    searcher, and the language model.
+
+    **The pipeline is the real one**, and that matters more here than anywhere
+    else in this feature's tests: the whole design claim is "a report section is
+    a pipeline answer", and a faked pipeline would make every grounding,
+    citation, and authorization assertion in these tests a test of the fixture.
+
+    Reuses :class:`RecordingIndexQueue`, which is generic over its job type — the
+    same reason :mod:`services.job_queue` is.
+    """
+    from repositories.case import CaseRepository
+    from repositories.report import ReportRepository
+    from repositories.timeline import TimelineRepository
+    from services.job_queue import NullJobQueue
+    from services.report import ReportJob, ReportService
+    from services.timeline import TimelineService
+
+    def run(job: ReportJob) -> None:
+        ReportService(
+            ReportRepository(db_session),
+            CaseRepository(db_session),
+            rag_service,
+            # A worker may not queue more work, exactly as in production.
+            NullJobQueue(name="reports"),
+            timeline=TimelineService(TimelineRepository(db_session), CaseRepository(db_session)),
+        ).process(job)
+
+    return RecordingIndexQueue(run)
+
+
+@pytest.fixture
+def report_service(  # type: ignore[no-untyped-def]
+    db_session: Session,
+    rag_service,
+    report_queue: RecordingIndexQueue,
+):
+    """A :class:`~services.report.ReportService` wired to the test doubles.
+
+    Note what is *not* injected: no search service, no embedder, no vector
+    searcher, and no prompt library. That is the feature's authorization story —
+    the agent can reach a passage only through the pipeline — and a fixture that
+    handed it one of those would make the tests pass against a service the
+    application never builds.
+    """
+    from typing import cast
+
+    from repositories.case import CaseRepository
+    from repositories.report import ReportRepository
+    from repositories.timeline import TimelineRepository
+    from services.job_queue import JobQueue
+    from services.report import ReportJob, ReportService
+    from services.timeline import TimelineService
+
+    return ReportService(
+        ReportRepository(db_session),
+        CaseRepository(db_session),
+        rag_service,
+        cast("JobQueue[ReportJob]", report_queue),
+        timeline=TimelineService(TimelineRepository(db_session), CaseRepository(db_session)),
+    )
+
+
+@pytest.fixture
+def make_report(db_session: Session):  # type: ignore[no-untyped-def]
+    """Create a report row directly, bypassing generation.
+
+    For tests about *reading*, *exporting*, *deleting*, and *ownership*, which
+    should not have to spend a full multi-section pipeline run each to arrange a
+    fixture. Defaults to a completed, grounded, single-section report because
+    that is the state most of those tests need.
+    """
+    from models.report import Report, ReportStatus, ReportType
+
+    def _make(  # type: ignore[no-untyped-def]
+        *,
+        requested_by,
+        case,
+        report_type: ReportType = ReportType.CASE_SUMMARY,
+        status: ReportStatus = ReportStatus.COMPLETED,
+        title: str = "Synthese de l'affaire",
+        language: str = "fr",
+        sections: list[dict[str, object]] | None = None,
+        citations: list[dict[str, object]] | None = None,
+        created_at: datetime | None = None,
+        deleted_at: datetime | None = None,
+    ) -> Report:
+        content = (
+            [
+                {
+                    "key": "overview",
+                    "title": "Apercu",
+                    "content": "Le litige porte sur un bail commercial [1].",
+                    "grounded": True,
+                    "citation_markers": [1],
+                    "retrieved_count": 3,
+                    "context_count": 3,
+                    "duration_ms": 40,
+                }
+            ]
+            if sections is None
+            else sections
+        )
+        sources = (
+            [
+                {
+                    "marker": 1,
+                    "document_id": str(uuid.uuid4()),
+                    "document_name": "Contrat.pdf",
+                    "document_version": 1,
+                    "page_number": 7,
+                    "case_id": str(case.id),
+                    "score": 0.82,
+                    "excerpt": "Le loyer est payable le premier jour du mois.",
+                    "excerpt_truncated": False,
+                    "referenced": True,
+                }
+            ]
+            if citations is None
+            else citations
+        )
+
+        report = Report(
+            id=uuid.uuid4(),
+            case_id=case.id,
+            report_type=report_type,
+            title=title,
+            language=language,
+            status=status,
+            template_version=1,
+            sections_total=len(content),
+            sections_completed=len(content) if status is ReportStatus.COMPLETED else 0,
+            sections=content if status is ReportStatus.COMPLETED else [],
+            citations=sources if status is ReportStatus.COMPLETED else [],
+            grounded_sections=(
+                sum(1 for section in content if section.get("grounded"))
+                if status is ReportStatus.COMPLETED
+                else None
+            ),
+            character_count=(
+                sum(len(str(section.get("content", ""))) for section in content)
+                if status is ReportStatus.COMPLETED
+                else None
+            ),
+            attempt_count=1,
+            requested_by=requested_by.id,
+            deleted_at=deleted_at,
+        )
+        if created_at is not None:
+            # Set explicitly so ordering tests do not depend on wall-clock gaps
+            # between rows inserted in the same millisecond.
+            report.created_at = created_at
+        db_session.add(report)
+        db_session.commit()
+        db_session.refresh(report)
+        return report
+
+    return _make
+
+
 @pytest.fixture
 def auth_service(  # type: ignore[no-untyped-def]
     db_session: Session,
@@ -1659,6 +1831,7 @@ def api_client(
     rag_metrics,  # type: ignore[no-untyped-def]
     follow_up_suggester: ScriptedFollowUpSuggester,
     assistant_metrics,  # type: ignore[no-untyped-def]
+    report_queue: RecordingIndexQueue,
 ) -> Iterator[TestClient]:
     """A TestClient whose external collaborators are all doubles.
 
@@ -1684,6 +1857,7 @@ def api_client(
         get_ocr_engine_dependency,
         get_ocr_job_queue,
         get_rag_metrics_recorder,
+        get_report_job_queue,
         get_search_metrics_recorder,
         get_token_revocation_store,
         get_vector_searcher_dependency,
@@ -1707,6 +1881,11 @@ def api_client(
     app.dependency_overrides[get_rag_metrics_recorder] = lambda: rag_metrics
     app.dependency_overrides[get_follow_up_suggester_dependency] = lambda: follow_up_suggester
     app.dependency_overrides[get_assistant_metrics_recorder] = lambda: assistant_metrics
+    # Inline, so a report requested over HTTP is generated before the response is
+    # read. In production it is a thread pool and the client polls; here the
+    # assertion is about the *outcome*, and a test that waits for a worker is a
+    # test that will eventually be flaky.
+    app.dependency_overrides[get_report_job_queue] = lambda: report_queue
     try:
         with TestClient(app) as test_client:
             yield test_client

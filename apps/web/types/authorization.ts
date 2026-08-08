@@ -51,8 +51,14 @@ export const PERMISSIONS = [
   "timeline:create",
 
   // Reports
+  //
+  // `reports:view` is not a row grant: a report belongs to the user who
+  // generated it, and every read on the API is keyed by them — so holding it
+  // gives a caller their own history and nobody else's. There is deliberately no
+  // `reports:view-all`.
   "reports:view",
   "reports:generate",
+  "reports:monitor",
 
   // Notifications
   "notifications:view",
@@ -117,6 +123,7 @@ export const PERMISSION = {
 
   reportsView: "reports:view",
   reportsGenerate: "reports:generate",
+  reportsMonitor: "reports:monitor",
 
   notificationsView: "notifications:view",
   notificationsManage: "notifications:manage",

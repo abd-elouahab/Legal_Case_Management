@@ -265,12 +265,25 @@ class RagService:
 
     # ------------------------------------------------------------- answering #
 
-    def answer(self, request: RagRequest, *, actor: User) -> RagOutcome:
+    def answer(
+        self, request: RagRequest, *, actor: User, max_output_tokens: int | None = None
+    ) -> RagOutcome:
         """Answer one question from the documents this caller may read.
 
         The whole pipeline, run as a graph. This method owns only what the graph
         cannot: the enabled check, the clock, the single place a failure is
         recorded, and the projection of the final state onto an outcome.
+
+        ``max_output_tokens`` overrides the deployment's ceiling for this run
+        only. It is a **method argument rather than a field on**
+        :class:`~schemas.rag.RagRequest`, and the distinction is the one
+        ``12-rag-pipeline.md`` draws by keeping every budget in characters: a
+        token ceiling is a provider concept, and putting one on the wire contract
+        would make every client of ``POST /rag/answer`` responsible for a number
+        that means something different per model. Its one caller is the Report
+        Generation Agent, whose sections are prose rather than a chat reply —
+        see ``REPORT_SECTION_MAX_OUTPUT_TOKENS`` for the live run that made it
+        necessary.
 
         **Metrics are recorded here and nowhere else**, which is what guarantees
         exactly one record per request. A node that recorded its own failure and
@@ -311,6 +324,11 @@ class RagService:
                     actor=actor,
                     started=started,
                     deadline=started + settings.RAG_TIMEOUT_SECONDS,
+                    max_output_tokens=(
+                        max_output_tokens
+                        if max_output_tokens is not None
+                        else settings.LLM_MAX_OUTPUT_TOKENS
+                    ),
                 )
             )
         except RagUnavailableError as exc:
@@ -411,6 +429,7 @@ class RagService:
             actor=actor,
             started=started,
             deadline=started + settings.RAG_TIMEOUT_SECONDS,
+            max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS,
         )
 
         try:
@@ -502,7 +521,10 @@ class RagService:
 
         try:
             for fragment in self._provider.stream(
-                system=prompt.system, prompt=prompt.user, timeout_seconds=timeout
+                system=prompt.system,
+                prompt=prompt.user,
+                max_output_tokens=state.get("max_output_tokens"),
+                timeout_seconds=timeout,
             ):
                 streamed = True
                 accumulated += fragment
@@ -756,6 +778,7 @@ class RagService:
             completion = self._provider.generate(
                 system=prompt.system,
                 prompt=prompt.user,
+                max_output_tokens=state.get("max_output_tokens"),
                 timeout_seconds=min(float(settings.LLM_TIMEOUT_SECONDS), remaining),
             )
         except LLMError as exc:

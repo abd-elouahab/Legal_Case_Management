@@ -22,6 +22,7 @@ from repositories.conversation import ConversationRepository
 from repositories.document import DocumentRepository
 from repositories.indexing import IndexingRepository
 from repositories.ocr import OcrRepository
+from repositories.report import ReportRepository
 from repositories.search import SearchRepository
 from repositories.timeline import TimelineRepository
 from repositories.user import UserRepository
@@ -45,6 +46,8 @@ from services.ocr_worker import ocr_queue
 from services.prompts import PromptLibrary, get_prompt_library
 from services.rag import RagService
 from services.rag_metrics import RagMetricsRecorder, get_rag_metrics
+from services.report import ReportJob, ReportService
+from services.report_worker import report_queue
 from services.search import SearchService
 from services.search_metrics import SearchMetricsRecorder, get_search_metrics
 from services.search_ranking import Ranker, get_ranker
@@ -474,6 +477,60 @@ def get_assistant_service(
 
 
 AssistantServiceDep = Annotated[AssistantService, Depends(get_assistant_service)]
+
+
+def get_report_repository(session: DbSession) -> ReportRepository:
+    """Provide a request-scoped report repository."""
+    return ReportRepository(session)
+
+
+def get_report_job_queue() -> JobQueue[ReportJob]:
+    """Provide the application's background report queue.
+
+    The process-wide pool from :mod:`services.report_worker`, not a fresh one per
+    request: bounding concurrency is the whole point of it, and a pool per
+    request would bound nothing. **Its own pool rather than the indexing one**,
+    because a report is a burst of calls to a metered language model while an
+    index is CPU-bound embedding work — sharing would make each one's backlog the
+    other's latency. A test overrides this with an inline queue so the work
+    happens synchronously and the assertion does not race a thread.
+    """
+    return report_queue
+
+
+def get_report_service(
+    reports: Annotated[ReportRepository, Depends(get_report_repository)],
+    cases: Annotated[CaseRepository, Depends(get_case_repository)],
+    rag: Annotated[RagService, Depends(get_rag_service)],
+    queue: Annotated[JobQueue[ReportJob], Depends(get_report_job_queue)],
+    timeline: Annotated[TimelineService, Depends(get_timeline_service)],
+) -> ReportService:
+    """Provide the report agent with its collaborators injected.
+
+    **The RAG service is the agent's only route to content, and that is the
+    load-bearing line in this function.** ``14-ai-report-agent.md`` forbids
+    duplicating retrieval, prompt construction, and LLM interaction, and requires
+    that the agent *"must never query Qdrant directly"* — and this is where that
+    would be undone: injecting a ``SearchService``, a ``VectorSearcher``, or a
+    ``PromptLibrary`` here would give the agent a way to build a section without
+    the pipeline that scopes, grounds, and cites it. It takes none of them, so
+    the chain — report → pipeline → search → document → case — holds structurally
+    rather than by discipline.
+
+    The case repository is injected because every report is *about* a case: the
+    request has to check that it exists and that the caller is party to it, and
+    that rule must not be re-implemented against a second copy of the case query.
+
+    The timeline service is injected because the report service *publishes* to
+    it: requested, generated, failed, and exported are the report half of a
+    case's history. Unlike the assistant — which deliberately publishes nothing,
+    because a conversation is one lawyer's private research — a report is case
+    work product, and the people on the matter are entitled to know one exists.
+    """
+    return ReportService(reports, cases, rag, queue, timeline=timeline)
+
+
+ReportServiceDep = Annotated[ReportService, Depends(get_report_service)]
 
 
 def get_ocr_service(

@@ -28,6 +28,7 @@ import { CasePriorityBadge, CaseStatusBadge } from "@/components/cases/case-badg
 import { CasePlaceholderSections } from "@/components/cases/case-placeholder-sections";
 import { EditCaseDialog } from "@/components/cases/edit-case-dialog";
 import { CaseDocuments } from "@/components/documents/case-documents";
+import { CaseReports } from "@/components/reports/case-reports";
 import { CaseSearch } from "@/components/search/case-search";
 import { CaseTimeline } from "@/components/timeline/case-timeline";
 import { caseErrorMessage, useCase, useRestoreCase } from "@/hooks/use-cases";
@@ -268,6 +269,18 @@ function CaseDetailsContent({ legalCase }: { legalCase: LegalCase }) {
           without the capability, so the separator is inside the gate. */}
       <Protected permission={PERMISSION.aiChat}>
         <CaseAssistant caseId={legalCase.id} />
+        <Separator />
+      </Protected>
+
+      {/* Reports, pinned to this case. Last of the AI sections because it is the
+          stage above the assistant — the same pipeline, run a dozen times into a
+          document rather than once into an answer — and gated on `reports:view`
+          rather than on `ai:chat`: reading a report asks nothing of the pipeline,
+          and a deployment may reasonably grant one without the other. Generating
+          needs both `reports:generate` and `ai:generate-report`, which the list's
+          own controls check. */}
+      <Protected permission={PERMISSION.reportsView}>
+        <CaseReports caseId={legalCase.id} />
         <Separator />
       </Protected>
 

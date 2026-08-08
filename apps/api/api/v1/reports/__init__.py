@@ -1,0 +1,1 @@
+"""AI report generation endpoints."""

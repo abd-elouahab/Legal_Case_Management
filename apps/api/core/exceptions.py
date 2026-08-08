@@ -905,6 +905,156 @@ class AssistantDisabledError(AppException):
 
 
 # --------------------------------------------------------------------------- #
+# AI report generation errors
+#
+# Same posture as the OCR and indexing errors above, and for the same reason: a
+# report is a *run*, so **there is deliberately no error for a report that failed
+# to generate**. A failure is a recorded state of the run — the caller polling it
+# gets a 200 describing a report whose status is ``failed``, with the reason on
+# it. Answering 5xx would say the platform is broken when what happened is that
+# one case file had nothing to build a report from.
+#
+# Export is the exception and is genuinely a *request* that can fail: the caller
+# asked for a file in a format this deployment cannot produce, and there is no
+# row to record that on.
+#
+# **There is no per-resource denial of its own for reading a report**, and this
+# is the second place on the platform that conceals rather than refuses. A
+# report is one user's private work product — ``14-ai-report-agent.md``:
+# *"History must remain user-specific"*, *"generated reports remain private"* —
+# so a report belonging to somebody else is simply not found, exactly as a
+# conversation is. Generating one *is* refused with a 403, because that is a
+# question about the **case**, and a lawyer who is refused a case needs to know
+# it exists and that they should ask to be assigned.
+# --------------------------------------------------------------------------- #
+
+
+class ReportNotFoundError(AppException):
+    """No report with that identifier belongs to this caller.
+
+    Covers three situations on purpose — it does not exist, it was deleted, or it
+    belongs to somebody else — because telling them apart is precisely the
+    disclosure this feature must not make. See the section note above.
+    """
+
+    status_code = status.HTTP_404_NOT_FOUND
+    error_code = "report_not_found"
+    message = "Report not found."
+
+
+class ReportNotReadyError(AppException):
+    """An export was requested for a report that has not finished generating.
+
+    409 rather than 404 or 422: the report exists and the request is well-formed
+    — it is a *sequencing* conflict the caller resolves by waiting, and the
+    message says which state the run is actually in so they know whether that
+    means seconds or a retry. The same shape :class:`IndexingNotReadyError` has.
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "report_not_ready"
+    message = "This report has not finished generating yet."
+
+    def __init__(self, current: str) -> None:
+        super().__init__(
+            f"This report is {current!r}. It can be exported once generation has completed."
+        )
+
+
+class ReportAlreadyRunningError(AppException):
+    """Regeneration was requested while a run is queued or already generating.
+
+    409 rather than 202-and-ignore: the caller asked for a *fresh* report, and
+    silently answering "done" for one already being written would make the button
+    they pressed indistinguishable from one that worked — the same reasoning
+    :class:`OcrAlreadyRunningError` and :class:`IndexingAlreadyRunningError`
+    record.
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "report_already_running"
+    message = "This report is already being generated."
+
+    def __init__(self, current: str) -> None:
+        super().__init__(f"Generation for this report is already {current!r}.")
+
+
+class TooManyActiveReportsError(AppException):
+    """The caller already has as many reports in flight as the platform allows.
+
+    429 rather than 409, and it is the only 429 on the platform besides the login
+    lockout: this is a *rate* limit rather than a state conflict — nothing about
+    the request is wrong, and the identical request will succeed once one of the
+    caller's own runs finishes. A report costs one model call per section, so an
+    unbounded queue is a way to spend a deployment's whole token budget from one
+    browser tab.
+    """
+
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+    error_code = "too_many_active_reports"
+    message = "You already have several reports being generated. Wait for one to finish."
+
+    def __init__(self, limit: int) -> None:
+        super().__init__(
+            f"You already have {limit} report{'s' if limit != 1 else ''} being generated. Wait for "
+            f"one to finish, then try again."
+        )
+
+
+class InvalidReportTransitionError(AppException):
+    """A run was asked to move to a state that is not reachable from its own.
+
+    Only provokable through the service's own API, not by a client: every HTTP
+    path checks first. It exists so that a future caller — a scheduled report
+    job, a bulk regeneration after a template change — cannot corrupt a run's
+    lifecycle by writing a status directly, and so that the attempt is visible
+    rather than silent.
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "invalid_report_transition"
+    message = "This report cannot move to that state."
+
+    def __init__(self, current: str, target: str) -> None:
+        super().__init__(f"A report that is {current!r} cannot move to {target!r}.")
+
+
+class ReportExportUnavailableError(AppException):
+    """The requested export format cannot be produced on this deployment.
+
+    503 rather than 415: the format is one the platform supports and the request
+    is well-formed — the *library* that renders it is not installed here, which
+    is an operational condition an operator fixes. The message names Markdown as
+    the alternative, because it needs nothing beyond the platform itself, and
+    that is the difference between a dead end and a workaround.
+    """
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    error_code = "report_export_unavailable"
+    message = (
+        "This report could not be exported in that format. Try Markdown, which needs no "
+        "additional software."
+    )
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message)
+
+
+class ReportsDisabledError(AppException):
+    """AI report generation is switched off for this deployment.
+
+    503 rather than 404: the capability exists and the request is valid — the
+    deployment has turned generation off, which is a temporary condition an
+    operator controls. Existing reports stay readable and exportable; only new
+    runs are refused.
+    """
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    error_code = "reports_disabled"
+    message = "AI report generation is currently disabled on this platform."
+
+
+# --------------------------------------------------------------------------- #
 # Timeline errors
 #
 # Only two, because the timeline is read-only over HTTP: events are published by

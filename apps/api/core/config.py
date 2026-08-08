@@ -352,6 +352,92 @@ class Settings(BaseSettings):
     ASSISTANT_SUGGESTION_PROMPT_TEMPLATE: str = "assistant/followups"
     ASSISTANT_SUGGESTION_PROMPT_VERSION: int = 1
 
+    # --- AI report generation ---
+    # The sixth stage of the AI pipeline, and the first non-conversational
+    # consumer of it: a Report Generation Agent produces a structured, cited
+    # legal report for one case, section by section, through the RAG pipeline.
+    # It retrieves nothing, builds no prompt, and calls no model of its own.
+    # Disabling it refuses new generations; existing reports stay readable and
+    # exportable.
+    REPORTS_ENABLED: bool = True
+    # Passages retrieved per *section*. Smaller than RAG_RETRIEVAL_TOP_K on
+    # purpose: a report asks a dozen narrow questions rather than one broad one,
+    # and a long tail of weak matches on each of them costs a dozen context
+    # windows to dilute a dozen sections. Must not exceed SEARCH_MAX_LIMIT,
+    # because retrieval runs through the same search service a user does.
+    REPORT_SECTION_TOP_K: int = 6
+    # Similarity floor for a section's passages when the request does not set
+    # one. 0.0 for the same reason SEARCH_MIN_SCORE and RAG_MIN_SCORE are.
+    REPORT_SECTION_MIN_SCORE: float = 0.0
+    # Ceiling on one *section's* output, in provider tokens. Far larger than
+    # LLM_MAX_OUTPUT_TOKENS, and the reason is a real finding rather than
+    # caution: `gemini-2.5-flash` is a reasoning model and charges its internal
+    # deliberation against this same budget. A live run of a report section at
+    # 1024 returned **41 visible tokens** — a 151-character section cut off
+    # mid-sentence — because roughly 983 of the 1024 went to thinking before a
+    # word was emitted. That is the same trap `ASSISTANT_SUGGESTION_MAX_OUTPUT_TOKENS`
+    # records, and it bites harder here: a section is prose, not three short
+    # questions, so the budget has to cover the deliberation *and* several
+    # paragraphs. It is not a cost — nothing is billed for headroom that is not
+    # used — and a section that hits it is still reported as `truncated` rather
+    # than presented as complete.
+    #
+    # Set per report rather than by raising LLM_MAX_OUTPUT_TOKENS, deliberately:
+    # that setting governs the AI Assistant's answers as well, and this feature
+    # has no business changing how a chat reply is bounded.
+    REPORT_SECTION_MAX_OUTPUT_TOKENS: int = 4096
+    # Sections one report may contain. A ceiling rather than a target: it bounds
+    # what a single run can cost in model calls, and every shipped template is
+    # comfortably inside it. A template that grew past it would be truncated with
+    # a warning rather than failing, which is the same posture INDEX_MAX_CHUNKS
+    # takes for a 900-page bundle.
+    REPORT_MAX_SECTIONS: int = 20
+    # Citations attached to one report, across every section after
+    # de-duplication. Larger than RAG_MAX_CITATIONS because a report is a dozen
+    # answers rather than one, and a reference list is read once at the end
+    # rather than inline.
+    REPORT_MAX_CITATIONS: int = 60
+    # Whole-run deadline, covering every section's retrieval *and* generation.
+    # Must be at least REPORT_SECTION_TIMEOUT_SECONDS, or a section's own
+    # deadline could never be reached. Generous, because a seven-section report
+    # is seven pipeline runs and this executes in the background where nobody is
+    # holding a connection open.
+    REPORT_TIMEOUT_SECONDS: int = 900
+    # Deadline for one section, passed down to the pipeline as its whole-run
+    # budget. Bounding a section is what keeps one unresponsive call from
+    # consuming the entire report's budget and leaving the remaining sections
+    # unwritten.
+    REPORT_SECTION_TIMEOUT_SECONDS: int = 90
+    # Background workers producing reports in this API process. One by default:
+    # a report is a burst of model calls, and a second worker doubles the rate at
+    # which a metered key is spent without making any single report faster.
+    REPORT_WORKER_CONCURRENCY: int = 1
+    # Reports one user may have queued or generating at once. A report costs a
+    # model call per section, so an unbounded queue is a way to spend a
+    # deployment's whole token budget from one browser tab.
+    REPORT_MAX_ACTIVE_PER_USER: int = 3
+    # Reports returned per page when a request does not ask for a number, and the
+    # ceiling a request may ask for.
+    REPORT_PAGE_SIZE: int = 20
+    REPORT_MAX_PAGE_SIZE: int = 100
+    # Absolute path to a TrueType font the PDF exporter embeds, **overriding**
+    # the automatic search. Blank is the normal case and is not a degraded one:
+    # `services/report_export.py` looks through ARABIC_FONT_CANDIDATES (Noto
+    # Naskh, Amiri, FreeSerif, and the macOS/Windows system faces) and verifies
+    # each against the font's own character map, so a Debian image with
+    # fonts-noto-core and a Windows host both export Arabic unconfigured.
+    #
+    # Set it to pin a particular typeface, or on a host whose font lives
+    # somewhere the search does not look. A path that does not exist or has no
+    # Arabic coverage is logged and **falls through to the search** rather than
+    # failing — a typo here should not cost a deployment an export it could
+    # otherwise have produced. Only when nothing is found anywhere is an Arabic
+    # PDF refused, and French and English are unaffected either way.
+    REPORT_PDF_FONT_PATH: str | None = None
+    # Font size and page margin of an exported PDF, in points.
+    REPORT_PDF_FONT_SIZE: int = 10
+    REPORT_PDF_MARGIN: int = 56
+
     # --- Prompt templates ---
     # Which prompt backend to use (see `services/prompts.py`). Templates live in
     # `apps/api/prompts/` as versioned `.j2` files under source control.
@@ -495,6 +581,7 @@ class Settings(BaseSettings):
         "POPPLER_PATH",
         "EMBEDDING_DEVICE",
         "LLM_API_KEY",
+        "REPORT_PDF_FONT_PATH",
         mode="before",
     )
     @classmethod
@@ -547,6 +634,18 @@ class Settings(BaseSettings):
         "ASSISTANT_SUGGESTION_TIMEOUT_SECONDS",
         "ASSISTANT_SUGGESTION_MAX_OUTPUT_TOKENS",
         "ASSISTANT_SUGGESTION_PROMPT_VERSION",
+        "REPORT_SECTION_TOP_K",
+        "REPORT_SECTION_MAX_OUTPUT_TOKENS",
+        "REPORT_MAX_SECTIONS",
+        "REPORT_MAX_CITATIONS",
+        "REPORT_TIMEOUT_SECONDS",
+        "REPORT_SECTION_TIMEOUT_SECONDS",
+        "REPORT_WORKER_CONCURRENCY",
+        "REPORT_MAX_ACTIVE_PER_USER",
+        "REPORT_PAGE_SIZE",
+        "REPORT_MAX_PAGE_SIZE",
+        "REPORT_PDF_FONT_SIZE",
+        "REPORT_PDF_MARGIN",
     )
     @classmethod
     def _require_positive(cls, value: int, info: ValidationInfo) -> int:
@@ -652,6 +751,37 @@ class Settings(BaseSettings):
             raise ValueError("ASSISTANT_CONTEXT_MESSAGES must not be negative")
         if self.ASSISTANT_SUGGESTION_COUNT < 0:
             raise ValueError("ASSISTANT_SUGGESTION_COUNT must not be negative")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_report_limits(self) -> Settings:
+        """Keep the report budgets coherent with the pipeline they run through.
+
+        Four couplings, and every one of them is invisible until a report is
+        already being generated in the background, where nobody is watching:
+
+        * a **section retrieves through the semantic search service**, so asking
+          for more passages than that service will return means every section is
+          quietly built on fewer sources than configured — the same coupling
+          :meth:`_validate_rag_limits` refuses for ``RAG_RETRIEVAL_TOP_K``;
+        * a **section deadline longer than the whole run's** can never be
+          reached, so the smaller number the operator set for one section would
+          never take effect;
+        * a **page size above its ceiling** would make every unqualified history
+          request fail against a bound the caller never chose;
+        * a **similarity floor outside ``[-1, 1]``** is not a cosine similarity,
+          so it would either match everything or nothing.
+        """
+        if self.REPORT_SECTION_TOP_K > self.SEARCH_MAX_LIMIT:
+            raise ValueError("REPORT_SECTION_TOP_K must not exceed SEARCH_MAX_LIMIT")
+        if self.REPORT_SECTION_TIMEOUT_SECONDS > self.REPORT_TIMEOUT_SECONDS:
+            raise ValueError(
+                "REPORT_SECTION_TIMEOUT_SECONDS must not exceed REPORT_TIMEOUT_SECONDS"
+            )
+        if self.REPORT_PAGE_SIZE > self.REPORT_MAX_PAGE_SIZE:
+            raise ValueError("REPORT_PAGE_SIZE must not exceed REPORT_MAX_PAGE_SIZE")
+        if not -1.0 <= self.REPORT_SECTION_MIN_SCORE <= 1.0:
+            raise ValueError("REPORT_SECTION_MIN_SCORE must be between -1.0 and 1.0")
         return self
 
     @model_validator(mode="after")

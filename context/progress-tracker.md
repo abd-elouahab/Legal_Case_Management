@@ -5,30 +5,59 @@ change.
 
 ## Current Phase
 
-- **AI Legal Assistant complete (spec `13-ai-legal-assistant.md`).** See the
-  entry at the top of *Completed*.
+- **AI Report Generation complete (spec `14-ai-report-agent.md`).** See the entry
+  at the top of *Completed*.
 
 ## Current Goal
 
-- **Next: Reports** (`ai-workflow-rules.md`'s step 10, and
-  `ai-architecture.md`'s Report Generation Agent). The assistant is complete, and
-  what it established is the shape a report agent will reuse: a versioned prompt
-  for a *new* purpose rendered through the same `PromptLibrary`, generation
-  through the same `LLMProvider`, and **grounding through `RagService` rather
-  than through anything of its own**. Two things in the pipeline were built for
-  it specifically and are still unused: `citation_document_ids` in
-  `services/rag.py`, which is there for a report section's "sources: 3
-  documents" line, and the note in `services/rag_graph.py` that report
-  generation is *its own graph reusing these nodes*, not a branch in the
-  question-answering one. The permissions already exist — `ai:generate-report`
-  and `reports:generate` have both been defined since Authorization shipped —
-  and `architecture.md` already lists *Reports* under PostgreSQL. **What the
-  assistant deliberately did not build** is summarization, information
-  extraction, compliance analysis, translation, and multi-agent routing; the
-  spec puts all five out of its scope and none of them was started.
+- **Next: Real-Time Synchronization** (`ai-workflow-rules.md`'s step 11).
+  `architecture.md` invariant 2 requires every case update to be synchronized
+  immediately across authorized users, and the stack table already names FastAPI
+  WebSockets with Redis Pub/Sub. Two things the AI pipeline built are waiting for
+  it: report generation is background work a user currently **polls** for
+  (`useReports` re-fetches while anything on the page is active), and the
+  timeline is invalidated by that poll rather than pushed. A WebSocket channel
+  would replace both with an event, and the shapes are already there — a report's
+  progress is two integers on a row, and `TimelineRecorder` is a narrow publish
+  protocol. `services/websocket/` and `api/v1/websocket/` are still empty
+  directories.
+- **Done: Reports** (`ai-workflow-rules.md`'s step 10). Two of the three things
+  the pipeline had reserved for it were used as intended: the note in
+  `services/rag_graph.py` that report generation is *its own graph*, and the
+  permissions defined since Authorization shipped. The third —
+  `citation_document_ids` in `services/rag.py` — **is still unused**, and now for
+  a reason rather than by omission: a report's "sources: N documents" line is
+  computed over the *report's* de-duplicated ledger rather than over a single
+  answer's citations, so the helper answers a question this feature does not ask.
+  It stays for a future caller; it is four lines and deleting it would be churn.
+- **Still not built, and still out of scope:** summarization as a distinct
+  capability, information extraction, compliance analysis, translation,
+  multi-language reports, executive dashboards, scheduled report generation, and
+  the voice assistant.
 
 ## Open Questions
 
+- **AI Report Generation raised none that needed asking, and one that needed
+  *finding*.** The spec named the templates, the formats, the states, and the
+  metrics; everything else followed from `ai-architecture.md` and from what the
+  RAG pipeline already provided. The finding is recorded under *Validation*
+  below and is worth repeating here because it is a standing property of the
+  model rather than a bug that was fixed: **`gemini-2.5-flash` charges its
+  internal deliberation against `max_output_tokens`**, so a *report section* at
+  the platform's chat-sized ceiling of 1024 came back as **41 visible tokens**.
+  `REPORT_SECTION_MAX_OUTPUT_TOKENS` (4096) is sized for the model rather than
+  for a paragraph. This is the **second** time this has bitten — the first was
+  `ASSISTANT_SUGGESTION_MAX_OUTPUT_TOKENS`, where 256 produced a suggestion cut
+  off mid-word — so the general rule is now: *any new call to a reasoning model
+  needs its ceiling sized for thinking plus output, and it must be validated
+  live, because a hermetic double returns whatever string the test wrote.*
+- **A free-tier key cannot generate a whole report.** Gemini's free tier allows
+  **20 requests per day**, and one case summary is **seven** of them; the
+  executive summary, the shortest template, is four. Live validation of the full
+  four-section run was therefore **not completed** — the quota was exhausted
+  mid-run and the provider answered `429 RESOURCE_EXHAUSTED`. What *was* verified
+  live is recorded under *Validation*. This is a property of the **account**, not
+  of the platform, and it is the same ceiling the RAG pipeline's notes record.
 - **None outstanding.** The questions raised during OCR Processing remain closed
   (Tesseract installed and verified; Arabic recognition investigated to root
   cause and resolved as no change required), and neither Document Indexing nor
@@ -66,6 +95,119 @@ change.
   the whole run.
 
 ## Completed
+
+- **AI Report Generation (spec `14-ai-report-agent.md`)** — the sixth stage of
+  the AI pipeline and the **second consumer of the fourth**, the first that is
+  not a conversation: a user chooses a report type for a case, a Report
+  Generation Agent writes it section by section through the RAG pipeline, and the
+  result is persisted as a structured, cited document that can be exported.
+  **Nothing about compliance analysis, translation, multi-language reports,
+  executive dashboards, scheduled generation, or the voice assistant was
+  implemented** — the spec puts all six out of scope, and the feature ends at an
+  exportable report.
+  - **One new backend dependency and no new AI dependency.** `reportlab`, for
+    PDF rendering, behind the `ReportRenderer` protocol. The agent retrieves
+    nothing, builds no prompt, and calls no model of its own, so it added no
+    provider, no library, and no configuration to any of them. `arabic-reshaper`
+    and `python-bidi` are documented as optional and deliberately unlisted, in
+    the shape `litellm` established.
+  - **A report section *is* a pipeline answer, and that is the whole design.**
+    `ReportService` holds a `RagService` and no search service, no embedder, no
+    vector searcher, and no prompt library — so the spec's *"must not duplicate
+    retrieval, prompt construction, or LLM interaction logic"* and *"must never
+    query Qdrant directly"* are inherited rather than promised, and a test
+    asserts the shape of the object rather than trusting the claim.
+  - **Its own LangGraph graph**, which is what `services/rag_graph.py` reserved
+    for it — five nodes, with `write_section` **self-looping** until the template
+    is exhausted. That loop is the spec's "Large Cases" requirement made
+    structural: a case larger than any context window costs more iterations
+    rather than a bigger prompt. It reuses the *service* rather than the
+    pipeline's nodes, which is a deliberate improvement on the reserved note:
+    re-wiring the nodes would mean re-implementing the no-evidence branch, the
+    character budget, the refusal sentinel, and the citation attachment here.
+  - **Section instructions are domain data, not prompts**, because the spec lists
+    prompt construction under *Do NOT implement* and it is obeyed literally.
+    `core/reports.py` holds the *questions the platform asks about a case*, in
+    three languages, versioned as a set by `REPORT_TEMPLATE_VERSION` and recorded
+    on every report — so an evaluation can group by them the way it groups by a
+    prompt version. **No new `.j2` file was added.**
+  - **`CitationLedger` is the piece with no precedent in the codebase.** The
+    pipeline numbers each answer's sources from 1, and a report is one document
+    made of a dozen answers, so markers are renumbered globally, de-duplicated on
+    (document, version, page), and substituted **in one pass** — a two-pass
+    rewrite would swap a marker back onto itself the moment two sections shared a
+    source. A source beyond `REPORT_MAX_CITATIONS` gets no marker and its
+    reference is *removed*, which is *"reports should never invent citations"*
+    applied to the one place this feature could have invented one.
+  - **A gap is a finding; an empty report is a failure.** A section the case file
+    does not cover carries the platform's own sentence and is marked ungrounded;
+    a report in which *nothing* could be grounded fails with
+    `insufficient_context` rather than arriving as a document of empty headings.
+    And a section whose *dependency* failed fails the whole run — the opposite of
+    indexing's choice about partial vectors, because a partial index is a smaller
+    index and still correct while a partial report is a legal document missing
+    sections with nothing on its face to say so.
+  - **A report is a persisted run, so its metrics are SQL.** All six figures the
+    spec names are aggregates over `reports`, which is why `/reports/metrics` is
+    the only monitoring endpoint on the platform with **no `since` caveat**:
+    search, RAG, and the assistant persist nothing and must count in the process.
+  - **Two authorization questions, two different answers, and the platform's one
+    deliberate asymmetry in refusals.** An inaccessible **case** is a 403 (a
+    lawyer needs to know it exists and to ask for assignment); another user's
+    **report** is a 404 (confirming it exists is itself the disclosure). There is
+    no `reports:view-all`, and an administrator holding `cases:view-all` still
+    cannot read somebody else's report.
+  - **Exports are rendered per request and never stored**, which makes *"exported
+    reports inherit the same permissions as their source case"* structural rather
+    than a rule: there is no object anyone can be handed a URL to. This is a
+    documented **deviation from `architecture.md`'s MinIO listing**, and that
+    listing was corrected rather than left to disagree with the code.
+  - **Arabic PDF export works with no configuration**, which took font
+    discovery, character-map verification, and required shaping libraries — see
+    the note further down for why the middle one is the load-bearing part. It is
+    still **refused rather than rendered** on a host with no Arabic font at all,
+    with Markdown named in the refusal, because the alternative is a page of
+    empty boxes that looks like a working export.
+  - **One defect found by live validation and fixed** — the output ceiling; see
+    *Open Questions* and *Validation*. It also produced one small addition: a
+    section that still hits the ceiling is reported as `truncated` and marked
+    "Stops early" in the UI, in the shape the assistant flags a truncated answer.
+  - **Validation:** **2928 backend tests pass** (up from 2617 — **311 of them for
+    reports**, plus one skipped live check) and **590 frontend tests pass** (up
+    from 547 — 43 for reports),
+    with `ruff`, `mypy --strict`, `tsc --noEmit`, and `eslint` all clean. The
+    unit suite runs the **real** RAG pipeline, search service, repositories,
+    access policies, and templates — only the embedder, the vector store, and the
+    model are doubled — because the whole design claim is "a section is a
+    pipeline answer" and a faked pipeline would make every grounding, citation,
+    and authorization assertion a test of the fixture.
+    - **Migration verified against live PostgreSQL**, `upgrade → downgrade →
+      upgrade`, which is what proves the enum-drop in `downgrade()` actually
+      works: without it a re-upgrade fails with *"type already exists"*, the trap
+      every enum migration here documents. Needed the socat proxy workaround
+      recorded further down (a local Windows PostgreSQL still shadows the
+      container on port 5432).
+    - **Live validation against the real Gemini model was partial, and the
+      partial result is the valuable one.** It found the output-ceiling defect —
+      a section came back as **151 characters, `finish_reason=MAX_TOKENS`, 41
+      visible tokens of 1024** — which is unreachable from a hermetic run because
+      the double returns whatever string the test wrote. After the fix the same
+      section returned **628 characters with `finish_reason=STOP`**, grounded,
+      with two resolving citations drawn from a corpus that went through the real
+      OCR → indexing → bge-m3 → retrieval path. **The full four-section run did
+      not complete**: the free tier's 20-requests-per-day allowance was exhausted
+      and the provider answered `429 RESOURCE_EXHAUSTED` (confirmed by a direct
+      probe — the platform deliberately never logs an SDK message). That is an
+      account condition, and the platform handled it exactly as designed: three
+      retries with exponential backoff, then a `failed` run carrying
+      `llm_failure`, a user-facing message naming no internals, a timeline entry,
+      and the run left regenerable.
+    - `tests/ai/test_reports_live.py` is the opt-in module for re-running that
+      check (`LLM_API_KEY=… RUN_LIVE_AI_TESTS=1`). It is **one test rather than
+      eight** on purpose: `db_session` is function-scoped so a module-scoped
+      report cannot be shared, and eight tests would be thirty-two model calls —
+      the free tier's entire daily allowance spent on eight assertions about the
+      same document.
 
 - **AI Legal Assistant (spec `13-ai-legal-assistant.md`)** — the fifth stage of
   the AI pipeline and the conversational surface over the fourth: a message is
@@ -3621,6 +3763,44 @@ blocking its validation):
   Redis is unavailable. Frontend tests run under Vitest + Testing Library
   (`npm test` in `apps/web`) against a scripted `fetch` double in
   `tests/helpers.ts`.
+- **Arabic PDF export works with no configuration, and the three things that
+  make it work are each a trap on their own.** ReportLab's built-in Type 1 fonts
+  are Latin-only, so `services/report_export.py` (a) **discovers** a font from
+  `ARABIC_FONT_CANDIDATES` when `REPORT_PDF_FONT_PATH` is unset, (b) **verifies**
+  each candidate against the font's own character map, and (c) **shapes and
+  reorders** the text with `arabic-reshaper` + `python-bidi`, which are now
+  required dependencies.
+  - **(b) is the one that is easy to get wrong.** `DejaVuSans.ttf` exists on
+    almost every Linux host, is the first thing a font search finds, and maps
+    **no Arabic codepoint at all** — so a discovery that trusted filenames would
+    have reintroduced the silent page of boxes it exists to prevent. It is
+    explicitly *not* a candidate, and the check is
+    `0x0628 in TTFont(...).face.charToGlyph`.
+  - **For a container image:** `apt-get install -y fonts-noto-core` (or
+    `fonts-hosny-amiri`). There is no Dockerfile in the repo yet — `infrastructure/docker`
+    is still empty — so this is the note that will need to become a line in one.
+  - **Verified end to end on Windows**, which is the useful part: the exporter
+    discovered `C:\Windows\Fonts\arial.ttf`, rendered an Arabic report, and the
+    page was then **rasterised with pdf2image and read back with Tesseract**
+    (both already dependencies, and `OCR_LANGUAGES` already includes `ara`).
+    The OCR returned `ملخص القضية — CASE-2026-0001`, `نظرة عامة`,
+    `يتعلق النزاع بعقد كراء تجاري [1]`, `المراجع`, and `[1] bail.pdf — p. 7 (v1)`
+    — correctly joined, correctly ordered, with the Latin filename and the
+    citation marker in the right places. A PDF that merely *has bytes* proves
+    nothing here; a PDF an OCR engine can read back as Arabic does.
+  - A path set in `REPORT_PDF_FONT_PATH` that is missing or has no coverage is
+    logged and **falls through to the search** rather than failing — a typo in
+    one setting should not cost a deployment an export it could otherwise have
+    produced. Only when nothing is found anywhere is an Arabic PDF refused, and
+    **French and English are unaffected throughout**.
+- **Report generation on a free-tier key is not practical.** One case summary is
+  **seven** model calls against an allowance of 20 per day; the executive summary
+  is four. `REPORT_MAX_ACTIVE_PER_USER` (3) bounds what one browser tab can
+  spend, and `REPORT_WORKER_CONCURRENCY` is **1** for the same reason — a second
+  worker doubles the rate a key is spent without making any single report
+  faster. For free-tier bursts also raise `LLM_RETRY_BACKOFF_SECONDS` to 8, as
+  the RAG notes above record; three attempts at 1s/2s cannot ride out a
+  thirty-second rate-limit window.
 - **Adding a permission (the whole checklist):** add the member to
   `Permission` in `apps/api/core/permissions.py`, grant it to the roles that
   should hold it in `apps/api/core/roles.py` (administrators get it for free),

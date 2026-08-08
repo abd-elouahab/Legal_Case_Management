@@ -138,8 +138,24 @@ class Permission(StrEnum):
     TIMELINE_CREATE = "timeline:create"
 
     # --- Reports ------------------------------------------------------------ #
+    #: Read, export, and delete the reports in one's **own** history. Note that
+    #: holding it grants nothing on its own: every read in
+    #: :mod:`repositories.report` is keyed by the requester, so a report belongs
+    #: to exactly one user and is invisible to everyone else — the same shape a
+    #: conversation has, and the reason there is no ``reports:view-all``.
     REPORTS_VIEW = "reports:view"
+    #: Ask the platform to generate a report for a case. Held alongside
+    #: ``ai:generate-report``, and **both are required** — see
+    #: :mod:`api.v1.reports.router` for why. Withheld from court
+    #: representatives, exactly as every other AI capability is.
     REPORTS_GENERATE = "reports:generate"
+    #: Read platform-wide report metrics — reports generated, average generation
+    #: time, exports, failures, average report size, token usage. Not scoped to a
+    #: case or to a user, so it is deliberately an administrative capability
+    #: rather than something every report author holds — exactly like
+    #: ``ocr:monitor``, ``indexing:monitor``, ``search:monitor``, and
+    #: ``ai:monitor``.
+    REPORTS_MONITOR = "reports:monitor"
 
     # --- Notifications ------------------------------------------------------ #
     NOTIFICATIONS_VIEW = "notifications:view"

@@ -33,6 +33,11 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     "search:query",
     "timeline:view",
     "timeline:create",
+    // Read and generate reports on the cases they are assigned to. Note that
+    // `reports:view` is not a row grant: every read on the API is keyed by the
+    // requester, so a lawyer reads their own history and nobody else's.
+    // `reports:monitor` is withheld, like every other `*:monitor` permission —
+    // the platform-wide view is administrative.
     "reports:view",
     "reports:generate",
     // Both AI grants, because a message needs both: `ai:chat` is the
@@ -509,6 +514,193 @@ export function indexMetricsPayload(overrides: Record<string, unknown> = {}) {
     vector_store_available: true,
     vector_collection_exists: true,
     stored_vectors: 96,
+    enabled: true,
+    ...overrides,
+  };
+}
+
+// --------------------------------------------------------------------------- //
+// AI report fixtures
+// --------------------------------------------------------------------------- //
+
+/**
+ * One report history row in the API's wire format.
+ *
+ * Defaults to a **completed** report, because that is the state most assertions
+ * need. `is_terminal`, `is_active`, and `progress_percent` are computed here the
+ * way the server computes them, so a fixture cannot describe a row the API could
+ * never send — a queued report reporting 100% would make a progress test pass
+ * against nothing.
+ */
+export function reportPayload(overrides: Record<string, unknown> = {}) {
+  const status = (overrides.status as string | undefined) ?? "completed";
+  const active = status === "pending" || status === "processing";
+  const total = (overrides.sections_total as number | undefined) ?? 4;
+  const done = active ? ((overrides.sections_completed as number | undefined) ?? 1) : total;
+
+  return {
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    case_id: "22222222-2222-4222-8222-222222222222",
+    conversation_id: null,
+    report_type: "case_summary",
+    title: "Case Summary — CASE-2026-0001",
+    language: "fr",
+    status,
+
+    sections_total: total,
+    sections_completed: done,
+
+    started_at: active ? "2026-08-07T09:30:00Z" : "2026-08-07T09:30:00Z",
+    finished_at: active ? null : "2026-08-07T09:32:10Z",
+    duration_ms: active ? null : 130_000,
+    duration_seconds: active ? null : 130.0,
+    attempt_count: 1,
+
+    retrieved_count: active ? null : 24,
+    context_count: active ? null : 18,
+    grounded_sections: active ? null : 3,
+    character_count: active ? null : 4820,
+
+    provider: "gemini",
+    model: "gemini-2.5-flash",
+    prompt_name: "rag/answer",
+    prompt_version: 1,
+    template_version: 1,
+
+    prompt_tokens: active ? null : 4800,
+    completion_tokens: active ? null : 1600,
+    total_tokens: active ? null : 6400,
+
+    error_code: null,
+    error_message: null,
+
+    export_count: 0,
+    last_exported_at: null,
+
+    created_at: "2026-08-07T09:29:50Z",
+    updated_at: "2026-08-07T09:32:10Z",
+
+    is_terminal: !active,
+    is_active: active,
+    progress_percent: status === "completed" ? 100 : active ? Math.floor((done / total) * 100) : 0,
+    ...overrides,
+  };
+}
+
+/** One section of a finished report, in the API's wire format. */
+export function reportSectionPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    key: "overview",
+    title: "Aperçu",
+    content: "Le litige porte sur un bail commercial [1].",
+    grounded: true,
+    citation_markers: [1],
+    retrieved_count: 6,
+    context_count: 4,
+    duration_ms: 18_000,
+    ...overrides,
+  };
+}
+
+/** One report with its sections and citations, in the API's wire format. */
+export function reportDetailPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    // Overrides are threaded through `reportPayload` rather than applied only at
+    // the end, so a fixture asking for `status: "processing"` also gets the
+    // `is_active` and `progress_percent` the server would compute for it — a
+    // detail payload describing a running report that claims to be finished
+    // would make every progress assertion pass against nothing.
+    ...reportPayload(overrides),
+    sections: [
+      reportSectionPayload(),
+      reportSectionPayload({
+        key: "parties",
+        title: "Parties",
+        content: "Les documents indexés de cette affaire ne couvrent pas cette section.",
+        grounded: false,
+        citation_markers: [],
+      }),
+    ],
+    // Deliberately the *RAG pipeline's* citation shape, because that is exactly
+    // what the API returns — the report renumbers the marker and changes nothing
+    // else.
+    citations: [assistantCitationPayload()],
+    citation_count: 1,
+    document_count: 1,
+    references_title: "Références",
+    disclaimer:
+      "Rapport généré automatiquement à partir des documents indexés de cette affaire. " +
+      "Il ne constitue pas un conseil juridique.",
+    ...overrides,
+  };
+}
+
+export function reportPagePayload(
+  items: Array<Record<string, unknown>> = [reportPayload()],
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    items,
+    total_records: items.length,
+    page: 1,
+    page_size: 20,
+    total_pages: 1,
+    ...overrides,
+  };
+}
+
+/** The report-type catalogue, in the API's wire format. */
+export function reportTemplatesPayload() {
+  return [
+    {
+      report_type: "case_summary",
+      title: "Synthèse de l'affaire",
+      description: "Vue complète du dossier, de bout en bout.",
+      sections: [
+        { key: "overview", title: "Aperçu" },
+        { key: "parties", title: "Parties" },
+      ],
+      section_count: 2,
+    },
+    {
+      report_type: "hearing_preparation",
+      title: "Préparation d'audience",
+      description: "Ce qu'il faut avoir sous les yeux à la prochaine audience.",
+      sections: [{ key: "overview", title: "Aperçu" }],
+      section_count: 1,
+    },
+  ];
+}
+
+/** Platform-wide report metrics in the API's wire format. */
+export function reportMetricsPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    total_reports: 10,
+    pending: 1,
+    processing: 1,
+    completed: 6,
+    failed: 2,
+    success_rate: 75.0,
+    failure_rate: 25.0,
+    average_duration_ms: 128_000,
+    average_duration_seconds: 128.0,
+    average_characters: 4820.0,
+    total_sections: 24,
+    grounded_sections: 20,
+    grounding_rate: 83.33,
+    total_exports: 4,
+    exported_reports: 3,
+    total_prompt_tokens: 28_800,
+    total_completion_tokens: 9600,
+    metered_reports: 6,
+    average_total_tokens: 6400.0,
+    reports_by_type: { case_summary: 4, evidence_summary: 2 },
+    failures_by_code: { llm_unavailable: 1, insufficient_context: 1 },
+    window_days: null,
+    available_formats: ["markdown", "pdf"],
+    template_version: 1,
+    llm_available: true,
+    prompt_available: true,
     enabled: true,
     ...overrides,
   };

@@ -68,6 +68,13 @@ _LAWYER_PERMISSIONS: frozenset[Permission] = BASE_PERMISSIONS | {
     Permission.SEARCH_QUERY,
     Permission.TIMELINE_VIEW,
     Permission.TIMELINE_CREATE,
+    # Read and generate AI reports on the cases they are assigned to. Note that
+    # `reports:view` is not a row grant: a report belongs to the user who asked
+    # for it, and `repositories/report.py` keys every read by that user — so a
+    # lawyer holding this reads their own history and nobody else's, exactly as
+    # `ai:chat` gives them their own conversations. `reports:monitor` is
+    # deliberately **withheld**, like every other `*:monitor` permission: the
+    # platform-wide view is administrative and is not scoped to a case.
     Permission.REPORTS_VIEW,
     Permission.REPORTS_GENERATE,
     # Ask the RAG pipeline a question about the documents they can already read.

@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Bell,
   Bot,
+  FileBarChart,
   FileText,
   Gavel,
   LayoutDashboard,
@@ -123,8 +124,15 @@ export const sidebarNavigation: NavSection[] = [
       {
         title: "Reports",
         href: ROUTES.reports,
-        icon: FileText,
-        description: "Generated legal reports",
+        icon: FileBarChart,
+        description: "AI-generated legal reports",
+        // Gated on `reports:view`, which is *reading your own history* rather
+        // than a row grant — every read on the API is keyed by the requester, so
+        // a lawyer holding this sees the reports they generated and nobody
+        // else's. Generating additionally needs `reports:generate` and
+        // `ai:generate-report`, which the page's own controls check: a
+        // destination nobody can generate in is still worth reaching, because
+        // the reports already there are readable and exportable.
         access: { permission: PERMISSION.reportsView },
       },
     ],
