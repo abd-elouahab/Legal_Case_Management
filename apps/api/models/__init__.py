@@ -17,6 +17,7 @@ from models.conversation import (
     MessageFeedback,
 )
 from models.document import Document, DocumentCategory, DocumentVersion
+from models.email import EmailDelivery, EmailDeliveryStatus
 from models.indexing import DocumentIndex, IndexStatus
 from models.notification import Notification, NotificationPreference
 from models.ocr import OcrPage, OcrResult, OcrStatus
@@ -36,6 +37,8 @@ __all__ = [
     "DocumentCategory",
     "DocumentIndex",
     "DocumentVersion",
+    "EmailDelivery",
+    "EmailDeliveryStatus",
     "FeedbackRating",
     "IndexStatus",
     "MessageFeedback",

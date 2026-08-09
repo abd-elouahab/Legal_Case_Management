@@ -1,0 +1,65 @@
+{#
+  The HTML half of a platform notification.
+
+  Three constraints shape everything below, and none of them is a style choice:
+
+  * **Rendered by the ESCAPING Jinja environment** (see
+    `services/email_templates.py`). Every `{{ … }}` here is autoescaped, which is
+    what makes an administrator's announcement — a human's words, reaching
+    `message` — safe to interpolate into markup.
+  * **A mail client is not a browser.** No external stylesheet, no web font, no
+    remote image, and no `<style>` block that can be relied on: several major
+    clients strip the `<head>` entirely. So the styling is inline, the layout is a
+    table, and the palette is written out rather than referenced — `ui-context.md`'s
+    "never hardcode colors, use design tokens" governs the application's own
+    surfaces, and there is no stylesheet here for a token to live in. The values
+    below ARE `ui-context.md`'s tokens, transcribed, so the email looks like the
+    product it came from.
+  * **`dir` travels in the document.** Arabic is one of the platform's two
+    languages and a mail client has no idea which one this is, so the direction
+    is on `<html>` and the text alignment follows it.
+
+  Like the plain-text part, this file contains no sentence of its own: every word
+  is `chrome` or the notification itself, from `core/email.py`.
+#}
+<html lang="{{ language }}" dir="{{ direction }}">
+  <body style="margin:0;padding:0;background-color:#0F172A;color:#F8FAFC;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0F172A;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background-color:#1E293B;border:1px solid #334155;border-radius:12px;">
+            <tr>
+              <td style="padding:24px 28px 8px 28px;text-align:{{ 'right' if direction == 'rtl' else 'left' }};">
+                <p style="margin:0;font-size:13px;line-height:20px;color:#94A3B8;">{{ platform_name }}</p>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:0 28px;text-align:{{ 'right' if direction == 'rtl' else 'left' }};">
+                <p style="margin:0 0 16px 0;font-size:15px;line-height:24px;color:#CBD5E1;">{{ chrome.greeting }}</p>
+                <h1 style="margin:0 0 12px 0;font-size:20px;line-height:28px;font-weight:600;color:#F8FAFC;">{{ title }}</h1>
+                <p style="margin:0;font-size:15px;line-height:24px;color:#CBD5E1;">{{ message }}</p>
+              </td>
+            </tr>
+
+            {% if action_url %}
+            <tr>
+              <td style="padding:24px 28px 0 28px;text-align:{{ 'right' if direction == 'rtl' else 'left' }};">
+                <a href="{{ action_url }}" style="display:inline-block;padding:10px 20px;background-color:#3B82F6;color:#F8FAFC;font-size:14px;line-height:20px;font-weight:600;text-decoration:none;border-radius:8px;">{{ chrome.action_label }}</a>
+              </td>
+            </tr>
+            {% endif %}
+
+            <tr>
+              <td style="padding:28px 28px 24px 28px;">
+                <hr style="border:0;border-top:1px solid #334155;margin:0 0 16px 0;" />
+                <p style="margin:0 0 6px 0;font-size:12px;line-height:18px;color:#94A3B8;text-align:{{ 'right' if direction == 'rtl' else 'left' }};">{{ chrome.footer }}</p>
+                <p style="margin:0;font-size:12px;line-height:18px;color:#94A3B8;text-align:{{ 'right' if direction == 'rtl' else 'left' }};">{{ chrome.no_reply }}</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

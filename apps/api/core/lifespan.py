@@ -20,6 +20,7 @@ from core.logging import configure_logging
 from core.readiness import probe_dependencies
 from core.vector import close_qdrant
 from db.session import dispose_engine
+from services.email_worker import start_email_workers, stop_email_workers
 from services.events import get_event_dispatcher
 from services.indexing_worker import start_index_workers, stop_index_workers
 from services.notification_events import get_notification_subscriber
@@ -168,10 +169,22 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # the loop — cannot ask for it: `get_running_loop` fails on any thread that is
     # not the loop's, which that one is not, by design.
     _start_realtime()
-    # After the channel, because notifications *deliver over it*: the service
-    # persists a notification and then publishes `notification.created` back onto
-    # the same dispatcher, so the manager must already be subscribed or the first
-    # badge would not move until its owner's next poll.
+    # Before notifications, and the order is load-bearing in the same way the
+    # channel's is: the notification service hands each created batch to the email
+    # channel, which enqueues onto this pool. Starting it afterwards would mean the
+    # very first notification of a process's life queued a delivery into a pool
+    # that had not been created — recoverable, since the sweeper's startup pass
+    # would find the row, but only after an interval nobody should have to wait.
+    #
+    # It also runs the **retry sweep** once, synchronously, which is the recovery
+    # for deliveries a previous process left queued: their schedule lived in that
+    # process's memory and nothing else would ever pick them up.
+    start_email_workers()
+    # After the channel and after the mail pool, because notifications *deliver
+    # over both*: the service persists a notification, publishes
+    # `notification.created` back onto the same dispatcher, and hands the batch to
+    # the email channel. The manager must already be subscribed or the first badge
+    # would not move until its owner's next poll.
     _start_notifications()
 
     yield
@@ -182,6 +195,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # not yet written, and unlike an event — which a reconnecting client refetches
     # past — there is nowhere else it survives.
     _stop_notifications()
+    # After the notification queue has drained, and the mirror of starting before
+    # it: the last notifications to be created are the last to hand a delivery to
+    # this pool, so draining the pool first would strand exactly those. Draining
+    # rather than cancelling, because a send stopped mid-flight leaves its row at
+    # `sending` — the one state no other worker will claim until the stale reclaim
+    # finds it.
+    stop_email_workers()
     # First on the way out, and the mirror of being last in: connections are
     # closed before the workers that publish to them are drained, so a report
     # finishing during shutdown does not queue an event onto sockets that are

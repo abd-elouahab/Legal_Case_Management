@@ -118,10 +118,10 @@ rather than by review:
 - Notification delivery failures must be retried automatically.
 - Scheduled reminders must execute through background workers.
 
-Implemented per `16-notifications.md` (in-app only; email, WhatsApp, push, SMS,
-and scheduled reminders remain unbuilt). The rules that follow are what those six
-mean in this codebase, and each is enforced by a type or a boundary rather than
-by review:
+Implemented per `16-notifications.md` (in-app) and `17-email-delivery-channel.md`
+(email). WhatsApp, push, SMS, and scheduled reminders remain unbuilt. The rules
+that follow are what those six mean in this codebase, and each is enforced by a
+type or a boundary rather than by review:
 
 - **Never call the Notification Service from a business module.** There is no
   import to write: notifications are created by `NotificationEventSubscriber`,
@@ -152,6 +152,33 @@ by review:
 - **A preference silences what comes next, never what has arrived.** Switching
   one off stops creation and leaves the existing feed alone, which is the only
   behaviour that makes the choice reversible.
+
+The email channel adds four more, and every one of them is about the *boundary*
+rather than about mail:
+
+- **A delivery channel consumes notifications, never events.** A channel
+  implements `NotificationDispatcher` — one method, taking rows the Notification
+  Service has already created, authorized, and persisted — and holds no event
+  publisher and no business service. It can only ever *narrow* what the platform
+  already decided to say, so a bug in a channel is a message that did not go out,
+  never one that went to the wrong person. Subscribing a channel to the event
+  dispatcher is a mistake; that is the Notification Service's job and only its
+  job.
+- **Which notifications travel on a channel is a table, keyed by notification
+  rule.** `EMAIL_RULES` in `core/email.py`; a channel cannot express "deliver
+  this *event*", because an event is not something it can name. Adding a
+  supported type is one entry, and a rule that is absent produces nothing —
+  silently and correctly.
+- **Compose from `core/notifications.py`, never from a copy of the wording.**
+  The subject is the notification's rendered title and the body's lead is its
+  rendered message, in the recipient's language. A channel that restated a
+  sentence would be a second place for the platform's wording to drift, and an
+  Arabic recipient would find out first.
+- **A channel's failures are its own.** Delivery runs on its own worker with its
+  own persisted lifecycle and its own retry schedule; the notification, the case,
+  and the document are untouched however a send ends, because the channel writes
+  to one table. `dispatch()` must not raise and must not block — it is called on
+  the notification worker's thread, after that batch has already committed.
 
 ---
 
@@ -265,11 +292,15 @@ by review:
 - `modules/cases/` — Case lifecycle management.
 - `modules/documents/` — Document management and OCR.
 - `modules/reports/` — Report generation and exports.
-- `modules/notifications/` — Notification service (In-App today; Email and
-  WhatsApp are the channels the preference model's `in_app` column is shaped to
-  receive). Implemented inside `apps/api` and `apps/web` like every other module;
-  `services/notification_events.py` is its **one** connection to the rest of the
-  platform, and it points inward — nothing imports the notification service.
+- `modules/notifications/` — Notification service (In-App and **Email**; WhatsApp,
+  push, and SMS are the channels the preference model's remaining columns are
+  shaped to receive). Implemented inside `apps/api` and `apps/web` like every
+  other module; `services/notification_events.py` is its **one** connection to
+  the rest of the platform, and it points inward — nothing imports the
+  notification service. The email channel is `core/email.py`,
+  `models/email.py`, `repositories/email.py`, `services/email_*.py`, and the
+  templates in `apps/api/emails/`; it imports the notification vocabulary and
+  nothing in the notification module imports it back.
 - `modules/users/` — User management and RBAC.
 - `modules/localization/` — Arabic, French, translations, and RTL support.
 - `services/ai/` — AI agents, RAG pipeline, embeddings, prompts, and LLM integrations.

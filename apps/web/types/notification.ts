@@ -218,12 +218,35 @@ export const NOTIFICATION_PREFERENCE_LABELS: Record<
   },
 };
 
-/** One preference, as it currently stands. */
+/** The channels a notification can be delivered on. */
+export const NOTIFICATION_CHANNELS = ["inApp", "email"] as const;
+export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
+
+/** One preference, as it currently stands, on every channel. */
 export interface NotificationPreference {
   preferenceKey: NotificationPreferenceKey;
   inApp: boolean;
+  /**
+   * Whether emails of this kind are delivered.
+   *
+   * A `true` does not mean an email is sent: only the notification kinds the
+   * platform marks for email travel on that channel, and only when the
+   * deployment has configured a provider.
+   */
+  email: boolean;
   /** Whether this is the platform default rather than a choice the user made. */
   isDefault: boolean;
+}
+
+/**
+ * A change to one preference. Both channels are optional and omitting one leaves
+ * it alone, which matches the API exactly — a panel that toggles the email switch
+ * must not silently rewrite the in-app one.
+ */
+export interface NotificationPreferenceChange {
+  preferenceKey: NotificationPreferenceKey;
+  inApp?: boolean;
+  email?: boolean;
 }
 
 /** Which announcement a `POST /notifications/announcements` publishes. */

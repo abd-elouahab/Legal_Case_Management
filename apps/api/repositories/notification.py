@@ -38,7 +38,7 @@ Four things are load-bearing rather than routine:
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -50,7 +50,12 @@ from sqlalchemy.sql.elements import UnaryExpression
 
 from core.notifications import (
     PRIORITY_RANK,
+    ChannelPreference,
+    ChannelPreferenceUpdate,
+    NotificationChannel,
     NotificationPriority,
+    default_preference,
+    preference_from_value,
 )
 from models.notification import Notification, NotificationPreference
 from schemas.case import SortOrder
@@ -396,32 +401,54 @@ class NotificationRepository:
 
     # --------------------------------------------------------- preferences #
 
-    def preferences_for(self, user_id: uuid.UUID) -> dict[str, bool]:
-        """Every preference this user has actually expressed, as ``key → in_app``.
+    def preferences_for(self, user_id: uuid.UUID) -> dict[str, ChannelPreference]:
+        """Every preference this user has expressed, as ``key → every channel``.
 
         Only the stored rows. An account that has never opened the settings page
         has none, and the caller applies
         :data:`~core.notifications.DEFAULT_PREFERENCES` — which is what makes a
         change to those defaults reach every untouched account without a
         backfill.
+
+        Every row that exists is, by definition, a choice somebody made, which is
+        why :attr:`~core.notifications.ChannelPreference.is_default` is ``False``
+        on all of them. The service is what fills in the keys with no row at all.
         """
         rows = self._session.execute(
-            select(NotificationPreference.preference_key, NotificationPreference.in_app).where(
-                NotificationPreference.user_id == user_id
-            )
+            select(
+                NotificationPreference.preference_key,
+                NotificationPreference.in_app,
+                NotificationPreference.email,
+            ).where(NotificationPreference.user_id == user_id)
         ).all()
-        return {str(key): bool(in_app) for key, in_app in rows}
+        return {
+            str(key): ChannelPreference(
+                in_app=bool(in_app), email=bool(email), is_default=False
+            )
+            for key, in_app, email in rows
+        }
 
     def preferences_for_many(
-        self, user_ids: Sequence[uuid.UUID], *, preference_key: str
+        self,
+        user_ids: Sequence[uuid.UUID],
+        *,
+        preference_key: str,
+        channel: NotificationChannel = NotificationChannel.IN_APP,
     ) -> dict[uuid.UUID, bool]:
-        """One preference's value for a whole batch of people, in one query.
+        """One preference's value on one channel, for a whole batch, in one query.
 
-        The query the subscriber runs per event: it has a rule, therefore one
-        preference key, and a list of candidate recipients. Asking per person
+        The query the subscriber runs per event — it has a rule, therefore one
+        preference key, and a list of candidate recipients — and the query the
+        email dispatcher runs per batch, with ``channel=EMAIL``. Asking per person
         would make the cost of an event proportional to the size of the team it
         fans out to, which is exactly what the spec's Performance section rules
         out.
+
+        The channel selects a **column**, chosen from
+        :class:`~core.notifications.NotificationChannel` rather than from a
+        caller-supplied string — so this stays one method as channels are added
+        instead of one method per channel, and there is still no path from a
+        request to a column name.
 
         Absent entries mean "no opinion expressed" and are the caller's to
         default, not this method's to invent.
@@ -429,16 +456,34 @@ class NotificationRepository:
         if not user_ids:
             return {}
 
+        column = (
+            NotificationPreference.email
+            if channel is NotificationChannel.EMAIL
+            else NotificationPreference.in_app
+        )
         rows = self._session.execute(
-            select(NotificationPreference.user_id, NotificationPreference.in_app).where(
+            select(NotificationPreference.user_id, column).where(
                 NotificationPreference.user_id.in_(list(user_ids)),
                 NotificationPreference.preference_key == preference_key,
             )
         ).all()
-        return {user_id: bool(in_app) for user_id, in_app in rows}
+        return {user_id: bool(enabled) for user_id, enabled in rows}
 
-    def set_preferences(self, user_id: uuid.UUID, values: dict[str, bool]) -> dict[str, bool]:
+    def set_preferences(
+        self, user_id: uuid.UUID, values: Mapping[str, ChannelPreferenceUpdate]
+    ) -> dict[str, ChannelPreference]:
         """Store this user's answers, creating or updating one row per key.
+
+        **Partial per channel, not only per key.** A change carrying only
+        ``email`` leaves ``in_app`` exactly as it was, which is what lets a
+        settings page with two switches per row save one of them without
+        rewriting the other — and what stops an older client that has never heard
+        of a channel from turning it off by omission.
+
+        A key with no stored row takes the platform default for whichever channel
+        the change does not mention, so the row that gets written says what the
+        user would have seen rather than ``False`` for a switch they never
+        touched.
 
         Read-then-write rather than a dialect-specific upsert, deliberately: the
         platform's test database is SQLite and its production database is
@@ -466,16 +511,33 @@ class NotificationRepository:
             .all()
         }
 
-        for key, in_app in values.items():
+        for key, change in values.items():
+            if change.is_empty:
+                continue
+
             row = existing.get(key)
             if row is None:
+                resolved = preference_from_value(key)
+                fallback = (
+                    default_preference(resolved, NotificationChannel.IN_APP)
+                    if resolved is not None
+                    else True
+                )
                 self._session.add(
                     NotificationPreference(
-                        id=uuid.uuid4(), user_id=user_id, preference_key=key, in_app=in_app
+                        id=uuid.uuid4(),
+                        user_id=user_id,
+                        preference_key=key,
+                        in_app=change.in_app if change.in_app is not None else fallback,
+                        email=change.email if change.email is not None else fallback,
                     )
                 )
-            elif row.in_app != in_app:
-                row.in_app = in_app
+                continue
+
+            if change.in_app is not None and row.in_app != change.in_app:
+                row.in_app = change.in_app
+            if change.email is not None and row.email != change.email:
+                row.email = change.email
 
         self._session.commit()
         return self.preferences_for(user_id)

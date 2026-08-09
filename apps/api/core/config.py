@@ -30,6 +30,17 @@ DEV_JWT_SECRET_PLACEHOLDER = "dev-only-insecure-jwt-secret-change-me"
 # for HMAC-SHA256; 32+ chars is the widely recommended floor).
 MIN_JWT_SECRET_LENGTH = 32
 
+# Languages EMAIL_DEFAULT_LANGUAGE may name.
+#
+# Written out here rather than imported from `core.rag.SUPPORTED_ANSWER_LANGUAGES`,
+# which is where the platform actually defines the set: **this module is imported
+# by everything, including `core.rag` itself**, so reaching for it during
+# validation is a circular import at startup. A duplicated three-element literal
+# is the cheaper of the two problems, and it is not left to drift — a unit test
+# asserts the two sets are equal, which fails the build rather than producing an
+# email in a language the renderer will silently replace.
+SUPPORTED_EMAIL_LANGUAGES: frozenset[str] = frozenset({"ar", "fr", "en"})
+
 
 class Environment(StrEnum):
     """Supported runtime environments."""
@@ -552,6 +563,109 @@ class Settings(BaseSettings):
     # its own endpoint and is one UPDATE whatever the history's size.
     NOTIFICATION_MAX_BULK_READ: int = 200
 
+    # --- Email delivery channel ---
+    # The second delivery channel for the notifications the platform already
+    # creates. It decides nothing about *what* is worth telling somebody — that
+    # stays with the business modules and the Notification Service — and only
+    # delivers the subset marked for email in `core/email.py`.
+    #
+    # **Off by default, and this is the one feature switch on the platform that
+    # is.** OCR, indexing, search, RAG, reports, real-time, and notifications all
+    # default to on, because the worst case of an unconfigured one is a recorded
+    # failure nobody outside the platform sees. Email is different in kind: it is
+    # the platform's only *outward-facing* side effect, and a deployment that has
+    # not yet chosen a relay, a from-address, and a base URL should not be sending
+    # messages to real people the first time somebody is assigned a case. Turning
+    # it on is one line, and everything else already works.
+    EMAIL_ENABLED: bool = False
+    # Which provider implementation to use (see `services/email_provider.py`). An
+    # unrecognised value falls back to the default rather than failing startup —
+    # the same posture LLM_PROVIDER and PROMPT_LIBRARY take. `null` accepts and
+    # discards, which is what an integration test and a staging environment want.
+    EMAIL_PROVIDER: str = "smtp"
+    # Which renderer produces the message bodies. Templates live in
+    # `apps/api/emails/` as versioned `.j2` files under source control, in three
+    # parts each: subject, HTML, and plain text.
+    EMAIL_TEMPLATE_RENDERER: str = "jinja-files"
+    # Envelope sender. Required in practice — a message with no From is refused by
+    # every relay — but absent is *handled* rather than fatal: the provider
+    # reports the send as refused and the delivery is recorded, exactly as a
+    # missing LLM_API_KEY produces a recorded failure rather than a crash.
+    EMAIL_FROM_ADDRESS: str | None = None
+    # Display name on the From header, and the platform's name in the templates'
+    # signature. A setting rather than PROJECT_NAME, because the API's internal
+    # name ("… Platform API") is not what should appear in a lawyer's inbox.
+    EMAIL_FROM_NAME: str = "Legal Case Management Platform"
+    # Where replies go, when replies are wanted. Blank leaves the header off, and
+    # the templates say the address is unattended either way.
+    EMAIL_REPLY_TO: str | None = None
+    # Public URL of the web application, used to build the "open in the platform"
+    # link. Blank produces **linkless but correct** mail rather than a broken
+    # `/cases/…` with no host: see `core.email.target_url`. Falls back to the
+    # first CORS origin, which in every deployment configured so far is exactly
+    # the web application's own address.
+    EMAIL_BASE_URL: str | None = None
+    # Optional prefix on every subject line — what a deployment running several
+    # environments against one mailbox needs so a staging message is
+    # distinguishable from a real one.
+    EMAIL_SUBJECT_PREFIX: str | None = None
+    # Which language emails are written in. There is **no per-user language
+    # column yet** (`architecture.md` lists Language Preferences under PostgreSQL
+    # and nothing has built them), so this is the deployment's answer rather than
+    # the recipient's; when that column arrives, one call site changes. `fr`
+    # matches `core.notifications.resolve_notification_language`'s own fallback.
+    EMAIL_DEFAULT_LANGUAGE: str = "fr"
+    # Background workers sending mail in this API process. Two by default: enough
+    # that one hung connection does not stop the queue, small enough that the
+    # platform never looks like a sender worth rate-limiting.
+    EMAIL_WORKER_CONCURRENCY: int = 2
+    # Send attempts per delivery, including the first. Only *transient* failures
+    # are retried (see `core/email.py`); a rejected credential, an unknown
+    # mailbox, and a broken template are not — retrying those reaches the same
+    # outcome more slowly and, for authentication, is how an account gets locked.
+    EMAIL_MAX_ATTEMPTS: int = 5
+    # Delay after the first transient failure, doubled per attempt (exponential
+    # backoff, as `code-standards.md` requires), and the ceiling that schedule
+    # never exceeds. The cap matters more than the base: without it a fifth
+    # attempt at 30s is eight minutes and a tenth is over four hours, which is
+    # long enough that a hearing reminder arrives after the hearing.
+    EMAIL_RETRY_BACKOFF_SECONDS: float = 30.0
+    EMAIL_RETRY_MAX_BACKOFF_SECONDS: float = 3600.0
+    # How often the sweeper looks for deliveries that have come due, and how many
+    # it re-queues per pass. The interval bounds the resolution of the retry
+    # schedule — a backoff shorter than it is effectively rounded up — and the
+    # batch size is what keeps recovering from an overnight relay outage from
+    # being its own outage.
+    EMAIL_RETRY_INTERVAL_SECONDS: int = 60
+    EMAIL_RETRY_BATCH_SIZE: int = 100
+    # How long a delivery may sit in `sending` before it is assumed to belong to a
+    # process that died and is returned to the queue. Generously above
+    # SMTP_TIMEOUT_SECONDS, because a send that is merely slow must never be
+    # reclaimed underneath the worker still doing it.
+    EMAIL_STALE_SENDING_SECONDS: int = 600
+
+    # --- SMTP (the shipped provider) ---
+    # Absent SMTP_HOST means "no provider configured": nothing is queued at all,
+    # `GET /notifications/email/metrics` reports `provider_available: false`, and
+    # every other feature is untouched — the same posture a missing Tesseract
+    # takes for OCR. `architecture.md` names SMTP / Mailpit; Mailpit's defaults
+    # are host `localhost`, port 1025, no TLS and no credentials.
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str | None = None
+    # Never logged, never in an exception, never in a metric — the same posture
+    # LLM_API_KEY and MINIO_SECRET_KEY take. Store it only in the environment.
+    SMTP_PASSWORD: str | None = None
+    # Transport security, stated rather than inferred from the port. USE_TLS
+    # upgrades a plaintext connection with STARTTLS (port 587, the modern
+    # default); USE_SSL opens an implicit-TLS connection (the historical port
+    # 465). They are separate because a relay supports one or the other, and
+    # guessing from the port number is how a deployment silently sends
+    # credentials in the clear.
+    SMTP_USE_TLS: bool = True
+    SMTP_USE_SSL: bool = False
+    SMTP_TIMEOUT_SECONDS: int = 10
+
     # --- Prompt templates ---
     # Which prompt backend to use (see `services/prompts.py`). Templates live in
     # `apps/api/prompts/` as versioned `.j2` files under source control.
@@ -696,6 +810,13 @@ class Settings(BaseSettings):
         "EMBEDDING_DEVICE",
         "LLM_API_KEY",
         "REPORT_PDF_FONT_PATH",
+        "EMAIL_FROM_ADDRESS",
+        "EMAIL_REPLY_TO",
+        "EMAIL_BASE_URL",
+        "EMAIL_SUBJECT_PREFIX",
+        "SMTP_HOST",
+        "SMTP_USERNAME",
+        "SMTP_PASSWORD",
         mode="before",
     )
     @classmethod
@@ -779,6 +900,13 @@ class Settings(BaseSettings):
         "NOTIFICATION_MAX_PAGE_SIZE",
         "NOTIFICATION_UNREAD_COUNT_CAP",
         "NOTIFICATION_MAX_BULK_READ",
+        "EMAIL_WORKER_CONCURRENCY",
+        "EMAIL_MAX_ATTEMPTS",
+        "EMAIL_RETRY_INTERVAL_SECONDS",
+        "EMAIL_RETRY_BATCH_SIZE",
+        "EMAIL_STALE_SENDING_SECONDS",
+        "SMTP_PORT",
+        "SMTP_TIMEOUT_SECONDS",
     )
     @classmethod
     def _require_positive(cls, value: int, info: ValidationInfo) -> int:
@@ -960,6 +1088,44 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _validate_email_limits(self) -> Settings:
+        """Keep the email delivery budgets coherent with one another.
+
+        Four couplings, and every one of them is invisible until mail is already
+        queued in a background worker where nobody is watching:
+
+        * a **backoff ceiling below the base delay** is not a ceiling, it is a
+          silent replacement — every retry would wait the cap and the exponential
+          schedule the operator configured would never happen;
+        * a **stale-send threshold at or below the provider timeout** reclaims
+          deliveries that are merely slow, so a relay taking nine seconds would
+          have its message re-queued and eventually sent twice — the one mistake
+          this feature must not make;
+        * **negative delays** are not shorter waits, they are undefined ones;
+        * an **unsupported default language** would render every email through
+          the fallback while the setting claimed otherwise. Checked against the
+          platform's own supported set rather than a list of its own, so the two
+          cannot drift.
+        """
+        if self.EMAIL_RETRY_MAX_BACKOFF_SECONDS < self.EMAIL_RETRY_BACKOFF_SECONDS:
+            raise ValueError(
+                "EMAIL_RETRY_MAX_BACKOFF_SECONDS must not be smaller than "
+                "EMAIL_RETRY_BACKOFF_SECONDS"
+            )
+        if self.EMAIL_RETRY_BACKOFF_SECONDS < 0:
+            raise ValueError("EMAIL_RETRY_BACKOFF_SECONDS must not be negative")
+        if self.EMAIL_STALE_SENDING_SECONDS <= self.SMTP_TIMEOUT_SECONDS:
+            raise ValueError(
+                "EMAIL_STALE_SENDING_SECONDS must be greater than SMTP_TIMEOUT_SECONDS"
+            )
+        if self.EMAIL_DEFAULT_LANGUAGE.strip().lower() not in SUPPORTED_EMAIL_LANGUAGES:
+            raise ValueError(
+                "EMAIL_DEFAULT_LANGUAGE must be one of "
+                f"{', '.join(sorted(SUPPORTED_EMAIL_LANGUAGES))}"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _validate_production_invariants(self) -> Settings:
         """Enforce safe defaults for production deployments (fail fast)."""
         if self.ENVIRONMENT is Environment.PRODUCTION:
@@ -1027,6 +1193,30 @@ class Settings(BaseSettings):
     def max_document_size_bytes(self) -> int:
         """Upload ceiling in bytes, derived from the configured megabytes."""
         return self.MAX_DOCUMENT_SIZE_MB * 1024 * 1024
+
+    @property
+    def email_base_url(self) -> str | None:
+        """Public address of the web application, for links inside emails.
+
+        ``EMAIL_BASE_URL`` when set, and otherwise the **first CORS origin** —
+        which in every deployment configured so far is exactly the web
+        application's own address, and is already something an operator has had to
+        get right for the frontend to work at all. Deriving it means a deployment
+        gets working links without a second setting saying the same thing twice,
+        and setting it explicitly is what a deployment behind a different public
+        hostname does.
+
+        ``None`` when neither is available, which produces **linkless but correct**
+        mail rather than a broken relative path — see
+        :func:`~core.email.target_url`.
+        """
+        if self.EMAIL_BASE_URL:
+            return self.EMAIL_BASE_URL.rstrip("/")
+        for origin in self.CORS_ORIGINS:
+            candidate = origin.strip().rstrip("/")
+            if candidate and candidate != "*":
+                return candidate
+        return None
 
     @property
     def login_failure_window(self) -> timedelta:

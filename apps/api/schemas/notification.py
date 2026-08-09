@@ -27,7 +27,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from core.config import settings
 from core.notifications import (
@@ -195,12 +195,50 @@ class NotificationReadAllRequest(BaseModel):
 
 
 class NotificationPreferenceUpdate(BaseModel):
-    """One preference the caller is changing."""
+    """One preference the caller is changing, on one or both channels.
+
+    **Both channel fields are optional, and that is the compatibility story.** A
+    client that sends only ``in_app`` — which is every client written before the
+    email channel existed — leaves ``email`` exactly as it was, rather than
+    switching it off by not mentioning it. The same protection applies in reverse
+    to whichever channel arrives next.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     preference_key: NotificationPreferenceKey = Field(description="Which preference to set.")
-    in_app: bool = Field(description="Whether in-app notifications of this kind are delivered.")
+    in_app: bool | None = Field(
+        default=None,
+        description=(
+            "Whether in-app notifications of this kind are delivered. Omitted leaves the "
+            "current value alone."
+        ),
+    )
+    email: bool | None = Field(
+        default=None,
+        description=(
+            "Whether emails of this kind are delivered. Omitted leaves the current value "
+            "alone. Note that this only ever *narrows*: a notification kind the platform does "
+            "not email is never emailed however this is set."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _require_a_change(self) -> NotificationPreferenceUpdate:
+        """Refuse an entry that changes nothing.
+
+        A ``{"preference_key": "case_updates"}`` with neither channel is almost
+        certainly a client bug — a field name typo, a stale mapping — and
+        accepting it silently would answer 200 while doing nothing, which is the
+        hardest kind of failure to notice from the outside.
+
+        A **model** validator rather than a field one, and the distinction is the
+        whole point here: a field validator does not run for a field the request
+        omitted, which is precisely the case this needs to catch.
+        """
+        if self.in_app is None and self.email is None:
+            raise ValueError("Set `in_app`, `email`, or both.")
+        return self
 
 
 class NotificationPreferencesUpdate(BaseModel):
@@ -471,10 +509,17 @@ class NotificationSummaryRead(BaseModel):
 
 
 class NotificationPreferenceRead(BaseModel):
-    """One preference, as it currently stands."""
+    """One preference, as it currently stands, on every channel."""
 
     preference_key: NotificationPreferenceKey
     in_app: bool = Field(description="Whether in-app notifications of this kind are delivered.")
+    email: bool = Field(
+        description=(
+            "Whether emails of this kind are delivered. Note that a `true` here does not mean "
+            "an email is sent: only the notification kinds the platform marks for email travel "
+            "on that channel, and only when a provider is configured."
+        )
+    )
     is_default: bool = Field(
         description=(
             "Whether this is the platform default rather than a choice the caller has made. "

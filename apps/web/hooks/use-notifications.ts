@@ -28,7 +28,7 @@ import type {
   NotificationMetrics,
   NotificationPage,
   NotificationPreference,
-  NotificationPreferenceKey,
+  NotificationPreferenceChange,
   NotificationSummary,
 } from "@/types/notification";
 
@@ -227,7 +227,7 @@ export function useNotificationPreferences(
 export function useUpdateNotificationPreferences(): UseMutationResult<
   NotificationPreference[],
   unknown,
-  Array<{ preferenceKey: NotificationPreferenceKey; inApp: boolean }>
+  NotificationPreferenceChange[]
 > {
   const queryClient = useQueryClient();
 

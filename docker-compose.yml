@@ -11,8 +11,16 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
 
+    # Published on 5433, not 5432, and deliberately: PostgreSQL's default port is
+    # the one a native install on the developer's machine already holds, and the
+    # failure mode when both exist is silent and confusing — the native server
+    # takes the IPv4 wildcard, Docker is left with IPv6 only, and every connection
+    # to `localhost:5432` reaches the wrong database and fails password
+    # authentication with credentials that are correct for the container.
+    # The container still listens on 5432 internally, so `POSTGRES_HOST=postgres`
+    # inside the compose network is unaffected; only the host-side port moves.
     ports:
-      - "5432:5432"
+      - "5433:5432"
 
     volumes:
       - postgres_data:/var/lib/postgresql/data

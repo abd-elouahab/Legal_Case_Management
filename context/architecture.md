@@ -25,8 +25,9 @@
 | Vector persistence | `qdrant-client` behind the `VectorStore` protocol (`services/vector_store.py`) | The only module that speaks Qdrant's data model **on the write side**. Exposes write, delete, and count — **and deliberately no query**, so retrieval cannot be smuggled in through it |
 | Vector retrieval | `qdrant-client` behind the `VectorSearcher` protocol (`services/vector_search.py`) | The read side, introduced by Semantic Search as its own module rather than as a method on the store. Exposes one `search` call — **and deliberately no write**, so the two halves stay separable in both directions |
 | Result ranking | `Ranker` protocol (`services/search_ranking.py`), `SimilarityRanker` today | Orders retrieved passages. Exists as a seam from the start so a future cross-encoder reranker is one class rather than a redesign |
-| Background Jobs | Bounded thread pools in the API process — `services/ocr_queue.py` (OCR), the generic `services/job_queue.py` (indexing, reports), and `services/notification_events.py`'s own worker; Trigger.dev or Celery + Redis when a second process arrives | OCR, indexing, report generation, and notification creation. Separate pools, because the stages fail differently and are sized differently. For OCR, indexing, and reports the job's identity, state, and concurrency control live in PostgreSQL rather than in the queue, so the runner is one file to replace. **Notifications is deliberately the exception**: its queue carries a *domain event*, which is not a persisted job and has nothing to resume from — so its worker drains on shutdown rather than re-queueing at startup, and a burst past `NOTIFICATION_QUEUE_SIZE` is dropped and counted rather than blocking the publisher that produced it |
-| Email Service | SMTP / Mailpit | Email notifications |
+| Background Jobs | Bounded thread pools in the API process — `services/ocr_queue.py` (OCR), the generic `services/job_queue.py` (indexing, reports, email), and `services/notification_events.py`'s own worker; plus one **timer thread**, `EmailRetrySweeper`; Trigger.dev or Celery + Redis when a second process arrives | OCR, indexing, report generation, notification creation, and email delivery. Separate pools, because the stages fail differently and are sized differently. For OCR, indexing, and reports the job's identity, state, and concurrency control live in PostgreSQL rather than in the queue, so the runner is one file to replace. **Notifications is deliberately the exception**: its queue carries a *domain event*, which is not a persisted job and has nothing to resume from — so its worker drains on shutdown rather than re-queueing at startup, and a burst past `NOTIFICATION_QUEUE_SIZE` is dropped and counted rather than blocking the publisher that produced it. **Email is the first to need a *schedule* rather than only a queue**: a transient failure writes a `next_attempt_at` onto the delivery row and returns the worker thread, and `EmailRetrySweeper` — a timer thread that also runs once at startup — re-queues what has come due and reclaims anything a dead process left mid-send. A worker that slept out an hour-long backoff would hold one of two threads for an hour and lose the schedule on restart; a column survives both. It is deliberately not a general scheduler, and the reminder scheduling `16-notifications.md` left out of scope is the feature that should bring one |
+| Email Service | `EmailProvider` protocol (`services/email_provider.py`), **SMTP** by default; Mailpit for local development | Email delivery of selected notifications. The only module in the platform that imports `smtplib` — and it adds **no dependency**, because the standard library speaks the protocol every relay does, which is the same outcome the report exporter reached for Markdown. Two backends ship: `SmtpEmailProvider` and a `NullEmailProvider` that accepts and discards for staging and tests. Every library failure is translated into an `EmailFailureCode` at this boundary, and the provider's own message never escapes it — an SMTP rejection quotes the envelope, so what leaves is a code and never an address. Resend, SendGrid, SES, and Mailgun are one class plus one registry entry each, with nothing above the boundary changing. **Off by default** (`EMAIL_ENABLED=false`), the only feature switch on the platform that is: email is its one outward-facing side effect |
+| Email Templates | Jinja2 behind the `EmailTemplateRenderer` protocol (`services/email_templates.py`) | Versioned `.j2` files in `apps/api/emails/`, three parts per version (subject, HTML, plain text), so a wording change is reviewable as a diff of the message that was delivered. **Two Jinja environments, and that is the difference from `services/prompts.py`**: autoescaping is **on** for the HTML part, because an administrator's announcement reaches `{message}` and that part is markup rendered in a mail client, and **off** for the subject and the plain-text part, because escaping there would put `&#39;` into somebody's screen reader. `StrictUndefined` in both, so a template that lost its `action_url` fails loudly rather than sending a correct-looking email nobody can act on |
 | WhatsApp Integration | WhatsApp Business API | Real-time WhatsApp alerts |
 | Authentication | JWT + OAuth2 | Secure authentication and authorization |
 | Monitoring | Langfuse + OpenTelemetry | AI observability and tracing |
@@ -150,8 +151,24 @@
   every other module. It is the **first consumer of the dispatcher** rather than
   another producer on it, and it is where *persistence* of an event enters the
   platform: synchronization is ephemeral by design, a notification is not.
-  **Email delivery, WhatsApp alerts, push, SMS, and reminder scheduling remain
-  unimplemented** and are what the preference model's channel column prepares for.
+  **WhatsApp alerts, push, SMS, and reminder scheduling remain unimplemented**
+  and are what the preference model's remaining channel columns prepare for.
+- `modules/notifications` — **email delivery**: the second channel the
+  notifications above travel on, and deliberately a *consumer of notifications
+  rather than of domain events*. Implemented inside `apps/api` (`core/email.py`,
+  `models/email.py`, `repositories/email.py`, `services/email_delivery.py`,
+  `services/email_provider.py`, `services/email_templates.py`,
+  `services/email_metrics.py`, `services/email_worker.py`, `schemas/email.py`,
+  the templates in `apps/api/emails/`, and one endpoint on the existing
+  notifications router) and `apps/web` (a second column in
+  `components/notifications/notification-preferences-form.tsx`), following the
+  same layering as every other module. It is **not a module directory of its
+  own**, and that is the point: it adds no business rule, no audience, and no
+  wording — it attaches to the notification the way OCR attaches to a document,
+  one stage further out. Its whole subscription list is `EMAIL_RULES`, and what
+  is *absent* from it (every `document.*`, every `ocr.*`, every `indexing.*`, the
+  assistant, the timeline) is the spec's *"Events That Must NOT Generate Emails"*
+  enforced by a test rather than by review.
 - `modules/users` — Administrator, lawyer, and court representative management.
   Implemented inside `apps/api` (`services/user.py`, `repositories/user.py`,
   `api/v1/users/`) and `apps/web` (`components/users/`, `app/(protected)/users/`),
@@ -221,7 +238,15 @@ Stores structured business data:
   Arabic reader rather than frozen per row)
 - Notification Preferences (one row per `(user, preference)` the user has
   actually expressed an opinion about — an untouched account has none and follows
-  the platform defaults)
+  the platform defaults — with **one boolean column per delivery channel**:
+  `in_app` and, since the email channel shipped, `email`)
+- Email Deliveries (one row per notification the platform tried to deliver by
+  email — its envelope, its lifecycle, its attempt count, and the machine-readable
+  reason it stopped. **No subject and no body**: the message is rendered per
+  attempt from the same module the in-app feed renders from, and a column holding
+  the contents of an email is exactly what the spec's Logging section forbids
+  putting in a log. A unique index on `notification_id` is the whole of "avoid
+  duplicate emails")
 - Timeline Events
 - Audit Logs
 - AI Conversations (one thread per user, with its counters and its last-message
@@ -1379,6 +1404,124 @@ of the dispatcher Real-Time Synchronization built, and the point at which
   identifiers only; the metrics are counted **by rule**, which is a throughput
   figure, where counting by recipient would be a live index of who is being told
   what.
+
+### Email Delivery Channel
+
+Implemented per `context/feature-specs/17-email-delivery-channel.md`. Not a stage
+of the AI pipeline, not a consumer of the event dispatcher, and not a feature that
+decides anything about the platform's behaviour: it is the **second delivery
+channel** for notifications that already exist, and the first thing to arrive
+since Notifications shipped that adds *no* business rule at all.
+
+- **It consumes notifications, never events, and that is structural.** The spec
+  is explicit — *"the Email Delivery Channel should never receive domain events
+  directly"* — and the boundary is a dependency rather than a discipline:
+  `EmailDeliveryService` implements the one-method `NotificationDispatcher`
+  protocol and is handed rows that have **already been created, authorized,
+  de-duplicated, and persisted** by the Notification Service. It holds no event
+  publisher, no dispatcher, and no business service, so there is no path from it
+  to a business event. Everything it does from there only *narrows*: an email
+  goes to a subset of the people the platform already decided to tell, about a
+  subset of the things it already decided to say. **It therefore cannot widen
+  visibility even if it were wrong**, which is what the spec's *"trust the
+  Notification Service and never attempt to broaden notification visibility"*
+  asks for.
+- **Adding the channel took one protocol and one list**, in the shape
+  `services/events.py` predicted for a second consumer and
+  `models/notification.py` predicted for a second channel. No business module
+  changed, no event was defined, and the preference model grew **one column** —
+  no new table, no new key, no backfill, and an account that has never opened the
+  settings page still has no row and still follows the platform defaults.
+- **`EMAIL_RULES` is the whole of "marked for email delivery"**, keyed by
+  *notification rule* rather than by event, because an event is not something
+  this module can name. Its seven entries are exactly the spec's "Supported Email
+  Types"; everything on the *"must not generate emails"* list is absent, and its
+  absence is asserted by a test rather than left to review. Adding an email type
+  is one entry — which is what *"support future email types without redesign"*
+  means concretely. **"Password Changed" is the one supported type with nothing
+  behind it**: `AuthService.change_password` publishes no event, so there is no
+  notification to deliver, and creating one would be *notification policy*, which
+  this spec's Out of Scope forbids this feature from touching.
+- **The wording is not restated.** The subject is the notification's rendered
+  title and the body's lead is its rendered message, both from
+  `core/notifications.render_notification` in the recipient's language — which is
+  exactly what `models/notification.py` chose to store no prose *for*, and what
+  makes `code-standards.md`'s *"notification logic must never be duplicated"* hold
+  across a channel that did not exist when that rule was written. The chrome
+  around it (greeting, button label, footer) lives in `core/email.py` beside the
+  rest of the platform's text, so the `.j2` files carry no sentence of their own
+  and no `{% if language %}` branch.
+- **The delivery is a persisted run**, so this feature has a table where
+  Real-Time Synchronization has none: `pending` → `sending` → `sent` | `failed`,
+  with the claim a **conditional `UPDATE`** rather than a lock — the mechanism
+  `ocr_results` and `document_indexes` use, and the reason two workers handed the
+  same job cannot both send the message. A unique index on `notification_id` makes
+  *one notification, one email* an invariant rather than a heuristic, so retrying
+  is re-using the row.
+- **Retry is a schedule on the row, not a sleep on a thread.** A transient
+  failure writes `next_attempt_at` and returns the worker immediately;
+  `EmailRetrySweeper` re-queues what is due and reclaims anything stranded in
+  `sending`. The transient/permanent split is a partition of a closed vocabulary
+  (`TRANSIENT_FAILURE_CODES`) rather than a judgement at a call site: a timeout, a
+  dropped connection, and an SMTP **4xx** are retried; a rejected credential, an
+  unknown mailbox, an oversized message, and a broken template are not — retrying
+  a 5xx is how a platform gets a relay to stop accepting its mail, and retrying a
+  rejected password is how an account gets locked.
+- **A deployment with no relay queues nothing**, rather than accumulating
+  `pending` rows whose only outcome is a burst of very old mail the day somebody
+  configures SMTP — including "your case was assigned" for a case that closed
+  weeks ago. `provider_available: false` says so on the metrics endpoint, the
+  same posture a missing Tesseract and a missing `LLM_API_KEY` take.
+- **Off by default**, and it is the only feature switch on the platform that is.
+  The others default to on because the worst case of an unconfigured one is a
+  recorded failure nobody outside the platform sees; email is the platform's only
+  *outward-facing* side effect, and a deployment that has not chosen a relay, a
+  from-address, and a base URL should not be mailing real people the first time
+  somebody is assigned a case.
+- **Preferences are per key *and* per channel**, which is what the spec's User
+  Preferences section actually asks for: a lawyer silences *email for hearing
+  updates* without emptying their in-app feed. A change carries only the channels
+  it is changing, so a client written before this channel existed cannot switch it
+  off by omission — and the same protection is inherited by whichever channel
+  arrives next.
+- **The one place on the platform that builds a URL from a notification target.**
+  `16-notifications.md` requires navigation to stay independent of frontend
+  routing, and the in-app feed honours that literally by naming a resource; an
+  email has **no client** to resolve one, so `TARGET_PATHS` turns the pair into an
+  address. With no base URL configured the mail is **linkless but correct**,
+  rather than carrying a broken path with no host.
+- **Two Jinja environments, and the reason is a real attack surface.**
+  `POST /notifications/announcements` puts a human's words into `{message}`, which
+  reaches both bodies — so the HTML part autoescapes and the plain-text part does
+  not. A header value carrying a line break is **refused rather than stripped**,
+  because a name silently rewritten is a name that was attacked and nobody
+  noticed.
+- **No email content, and no address, reaches a log.** This module holds itself
+  to a stricter line than any other, because it handles the one thing none of the
+  others does: a personal address. The logs carry delivery identifiers, rule keys,
+  statuses, failure codes, attempt counts, and durations — never a subject, never
+  a body, never a case number, and never an address, not even at debug and not
+  even hashed, since an address hashed unsalted is reversible by anyone holding a
+  user list. The provider's own message never leaves `services/email_provider.py`
+  for the same reason: an SMTP rejection quotes the envelope.
+- **Metrics come from two places on purpose**, exactly as Notifications' do.
+  Queued, sending, sent, failed, recipients, and attempts are **SQL aggregates**,
+  because "how many emails are stuck?" is the first question after a restart and a
+  process-local count would answer it wrongly. Retries, latency, and skips
+  accumulate in the process with a `since`. *Sent* means "a provider accepted it",
+  never "it arrived" and certainly not "it was read" — SMTP hands off to a relay,
+  and a column called `delivered_at` would be a claim the platform cannot support.
+- **No new permission, and no endpoint that lists deliveries.** Email is a
+  delivery channel for notifications rather than a feature of its own, so its
+  monitoring view is gated on the existing `notifications:monitor` — a separate
+  `email:monitor` would be a second grant meaning the same thing. And a *list* of
+  deliveries names a person, a rule, a moment, and an address, which is precisely
+  the live index `services/notification_metrics.py` refuses to build; the history
+  lives in the table for an operator to query under the database's own controls.
+- **Nothing depends on it, in either direction.** Every notification is created,
+  delivered in-app, and readable with `EMAIL_ENABLED=false`, because the
+  Notification Service holds a one-method protocol and cannot ask a channel
+  anything — not even whether it succeeded.
 
 ## Invariants
 

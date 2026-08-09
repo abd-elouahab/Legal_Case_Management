@@ -24,6 +24,7 @@ from core.exceptions import NotificationNotFoundError, NotificationsDisabledErro
 from core.notifications import (
     EVENT_RULES,
     AnnouncementKind,
+    ChannelPreferenceUpdate,
     NotificationCategory,
     NotificationPreferenceKey,
     NotificationPriority,
@@ -194,20 +195,49 @@ class TestPreferences:
     ) -> None:
         preferences = service.preferences(actor=lawyer)
         assert set(preferences) == set(NotificationPreferenceKey)
-        assert all(enabled for enabled, _ in preferences.values())
-        assert all(is_default for _, is_default in preferences.values())
+        assert all(entry.in_app for entry in preferences.values())
+        # Both channels default to on — see `DEFAULT_PREFERENCES` for why email
+        # follows in-app rather than being opt-in.
+        assert all(entry.email for entry in preferences.values())
+        assert all(entry.is_default for entry in preferences.values())
 
     def test_a_stored_answer_is_no_longer_a_default(
         self, service: NotificationService, lawyer: Any
     ) -> None:
         updated = service.update_preferences(
-            {NotificationPreferenceKey.CASE_UPDATES: False}, actor=lawyer
+            {NotificationPreferenceKey.CASE_UPDATES: ChannelPreferenceUpdate(in_app=False)},
+            actor=lawyer,
         )
-        enabled, is_default = updated[NotificationPreferenceKey.CASE_UPDATES]
-        assert enabled is False
-        assert is_default is False
+        changed = updated[NotificationPreferenceKey.CASE_UPDATES]
+        assert changed.in_app is False
+        assert changed.is_default is False
+        # The channel the change did not mention keeps the value the user would
+        # have seen, rather than being switched off by omission.
+        assert changed.email is True
         # Everything else is untouched and still a default.
-        assert updated[NotificationPreferenceKey.OCR_COMPLETION] == (True, True)
+        untouched = updated[NotificationPreferenceKey.OCR_COMPLETION]
+        assert (untouched.in_app, untouched.email, untouched.is_default) == (True, True, True)
+
+    def test_a_channel_can_be_silenced_without_touching_the_other(
+        self, service: NotificationService, lawyer: Any
+    ) -> None:
+        """`17-email-delivery-channel.md`'s "if a user disables email delivery for
+        a supported notification type, no email should be sent" — without also
+        emptying their in-app feed, which is the setting people actually want."""
+        updated = service.update_preferences(
+            {NotificationPreferenceKey.HEARING_UPDATES: ChannelPreferenceUpdate(email=False)},
+            actor=lawyer,
+        )
+        changed = updated[NotificationPreferenceKey.HEARING_UPDATES]
+        assert changed.email is False
+        assert changed.in_app is True
+
+        # And the in-app path is genuinely unaffected: the notification is still
+        # created, which is what makes the choice about *delivery* rather than
+        # about being told.
+        assert service.create(
+            rule=EVENT_RULES[DomainEventType.CASE_UPDATED], recipient_ids=[lawyer.id]
+        )
 
     def test_a_switched_off_preference_suppresses_creation(
         self,
@@ -216,7 +246,7 @@ class TestPreferences:
         metrics: InMemoryNotificationMetrics,
     ) -> None:
         service.update_preferences(
-            {NotificationPreferenceKey.CASE_UPDATES: False}, actor=lawyer
+            {NotificationPreferenceKey.CASE_UPDATES: ChannelPreferenceUpdate(in_app=False)}, actor=lawyer
         )
         assert service.create(rule=CASE_CREATED, recipient_ids=[lawyer.id]) == []
         assert metrics.snapshot().suppressed_by_preference == 1
@@ -225,7 +255,7 @@ class TestPreferences:
         self, service: NotificationService, lawyer: Any, other_lawyer: Any
     ) -> None:
         service.update_preferences(
-            {NotificationPreferenceKey.CASE_UPDATES: False}, actor=lawyer
+            {NotificationPreferenceKey.CASE_UPDATES: ChannelPreferenceUpdate(in_app=False)}, actor=lawyer
         )
         created = service.create(
             rule=CASE_CREATED, recipient_ids=[lawyer.id, other_lawyer.id]
@@ -238,7 +268,7 @@ class TestPreferences:
         """`ocr_completion` is its own axis so extraction can be silenced without
         silencing the case."""
         service.update_preferences(
-            {NotificationPreferenceKey.OCR_COMPLETION: False}, actor=lawyer
+            {NotificationPreferenceKey.OCR_COMPLETION: ChannelPreferenceUpdate(in_app=False)}, actor=lawyer
         )
         assert service.create(rule=CASE_CREATED, recipient_ids=[lawyer.id])
         assert (
@@ -253,7 +283,7 @@ class TestPreferences:
     ) -> None:
         service.create(rule=CASE_CREATED, recipient_ids=[lawyer.id])
         service.update_preferences(
-            {NotificationPreferenceKey.CASE_UPDATES: False}, actor=lawyer
+            {NotificationPreferenceKey.CASE_UPDATES: ChannelPreferenceUpdate(in_app=False)}, actor=lawyer
         )
         page = service.list_notifications(NotificationListQuery(), actor=lawyer)
         assert page.total == 1
@@ -262,12 +292,14 @@ class TestPreferences:
         self, service: NotificationService, lawyer: Any
     ) -> None:
         service.update_preferences(
-            {NotificationPreferenceKey.CASE_UPDATES: False}, actor=lawyer
+            {NotificationPreferenceKey.CASE_UPDATES: ChannelPreferenceUpdate(in_app=False)}, actor=lawyer
         )
         updated = service.update_preferences(
-            {NotificationPreferenceKey.CASE_UPDATES: True}, actor=lawyer
+            {NotificationPreferenceKey.CASE_UPDATES: ChannelPreferenceUpdate(in_app=True)},
+            actor=lawyer,
         )
-        assert updated[NotificationPreferenceKey.CASE_UPDATES] == (True, False)
+        restored = updated[NotificationPreferenceKey.CASE_UPDATES]
+        assert (restored.in_app, restored.is_default) == (True, False)
 
 
 # --------------------------------------------------------------------------- #
@@ -566,7 +598,7 @@ class TestAnnouncements:
         be'."""
         admin = make_user(email="admin@example.com", role=UserRole.ADMINISTRATOR)
         service.update_preferences(
-            {NotificationPreferenceKey.SYSTEM_ANNOUNCEMENTS: False}, actor=lawyer
+            {NotificationPreferenceKey.SYSTEM_ANNOUNCEMENTS: ChannelPreferenceUpdate(in_app=False)}, actor=lawyer
         )
 
         outcome = service.announce(

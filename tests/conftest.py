@@ -1901,8 +1901,110 @@ def notification_metrics():  # type: ignore[no-untyped-def]
     return InMemoryNotificationMetrics()
 
 
+# --------------------------------------------------------------------------- #
+# Email delivery fixtures
+# --------------------------------------------------------------------------- #
+
+
 @pytest.fixture
-def notification_subscriber(session_factory, event_publisher, notification_metrics):  # type: ignore[no-untyped-def]
+def email_provider():  # type: ignore[no-untyped-def]
+    """A provider that accepts every message and records it, sending nothing.
+
+    The real :class:`~services.email_provider.NullEmailProvider` rather than a
+    bespoke double, because it is a **shipped** backend with the same contract as
+    the SMTP one — so a test that passes against it is exercising the same error
+    handling and the same result shape production uses, and its ``sent`` list is
+    what an assertion about "was this actually composed and addressed?" reads.
+    """
+    from services.email_provider import NullEmailProvider
+
+    return NullEmailProvider()
+
+
+@pytest.fixture
+def email_metrics():  # type: ignore[no-untyped-def]
+    """A fresh email metrics recorder per test.
+
+    Per test rather than the process-wide one, for the reason every other
+    ``*_metrics`` fixture here is: the real recorder counts for the life of the
+    process, so "one email was sent" would otherwise depend on how many every
+    earlier test produced.
+    """
+    from services.email_metrics import InMemoryEmailMetrics
+
+    return InMemoryEmailMetrics()
+
+
+@pytest.fixture
+def email_queue(db_session: Session, email_provider, email_metrics):  # type: ignore[no-untyped-def]
+    """An inline email queue, so a queued delivery is sent before the assertion.
+
+    In production this is a bounded thread pool and the delivery is sent moments
+    later; here the assertion is about the *outcome*, and a test that waits for a
+    thread is a test that will eventually be flaky — the same substitution the
+    OCR, indexing, and report queues get.
+
+    The service the runner builds is given **no queue of its own**, exactly as the
+    real worker's is: a send does not schedule more sends, and a queue here would
+    make a bug an unbounded loop.
+    """
+    from services.email_delivery import build_delivery_service
+    from services.email_templates import get_email_template_renderer
+    from services.job_queue import InlineJobQueue
+
+    def _run(job) -> None:  # type: ignore[no-untyped-def]
+        build_delivery_service(
+            db_session,
+            provider=email_provider,
+            templates=get_email_template_renderer(),
+            queue=None,
+            metrics=email_metrics,
+        ).process(job)
+
+    return InlineJobQueue(_run, name="email")
+
+
+@pytest.fixture
+def email_delivery_service(db_session: Session, email_provider, email_metrics, email_queue):  # type: ignore[no-untyped-def]
+    """The Email Delivery Service on the test database.
+
+    The real templates are deliberately *not* substituted: they are files under
+    source control with no external dependency, so the message composed here is
+    the message production would compose.
+    """
+    from services.email_delivery import build_delivery_service
+    from services.email_templates import get_email_template_renderer
+
+    return build_delivery_service(
+        db_session,
+        provider=email_provider,
+        templates=get_email_template_renderer(),
+        queue=email_queue,
+        metrics=email_metrics,
+    )
+
+
+@pytest.fixture
+def notification_channels(email_delivery_service):  # type: ignore[no-untyped-def]
+    """The delivery channels a created notification batch is offered to.
+
+    A factory taking a session, matching what
+    :class:`~services.notification_events.NotificationEventSubscriber` expects —
+    and ignoring it, because every fixture here already shares the one test
+    session. That is the only difference from production, and it is what lets an
+    assertion read the delivery rows the subscriber just wrote.
+    """
+
+    def _channels(_session):  # type: ignore[no-untyped-def]
+        return (email_delivery_service,)
+
+    return _channels
+
+
+@pytest.fixture
+def notification_subscriber(  # type: ignore[no-untyped-def]
+    session_factory, event_publisher, notification_metrics, notification_channels
+):
     """A notification subscriber wired to the test database, **not started**.
 
     Deliberately not started, and that is what makes these tests deterministic:
@@ -1922,6 +2024,7 @@ def notification_subscriber(session_factory, event_publisher, notification_metri
         session_factory,
         publisher=event_publisher,
         metrics=notification_metrics,
+        channels=notification_channels,
     )
 
 
@@ -2019,6 +2122,9 @@ def api_client(
     connection_manager,  # type: ignore[no-untyped-def]
     notification_metrics,  # type: ignore[no-untyped-def]
     notification_subscriber,  # type: ignore[no-untyped-def]
+    email_provider,  # type: ignore[no-untyped-def]
+    email_metrics,  # type: ignore[no-untyped-def]
+    email_queue,  # type: ignore[no-untyped-def]
 ) -> Iterator[TestClient]:
     """A TestClient whose external collaborators are all doubles.
 
@@ -2036,6 +2142,9 @@ def api_client(
     from api.deps import (
         get_assistant_metrics_recorder,
         get_document_storage,
+        get_email_job_queue,
+        get_email_metrics_recorder,
+        get_email_provider_dependency,
         get_embedder_dependency,
         get_event_publisher,
         get_follow_up_suggester_dependency,
@@ -2098,6 +2207,15 @@ def api_client(
     app.dependency_overrides[get_notification_subscriber_dependency] = (
         lambda: notification_subscriber
     )
+    # The mail provider, its queue, and its recorder, for the same three reasons:
+    # the real provider would open a connection to a relay nobody configured, the
+    # real queue is a thread pool the assertion would race, and the real recorder
+    # counts for the life of the process. The **templates are deliberately not
+    # overridden** — they are files under source control with no external
+    # dependency, so the message composed here is the message production composes.
+    app.dependency_overrides[get_email_provider_dependency] = lambda: email_provider
+    app.dependency_overrides[get_email_job_queue] = lambda: email_queue
+    app.dependency_overrides[get_email_metrics_recorder] = lambda: email_metrics
     try:
         with TestClient(app) as test_client:
             yield test_client

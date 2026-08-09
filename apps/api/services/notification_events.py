@@ -48,7 +48,7 @@ from __future__ import annotations
 import queue
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager
 
 import structlog
@@ -59,7 +59,7 @@ from core.events import DomainEvent
 from core.notifications import build_context, rule_for, target_for
 from repositories.notification import NotificationRepository
 from services.events import EventPublisher, NullEventPublisher
-from services.notification import NotificationService
+from services.notification import NotificationDispatcher, NotificationService
 from services.notification_metrics import (
     NotificationFailureReason,
     NotificationMetricsRecorder,
@@ -100,6 +100,7 @@ class NotificationEventSubscriber:
         recipients: NotificationRecipientResolver | None = None,
         publisher: EventPublisher | None = None,
         metrics: NotificationMetricsRecorder | None = None,
+        channels: Callable[[Session], Sequence[NotificationDispatcher]] | None = None,
     ) -> None:
         # Imported lazily so that constructing a subscriber does not require an
         # importable engine — `db.session` builds one at import time, and a unit
@@ -118,6 +119,19 @@ class NotificationEventSubscriber:
         #: or reach another consumer.
         self._publisher = publisher or NullEventPublisher()
         self._metrics = metrics or NullNotificationMetrics()
+        #: Builds the delivery channels for one session. A **factory** rather than
+        #: instances, because a channel holds repositories and a session is opened
+        #: per event — the same reason this class takes a session factory rather
+        #: than a session.
+        #:
+        #: Defaulting to *no channels* keeps a unit test's subscriber from
+        #: touching a mail provider it never asked for; the application supplies
+        #: the real one in :func:`get_notification_subscriber`, and a test asserts
+        #: that it does, so "the default is nothing" cannot quietly become the
+        #: production behaviour.
+        self._channels: Callable[[Session], Sequence[NotificationDispatcher]] = (
+            channels or (lambda _session: ())
+        )
 
         self._inbox: queue.Queue[DomainEvent] = queue.Queue(
             maxsize=settings.NOTIFICATION_QUEUE_SIZE
@@ -314,6 +328,9 @@ class NotificationEventSubscriber:
                 NotificationRepository(session),
                 events=self._publisher,
                 metrics=self._metrics,
+                # Built on this event's session, so a channel's writes share the
+                # transaction boundary of the notifications it is delivering.
+                channels=self._channels(session),
             )
             created = service.create(
                 rule=rule,
@@ -328,6 +345,44 @@ class NotificationEventSubscriber:
             )
 
         return len(created)
+
+
+def _delivery_channels(session: Session) -> Sequence[NotificationDispatcher]:
+    """Build the delivery channels a created batch is offered to.
+
+    The **worker-thread counterpart** of :func:`api.deps.get_notification_channels`,
+    and deliberately assembled from the same shared provider, renderer, queue, and
+    metrics recorder a request would get — which is what makes an email produced by
+    this worker identical to one produced by any other path.
+
+    Imported inside the function rather than at module scope, and that placement is
+    the interesting part: this module is the *notification* subscriber, and a
+    top-level import of the email service would put a mail provider into the import
+    graph of every unit test that touches notifications. It also keeps the
+    dependency pointing the way it should — nothing in the email channel imports
+    anything from here.
+
+    Returns nothing at all when the channel is switched off, so a deployment with
+    ``EMAIL_ENABLED=false`` does not construct a delivery service per event.
+    """
+    if not settings.EMAIL_ENABLED:
+        return ()
+
+    from services.email_delivery import build_delivery_service
+    from services.email_metrics import get_email_metrics
+    from services.email_provider import get_email_provider
+    from services.email_templates import get_email_template_renderer
+    from services.email_worker import email_queue
+
+    return (
+        build_delivery_service(
+            session,
+            provider=get_email_provider(),
+            templates=get_email_template_renderer(),
+            queue=email_queue,
+            metrics=get_email_metrics(),
+        ),
+    )
 
 
 #: The one subscriber the process shares.
@@ -360,7 +415,9 @@ def get_notification_subscriber() -> NotificationEventSubscriber:
             from services.notification_metrics import get_notification_metrics
 
             _shared = NotificationEventSubscriber(
-                publisher=get_event_dispatcher(), metrics=get_notification_metrics()
+                publisher=get_event_dispatcher(),
+                metrics=get_notification_metrics(),
+                channels=_delivery_channels,
             )
         return _shared
 

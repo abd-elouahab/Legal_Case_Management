@@ -32,7 +32,7 @@ import type {
   NotificationMetrics,
   NotificationPage,
   NotificationPreference,
-  NotificationPreferenceKey,
+  NotificationPreferenceChange,
   NotificationSummary,
 } from "@/types/notification";
 
@@ -88,6 +88,7 @@ function toPreferences(payload: PreferencesWire): NotificationPreference[] {
   return payload.preferences.map((entry) => ({
     preferenceKey: entry.preference_key,
     inApp: entry.in_app,
+    email: entry.email,
     isDefault: entry.is_default,
   }));
 }
@@ -233,16 +234,21 @@ export async function fetchNotificationPreferences(): Promise<NotificationPrefer
  *
  * A list of *changes* rather than the whole set, matching the API: two settings
  * panels open at once cannot then silently revert each other's saves.
+ *
+ * A change carries **only the channels it is actually changing**. Sending
+ * `in_app: false` for a switch nobody touched would silence a channel by
+ * omission, which is exactly what the API's optional fields exist to prevent.
  */
 export async function updateNotificationPreferences(
-  changes: Array<{ preferenceKey: NotificationPreferenceKey; inApp: boolean }>,
+  changes: NotificationPreferenceChange[],
 ): Promise<NotificationPreference[]> {
   const raw = await apiRequest<unknown>(NOTIFICATION_ENDPOINTS.preferences, {
     method: "PUT",
     body: {
       preferences: changes.map((entry) => ({
         preference_key: entry.preferenceKey,
-        in_app: entry.inApp,
+        ...(entry.inApp === undefined ? {} : { in_app: entry.inApp }),
+        ...(entry.email === undefined ? {} : { email: entry.email }),
       })),
     },
   });

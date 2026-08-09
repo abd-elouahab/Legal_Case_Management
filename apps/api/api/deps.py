@@ -22,6 +22,7 @@ from models.user import User
 from repositories.case import CaseRepository
 from repositories.conversation import ConversationRepository
 from repositories.document import DocumentRepository
+from repositories.email import EmailDeliveryRepository
 from repositories.indexing import IndexingRepository
 from repositories.notification import NotificationRepository
 from repositories.ocr import OcrRepository
@@ -36,6 +37,11 @@ from services.case import CaseService
 from services.chunking import Chunker, get_chunker
 from services.document import DocumentService
 from services.document_storage import DocumentStorageService
+from services.email_delivery import EmailDeliveryService, EmailJob
+from services.email_metrics import EmailMetricsRecorder, get_email_metrics
+from services.email_provider import EmailProvider, get_email_provider
+from services.email_templates import EmailTemplateRenderer, get_email_template_renderer
+from services.email_worker import email_queue
 from services.embedding import Embedder, get_embedder
 from services.events import EventPublisher, get_event_dispatcher
 from services.indexing import IndexingService, IndexJob
@@ -43,7 +49,7 @@ from services.indexing_worker import index_queue
 from services.job_queue import JobQueue
 from services.llm import LLMProvider, get_llm_provider
 from services.login_throttle import LoginThrottle
-from services.notification import NotificationService
+from services.notification import NotificationDispatcher, NotificationService
 from services.notification_events import (
     NotificationEventSubscriber,
     get_notification_subscriber,
@@ -640,10 +646,125 @@ def get_notification_subscriber_dependency() -> NotificationEventSubscriber:
     return get_notification_subscriber()
 
 
+def get_email_delivery_repository(session: DbSession) -> EmailDeliveryRepository:
+    """Provide a request-scoped email delivery repository."""
+    return EmailDeliveryRepository(session)
+
+
+def get_email_provider_dependency() -> EmailProvider:
+    """Provide the configured email provider.
+
+    The instance is process-wide (see
+    :func:`~services.email_provider.get_email_provider`) because a future
+    HTTP-based provider owns a connection pool, but it is still reached through a
+    dependency so an integration test can substitute
+    :class:`~services.email_provider.NullEmailProvider` and exercise the whole
+    delivery pipeline **without a mail server and without mailing anybody** —
+    which is the only way the failure paths are testable at all.
+    """
+    return get_email_provider()
+
+
+def get_email_template_renderer_dependency() -> EmailTemplateRenderer:
+    """Provide the configured email template renderer.
+
+    Process-wide because it owns Jinja's compiled-template cache — the same
+    reasoning :func:`get_prompt_library_dependency` records — and reached through
+    a dependency so a test can point it at templates of its own.
+    """
+    return get_email_template_renderer()
+
+
+def get_email_metrics_recorder() -> EmailMetricsRecorder:
+    """Provide the process-wide email metrics recorder.
+
+    Process-wide rather than per request for the reason every other recorder here
+    is, and more strongly than most: **every** email is queued and sent on a
+    background thread with no request at all, so the recorder the metrics endpoint
+    reads must be the same object the workers write to.
+    """
+    return get_email_metrics()
+
+
+def get_email_job_queue() -> JobQueue[EmailJob]:
+    """Provide the application's background email queue.
+
+    The process-wide pool from :mod:`services.email_worker`, not a fresh one per
+    request: bounding concurrency is the whole point of it, and a pool per request
+    would bound nothing. **Its own pool rather than the report or indexing one**,
+    because an email is a short round trip to a relay that may be slow or
+    greylisting while those are CPU-bound or metered-API work — sharing would make
+    each one's backlog the other's latency. A test overrides this with an inline
+    queue so the send happens synchronously and the assertion does not race a
+    thread.
+    """
+    return email_queue
+
+
+def get_email_delivery_service(
+    deliveries: Annotated[EmailDeliveryRepository, Depends(get_email_delivery_repository)],
+    notifications: Annotated[NotificationRepository, Depends(get_notification_repository)],
+    provider: Annotated[EmailProvider, Depends(get_email_provider_dependency)],
+    templates: Annotated[
+        EmailTemplateRenderer, Depends(get_email_template_renderer_dependency)
+    ],
+    queue: Annotated[JobQueue[EmailJob], Depends(get_email_job_queue)],
+    metrics: Annotated[EmailMetricsRecorder, Depends(get_email_metrics_recorder)],
+) -> EmailDeliveryService:
+    """Provide the email delivery service with its collaborators injected.
+
+    **What this function does not inject is the load-bearing part**, exactly as it
+    is for the notification service below. There is no case service, no document
+    service, no report service, no user service, and — the one that matters most
+    here — **no event publisher and no event dispatcher**.
+    ``17-email-delivery-channel.md`` requires that this channel *"never receive
+    domain events directly"* and consume *"notifications, not business events"*,
+    and this is where that would be undone: giving it a publisher or a dispatcher
+    would hand it a way to learn about a business event without a notification
+    having been created and authorized first. It takes neither, so the boundary
+    holds structurally rather than by discipline.
+
+    The notification repository is injected because a queued delivery has to read
+    its notification back to render it — and note *which* repository: every read
+    in :mod:`repositories.notification` is keyed by recipient and there is no
+    unscoped variant, so an email can only ever be composed from something its
+    addressee is entitled to read.
+    """
+    return EmailDeliveryService(
+        deliveries, notifications, provider, templates, queue, metrics=metrics
+    )
+
+
+EmailDeliveryServiceDep = Annotated[
+    EmailDeliveryService, Depends(get_email_delivery_service)
+]
+
+
+def get_notification_channels(
+    email: Annotated[EmailDeliveryService, Depends(get_email_delivery_service)],
+) -> list[NotificationDispatcher]:
+    """Provide the delivery channels beyond the in-app feed.
+
+    A **list**, because the platform is specified to grow WhatsApp, SMS, and push:
+    each arrives as one more entry here and nothing else moves, which is the same
+    property :data:`~services.email_provider.EMAIL_PROVIDER_FACTORIES` gives a
+    second mail vendor one layer down.
+
+    Typed as :class:`~services.notification.NotificationDispatcher` rather than as
+    the concrete service, and that is the load-bearing line: the Notification
+    Service receives one narrow method and therefore cannot ask a channel what it
+    is, whether it succeeded, or who it reached — which is what keeps *"business
+    modules and the Notification Service remain responsible for deciding when a
+    notification should be created"* from quietly acquiring a delivery opinion.
+    """
+    return [email]
+
+
 def get_notification_service(
     notifications: Annotated[NotificationRepository, Depends(get_notification_repository)],
     events: Annotated[EventPublisher, Depends(get_event_publisher)],
     metrics: Annotated[NotificationMetricsRecorder, Depends(get_notification_metrics_recorder)],
+    channels: Annotated[list[NotificationDispatcher], Depends(get_notification_channels)],
 ) -> NotificationService:
     """Provide the notification service with its collaborators injected.
 
@@ -672,8 +793,16 @@ def get_notification_service(
     permanent history, and "Amina was told about this" is not a fact about the
     case. The business change that produced the notification recorded itself
     there already.
+
+    The **channels** are the one addition since this feature shipped, and they are
+    injected as the narrow :class:`~services.notification.NotificationDispatcher`
+    protocol for the reason the publisher is injected as ``EventPublisher``: this
+    service must be able to hand a created batch to a delivery channel and must
+    not be able to ask one anything. See :func:`get_notification_channels`.
     """
-    return NotificationService(notifications, events=events, metrics=metrics)
+    return NotificationService(
+        notifications, events=events, metrics=metrics, channels=channels
+    )
 
 
 NotificationServiceDep = Annotated[NotificationService, Depends(get_notification_service)]

@@ -793,8 +793,17 @@ export function notificationSummaryPayload(overrides: Record<string, unknown> = 
  * which is what lets a settings page render from one response and a preference
  * added later appear automatically.
  */
+/**
+ * A complete preferences response.
+ *
+ * `overrides` is keyed by preference and sets **both channels**, which is the
+ * common case a test wants ("this one is switched off"). A test that needs the
+ * channels to differ — the setting the email channel exists for — passes
+ * `emailOverrides` as well.
+ */
 export function notificationPreferencesPayload(
   overrides: Record<string, boolean> = {},
+  emailOverrides: Record<string, boolean> = {},
 ) {
   const keys = [
     "case_updates",
@@ -810,7 +819,8 @@ export function notificationPreferencesPayload(
     preferences: keys.map((key) => ({
       preference_key: key,
       in_app: overrides[key] ?? true,
-      is_default: !(key in overrides),
+      email: emailOverrides[key] ?? overrides[key] ?? true,
+      is_default: !(key in overrides) && !(key in emailOverrides),
     })),
   };
 }

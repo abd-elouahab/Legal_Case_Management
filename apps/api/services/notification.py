@@ -48,7 +48,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 
 import structlog
 
@@ -62,7 +62,10 @@ from core.notifications import (
     ANNOUNCEMENT_RULES,
     DEFAULT_PREFERENCES,
     AnnouncementKind,
+    ChannelPreference,
+    ChannelPreferenceUpdate,
     NotificationCategory,
+    NotificationChannel,
     NotificationPreferenceKey,
     NotificationRule,
     NotificationTarget,
@@ -129,6 +132,54 @@ class NotificationMetrics:
     window_days: int | None
 
 
+class NotificationDispatcher(Protocol):
+    """What a **delivery channel** looks like from the Notification Service.
+
+    One method, taking notifications that have already been created, authorized,
+    de-duplicated, and persisted. That narrowness is the whole of
+    ``17-email-delivery-channel.md``'s central boundary:
+
+        The Email Delivery Channel should never receive domain events directly.
+        It consumes notifications, not business events.
+
+    A channel implementing this protocol **cannot** see an event, a case, a
+    document, or a recipient the platform did not already decide to tell. It can
+    only narrow — by its own rule set and by the recipient's channel preference —
+    so a bug in a channel is a message that did not go out, never one that went to
+    the wrong person.
+
+    :class:`~services.email_delivery.EmailDeliveryService` implements it today;
+    WhatsApp, SMS, and push implement the same one method, which is why this is
+    named for *dispatch* rather than for email.
+    """
+
+    def dispatch(self, notifications: Sequence[Notification]) -> None:
+        """Deliver whichever of these belong on this channel.
+
+        **Never raises and never blocks.** It is called on the notification
+        worker's thread, immediately after the batch was committed, so an
+        exception here would be an exception on a path that has already succeeded
+        — and a slow send would add a mail server's latency to the creation of an
+        in-app notification that does not need it.
+        """
+        ...
+
+
+class NullNotificationDispatcher:
+    """A channel that delivers nothing.
+
+    The default for a service constructed without one — a request-scoped
+    instance serving a read, a script, a unit test that is not about delivery. It
+    exists so the creation path can call ``self._channels`` unconditionally rather
+    than guarding every site, exactly as
+    :class:`~services.timeline.NullTimelineRecorder` and
+    :class:`~services.job_queue.NullJobQueue` do.
+    """
+
+    def dispatch(self, notifications: Sequence[Notification]) -> None:
+        """Discard the batch."""
+
+
 class NotificationService:
     """Creates, delivers, reads, and configures notifications."""
 
@@ -138,10 +189,21 @@ class NotificationService:
         *,
         events: EventPublisher | None = None,
         metrics: NotificationMetricsRecorder | None = None,
+        channels: Sequence[NotificationDispatcher] | None = None,
     ) -> None:
         self._notifications = notifications
         self._events = events or NullEventPublisher()
         self._metrics = metrics or NullNotificationMetrics()
+        #: Delivery channels beyond the in-app feed, as the narrow
+        #: :class:`NotificationDispatcher` protocol. A **sequence**, because the
+        #: platform is specified to grow WhatsApp, SMS, and push — and because a
+        #: single field would make adding the second one a signature change to
+        #: every construction site rather than one more entry in
+        #: :func:`~api.deps.get_notification_service`.
+        #:
+        #: This service knows nothing about any of them: it cannot ask what a
+        #: channel is, whether it succeeded, or who it reached.
+        self._channels: tuple[NotificationDispatcher, ...] = tuple(channels or ())
 
     # --------------------------------------------------------------- create #
 
@@ -263,7 +325,38 @@ class NotificationService:
         )
 
         self._announce(created, occurred_at=occurred_at)
+        self._dispatch(created)
         return created
+
+    def _dispatch(self, notifications: Sequence[Notification]) -> None:
+        """Offer the created batch to every delivery channel beyond the feed.
+
+        **After persistence and after the in-app announcement**, and the order is
+        load-bearing rather than incidental. A channel receives notifications that
+        already exist, so an email can never be sent for something the recipient
+        cannot open; and the badge moves first, so a slow mail relay cannot delay
+        the update the person looking at the application is waiting for.
+
+        Failures are swallowed and logged. The notification is already persisted
+        and already delivered in-app, so a channel that could not accept the batch
+        costs a second copy of news the reader already has — which is exactly the
+        trade ``17-email-delivery-channel.md`` asks for when it says failures
+        *"should never interrupt application functionality"*.
+        """
+        if not notifications or not self._channels:
+            return
+
+        for channel in self._channels:
+            try:
+                channel.dispatch(notifications)
+            except Exception:  # pragma: no cover - a channel must not raise
+                # By channel **type**, never by recipient or rule: which mailbox
+                # the platform failed to write to is exactly what this module
+                # keeps out of logs.
+                logger.exception(
+                    "notification_channel_dispatch_failed",
+                    channel=type(channel).__name__,
+                )
 
     def _filter_by_preference(
         self, rule: NotificationRule, recipient_ids: Sequence[uuid.UUID]
@@ -539,43 +632,62 @@ class NotificationService:
 
     # ---------------------------------------------------------- preferences #
 
-    def preferences(self, *, actor: User) -> dict[NotificationPreferenceKey, tuple[bool, bool]]:
-        """The caller's answer to every preference the platform offers.
+    def preferences(
+        self, *, actor: User
+    ) -> dict[NotificationPreferenceKey, ChannelPreference]:
+        """The caller's answer to every preference the platform offers, per channel.
 
         Returns:
-            ``key → (in_app, is_default)``. The **complete** set rather than only
-            the stored rows, so a settings page renders from one response and a
-            preference added later appears automatically at its default — and so
-            a client never has to know that "no row" means "the default".
+            ``key → ChannelPreference``. The **complete** set rather than only the
+            stored rows, so a settings page renders from one response and a
+            preference — or a **channel** — added later appears automatically at
+            its default, and so a client never has to know that "no row" means
+            "the default".
         """
         stored = self._notifications.preferences_for(actor.id)
         return {
-            key: (
-                stored.get(key.value, DEFAULT_PREFERENCES.get(key, True)),
-                key.value not in stored,
+            key: stored.get(
+                key.value,
+                ChannelPreference(
+                    in_app=DEFAULT_PREFERENCES.get(key, True),
+                    email=DEFAULT_PREFERENCES.get(key, True),
+                    is_default=True,
+                ),
             )
             for key in NotificationPreferenceKey
         }
 
     def update_preferences(
-        self, values: Mapping[NotificationPreferenceKey, bool], *, actor: User
-    ) -> dict[NotificationPreferenceKey, tuple[bool, bool]]:
+        self,
+        values: Mapping[NotificationPreferenceKey, ChannelPreferenceUpdate],
+        *,
+        actor: User,
+    ) -> dict[NotificationPreferenceKey, ChannelPreference]:
         """Store the caller's choices and return the complete set.
 
-        Only the keys supplied are written; anything omitted keeps its current
-        value, which is what lets two settings panels open at once avoid silently
-        reverting each other.
+        Only the keys supplied are written, and within a key only the **channels**
+        supplied — which is what lets two settings panels open at once avoid
+        silently reverting each other, and what stops a client that predates a
+        channel from switching it off by not mentioning it.
         """
         self._notifications.set_preferences(
-            actor.id, {key.value: enabled for key, enabled in values.items()}
+            actor.id, {key.value: change for key, change in values.items()}
         )
         logger.info(
             "notification_preferences_updated",
             user_id=str(actor.id),
-            # The **keys** and how many changed, never a map of what somebody
-            # switched off: which notifications a person has silenced is a small
-            # statement about how they work.
+            # The **keys** and which channels were touched, never a map of what
+            # somebody switched off: which notifications a person has silenced,
+            # and where, is a small statement about how they work.
             keys=sorted(key.value for key in values),
+            channels=sorted(
+                {
+                    channel.value
+                    for change in values.values()
+                    for channel in NotificationChannel
+                    if getattr(change, channel.value) is not None
+                }
+            ),
         )
         return self.preferences(actor=actor)
 
@@ -692,25 +804,29 @@ def _aware(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
-def resolve_preference_keys(stored: Mapping[str, bool]) -> dict[NotificationPreferenceKey, bool]:
+def resolve_preference_keys(
+    stored: Mapping[str, ChannelPreference],
+) -> dict[NotificationPreferenceKey, ChannelPreference]:
     """Read stored preference rows into the keys this version defines.
 
     Rows whose key this version does not know are dropped rather than raising —
     the registry is open by design, and a key written by a later version of the
     platform must not make an earlier one unable to load somebody's settings.
     """
-    resolved: dict[NotificationPreferenceKey, bool] = {}
-    for raw_key, enabled in stored.items():
+    resolved: dict[NotificationPreferenceKey, ChannelPreference] = {}
+    for raw_key, preference in stored.items():
         key = preference_from_value(raw_key)
         if key is not None:
-            resolved[key] = enabled
+            resolved[key] = preference
     return resolved
 
 
 __all__ = [
     "AnnouncementOutcome",
+    "NotificationDispatcher",
     "NotificationMetrics",
     "NotificationPage",
     "NotificationService",
+    "NullNotificationDispatcher",
     "resolve_preference_keys",
 ]

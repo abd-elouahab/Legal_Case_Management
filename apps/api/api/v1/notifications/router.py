@@ -46,10 +46,20 @@ import structlog
 from fastapi import APIRouter, Depends, Query, status
 
 from api.authorization import require_permission
-from api.deps import NotificationServiceDep, NotificationSubscriberDep
-from core.notifications import NotificationCategory, NotificationPreferenceKey
+from api.deps import (
+    EmailDeliveryServiceDep,
+    NotificationServiceDep,
+    NotificationSubscriberDep,
+)
+from core.notifications import (
+    ChannelPreference,
+    ChannelPreferenceUpdate,
+    NotificationCategory,
+    NotificationPreferenceKey,
+)
 from core.permissions import Permission
 from models.user import User
+from schemas.email import EmailMetricsQuery, EmailMetricsRead
 from schemas.notification import (
     AnnouncementCreate,
     AnnouncementResult,
@@ -203,20 +213,31 @@ def update_notification_preferences(
     preference added later does not make an older client's payload invalid.
     Anything omitted keeps its current value.
 
+    **Partial per channel as well as per key.** An entry carrying only `in_app`
+    leaves `email` exactly as it was — which is what stops a client written before
+    the email channel existed from switching it off by not mentioning it, and what
+    the next channel inherits for free.
+
     Switching a preference off stops *new* notifications of that kind being
-    created — it does not remove the ones already in the feed, which is the only
-    behaviour that makes "turn this off" a decision somebody can reverse.
+    created — or, for `email`, being sent — and does not remove the ones already
+    in the feed, which is the only behaviour that makes "turn this off" a decision
+    somebody can reverse.
     """
     return _to_preferences(
         notifications.update_preferences(
-            {entry.preference_key: entry.in_app for entry in payload.preferences},
+            {
+                entry.preference_key: ChannelPreferenceUpdate(
+                    in_app=entry.in_app, email=entry.email
+                )
+                for entry in payload.preferences
+            },
             actor=actor,
         )
     )
 
 
 def _to_preferences(
-    values: dict[NotificationPreferenceKey, tuple[bool, bool]],
+    values: dict[NotificationPreferenceKey, ChannelPreference],
 ) -> NotificationPreferencesRead:
     """Project the service's answer onto the response shape.
 
@@ -226,7 +247,10 @@ def _to_preferences(
     return NotificationPreferencesRead(
         preferences=[
             NotificationPreferenceRead(
-                preference_key=key, in_app=values[key][0], is_default=values[key][1]
+                preference_key=key,
+                in_app=values[key].in_app,
+                email=values[key].email,
+                is_default=values[key].is_default,
             )
             for key in NotificationPreferenceKey
             if key in values
@@ -302,6 +326,85 @@ def get_notification_metrics(
         notifications_by_category=statistics.by_category,
         created_by_rule=counters.created_by_rule,
         failures_by_reason=counters.failures_by_reason,
+        window_days=metrics.window_days,
+    )
+
+
+@router.get(
+    "/email/metrics",
+    response_model=EmailMetricsRead,
+    status_code=status.HTTP_200_OK,
+    summary="Email delivery metrics",
+    responses={**_UNAUTHORIZED, **_FORBIDDEN},
+)
+def get_email_metrics(
+    actor: NotificationMonitor,
+    emails: EmailDeliveryServiceDep,
+    query: Annotated[EmailMetricsQuery, Query()],
+) -> EmailMetricsRead:
+    """Return platform-wide email delivery health.
+
+    The five figures `17-email-delivery-channel.md`'s Monitoring section names —
+    **queued emails, sent emails, failed emails, retry count, and average delivery
+    latency** — plus the skip counters that explain a low send rate and the
+    breakdowns that say what is being sent and why something failed.
+
+    **The figures come from two places, and the response says which.** Counts of
+    rows are SQL aggregates: exact, surviving a restart, and the same on every API
+    instance — which matters more here than for the in-app feed, because "how many
+    emails are stuck?" is the first question after a deployment. Retries, latency,
+    and skips accumulate in *this* process and carry `since`.
+
+    `sent` means "a provider accepted it", not "it arrived" and certainly not "it
+    was read". SMTP hands off to a relay and what happens next is outside anything
+    this platform can observe — the same line `/notifications/metrics` draws
+    between "published onto the channel" and "arrived in a browser".
+
+    **There is deliberately no endpoint that lists deliveries.** A delivery names
+    a person, a rule, a moment, and an address, so a list of them would be a live
+    index of who the platform writes to about what. Troubleshooting a specific
+    complaint is a query against `email_deliveries` under the database's own
+    access controls; this endpoint serves what an operational view legitimately
+    needs.
+
+    An administrative view, so it is gated on `notifications:monitor` — **no new
+    permission**. Email is a *delivery channel* for notifications rather than a
+    feature of its own: a deployment that trusts somebody with notification health
+    is trusting them with the same information one channel at a time, and a
+    separate `email:monitor` would be a second grant meaning the same thing.
+
+    **Registered before `/{notification_id}`** for the same reason `/summary` is.
+    """
+    metrics = emails.metrics(window_days=query.window_days)
+    statistics = metrics.statistics
+    counters = metrics.counters
+
+    return EmailMetricsRead(
+        since=counters.since,
+        enabled=metrics.enabled,
+        provider=metrics.provider,
+        provider_available=metrics.provider_available,
+        templates_available=metrics.templates_available,
+        total_deliveries=statistics.total,
+        queued=statistics.pending,
+        sending=statistics.sending,
+        sent=statistics.sent,
+        failed=statistics.failed,
+        delivery_rate=statistics.delivery_rate,
+        recipients=statistics.recipients,
+        attempts=statistics.attempts,
+        queued_this_process=counters.queued,
+        sent_this_process=counters.sent,
+        failed_this_process=counters.failed,
+        retried=counters.retried,
+        skipped=counters.skipped,
+        average_delivery_latency_ms=counters.average_delivery_latency_ms,
+        average_send_duration_ms=counters.average_send_duration_ms,
+        sent_by_rule=counters.sent_by_rule,
+        failures_by_code=counters.failures_by_code,
+        stored_failures_by_code=statistics.by_failure_code,
+        retries_by_code=counters.retries_by_code,
+        skipped_by_reason=counters.skipped_by_reason,
         window_days=metrics.window_days,
     )
 

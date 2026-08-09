@@ -151,3 +151,96 @@ def test_rejects_an_unsupported_jwt_algorithm() -> None:
 def test_blank_cookie_domain_becomes_none() -> None:
     # A blank value in .env means "host-only cookie", not an empty domain.
     assert Settings(**_base_kwargs(REFRESH_COOKIE_DOMAIN="")).REFRESH_COOKIE_DOMAIN is None
+
+
+# --------------------------------------------------------------------------- #
+# Email delivery
+# --------------------------------------------------------------------------- #
+
+
+def test_the_email_channel_is_off_by_default() -> None:
+    """The one feature switch on this platform that defaults to off.
+
+    Every other one — OCR, indexing, search, RAG, reports, real-time,
+    notifications — defaults to on, because the worst case of an unconfigured one
+    is a recorded failure nobody outside the platform sees. Email is different in
+    kind: it is the only *outward-facing* side effect, and a deployment that has
+    not yet chosen a relay, a from-address, and a base URL should not be mailing
+    real people the first time somebody is assigned a case.
+    """
+    assert Settings(**_base_kwargs()).EMAIL_ENABLED is False
+
+
+def test_the_supported_email_languages_match_the_platforms() -> None:
+    """`core.config` cannot import `core.rag` — it is imported *by* everything,
+    including that module — so the language set is duplicated as a literal. This
+    is what keeps the copy from drifting: a language added to the platform and not
+    here would make `EMAIL_DEFAULT_LANGUAGE` reject a value the renderer supports.
+    """
+    from core.config import SUPPORTED_EMAIL_LANGUAGES
+    from core.rag import SUPPORTED_ANSWER_LANGUAGES
+
+    assert frozenset(SUPPORTED_ANSWER_LANGUAGES) == SUPPORTED_EMAIL_LANGUAGES
+
+
+def test_rejects_an_unsupported_email_language() -> None:
+    with pytest.raises(ValidationError, match="EMAIL_DEFAULT_LANGUAGE"):
+        Settings(**_base_kwargs(EMAIL_DEFAULT_LANGUAGE="de"))
+
+
+def test_rejects_a_backoff_ceiling_below_the_base() -> None:
+    """Not a ceiling but a silent replacement: every retry would wait the cap and
+    the exponential schedule the operator configured would never happen."""
+    with pytest.raises(ValidationError, match="EMAIL_RETRY_MAX_BACKOFF_SECONDS"):
+        Settings(
+            **_base_kwargs(
+                EMAIL_RETRY_BACKOFF_SECONDS=120.0, EMAIL_RETRY_MAX_BACKOFF_SECONDS=60.0
+            )
+        )
+
+
+def test_rejects_a_stale_threshold_at_or_below_the_send_timeout() -> None:
+    """It would reclaim deliveries that are merely slow, so a relay taking nine
+    seconds would have its message re-queued and eventually sent twice."""
+    with pytest.raises(ValidationError, match="EMAIL_STALE_SENDING_SECONDS"):
+        Settings(**_base_kwargs(SMTP_TIMEOUT_SECONDS=30, EMAIL_STALE_SENDING_SECONDS=30))
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["EMAIL_WORKER_CONCURRENCY", "EMAIL_MAX_ATTEMPTS", "EMAIL_RETRY_BATCH_SIZE"],
+)
+def test_rejects_non_positive_email_settings(field: str) -> None:
+    with pytest.raises(ValidationError, match=field):
+        Settings(**_base_kwargs(**{field: 0}))
+
+
+def test_blank_smtp_credentials_become_none() -> None:
+    """A blank value in .env means "unset", not an empty password."""
+    settings = Settings(**_base_kwargs(SMTP_HOST="", SMTP_PASSWORD=""))
+    assert settings.SMTP_HOST is None
+    assert settings.SMTP_PASSWORD is None
+
+
+def test_the_email_base_url_falls_back_to_the_first_cors_origin() -> None:
+    """Which in every deployment configured so far is exactly the web
+    application's own address, and is already something an operator had to get
+    right for the frontend to work at all."""
+    settings = Settings(
+        **_base_kwargs(CORS_ORIGINS="https://legal.example,https://other.example")
+    )
+    assert settings.email_base_url == "https://legal.example"
+
+
+def test_an_explicit_base_url_wins_and_loses_its_trailing_slash() -> None:
+    settings = Settings(
+        **_base_kwargs(
+            EMAIL_BASE_URL="https://mail-links.example/", CORS_ORIGINS="https://other.example"
+        )
+    )
+    assert settings.email_base_url == "https://mail-links.example"
+
+
+def test_a_wildcard_origin_is_not_a_base_url() -> None:
+    """`https://*` is not somewhere a link can point."""
+    assert Settings(**_base_kwargs(CORS_ORIGINS="*")).email_base_url is None

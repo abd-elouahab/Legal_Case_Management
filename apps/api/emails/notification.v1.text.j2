@@ -1,0 +1,25 @@
+{#
+  The plain-text half of a platform notification.
+
+  Rendered by the NON-escaping Jinja environment (see `services/email_templates.py`):
+  this part is read as text, so an apostrophe must stay an apostrophe rather than
+  becoming `&#39;` in somebody's terminal or screen reader.
+
+  Every sentence here comes from `chrome` or from the notification itself. There
+  is deliberately no wording of its own and no `{% if language %}` branch — the
+  localization lives in `core/email.py` beside the rest of the platform's text.
+#}
+{{ chrome.greeting }}
+
+{{ title }}
+
+{{ message }}
+{% if action_url %}
+
+{{ chrome.action_label }}: {{ action_url }}
+{% endif %}
+
+--
+{{ platform_name }}
+{{ chrome.footer }}
+{{ chrome.no_reply }}

@@ -5,8 +5,14 @@ change.
 
 ## Current Phase
 
+- **Email Delivery Channel complete (spec `17-email-delivery-channel.md`).** The
+  second delivery channel for the notifications the platform already creates, and
+  deliberately a **consumer of notifications rather than of domain events**:
+  business modules and the Notification Service keep deciding *what* is worth
+  telling somebody, and this feature decides only *how* one of those
+  notifications reaches them. See the entry at the top of *Completed*.
 - **Notifications (In-App) complete (spec `16-notifications.md`).** See the entry
-  at the top of *Completed*.
+  in *Completed*.
 - **Real-Time Events & Synchronization complete (spec
   `15-real-time-synchronization.md`).** See the entry in *Completed*.
 - **AI Report Generation complete (spec `14-ai-report-agent.md`).** See the entry
@@ -14,16 +20,22 @@ change.
 
 ## Current Goal
 
-- **Next: Email Notifications** (`ai-workflow-rules.md`'s step 13). The seam is
-  waiting for it in two places, and both were built by the feature just
-  completed. `notification_preferences` is one row per `(user, key)` with an
-  `in_app` boolean, so a second channel is **one nullable column** and every row
-  already exists to receive it. And nothing about a notification's wording lives
-  in the client — `core/notifications.py` renders a title and a message from a
-  rule key and a context, in three languages — so an email sender composes from
-  the same module rather than restating it, which is what
-  `code-standards.md`'s *"notification logic must never be duplicated"* asks for.
-  `apps/api/integrations/email/` is still an empty directory.
+- **Next: WhatsApp Notifications** (`ai-workflow-rules.md`'s step 14). The seam
+  is now built and proven rather than predicted: a delivery channel implements
+  the one-method `NotificationDispatcher` protocol, is added to one list in
+  `api/deps.py` and one in `services/notification_events.py`, and gets a `whatsapp`
+  boolean beside `in_app` and `email` on `notification_preferences` — no new
+  table, no new key, no backfill, and no business module touched. Everything the
+  email channel had to invent is reusable as it stands: the persisted delivery
+  lifecycle, the conditional-`UPDATE` claim, the retry schedule and its sweeper,
+  the two-source metrics split, and the rule table keyed by notification rather
+  than by event. What WhatsApp brings of its own is a provider (the Business API
+  is HTTP rather than SMTP, so `EmailProvider`'s shape applies but its protocol
+  does not) and a **template approval process**, which is a product constraint
+  rather than a code one and is the part worth scoping carefully.
+- **Done: Email Notifications** (`ai-workflow-rules.md`'s step 13, spec
+  `17-email-delivery-channel.md`). Both seams the previous feature left were used
+  exactly as predicted, and neither needed widening.
 - **Done: Notifications (In-App)** (`ai-workflow-rules.md`'s step 12). The
   platform's first *consumer* of the event dispatcher rather than another
   producer on it, and the point at which persistence of an event enters the
@@ -38,7 +50,7 @@ change.
   the spec's "graceful degradation" a property of the application rather than a
   claim, and it is what every screen falls back to when the socket is
   unavailable.
-- **Still not built, and still out of scope:** email delivery, WhatsApp delivery,
+- **Still not built, and still out of scope:** WhatsApp delivery,
   push notifications, SMS, scheduled reminders, notification *archiving* (the
   column and the read filters exist; no endpoint writes it), notification
   grouping, dashboard analytics, scheduled jobs, collaborative editing, presence
@@ -46,6 +58,43 @@ change.
   extraction, compliance analysis, translation, and the voice assistant.
 
 ## Open Questions
+
+- **The Email Delivery Channel raised three, and all three are genuinely open
+  rather than decided-and-recorded.**
+
+  *First: an email is written in the deployment's language, not the reader's.*
+  `architecture.md` lists **Language Preferences** under PostgreSQL and nothing
+  has built them, so `EMAIL_DEFAULT_LANGUAGE` is the whole of the answer today.
+  Everything below that setting is already per-recipient — `resolve_email_language`
+  takes a value, the templates take a `language` and a `direction`, and the
+  wording comes from `core/notifications.py`, which renders Arabic, French, and
+  English from the same row — so **the only change when the column lands is the
+  call site passing the user's value instead of the setting's**. It is recorded
+  as a question rather than a task because it is the *Localization* feature's
+  call whether a language preference is a user column, an account setting, or
+  derived from the interface language the client last used.
+
+  *Second: "Password Changed" is a supported email type with no notification
+  behind it.* The spec names it; `AuthService.change_password` publishes no
+  domain event, so there is nothing to deliver. Creating one is **notification
+  policy**, which `17-email-delivery-channel.md`'s Out of Scope explicitly
+  forbids this feature from touching, so it was deliberately not built. The
+  honest resolution is a `user.password_changed` event published by the auth
+  service plus one rule in `EVENT_RULES` — a Notifications change — after which
+  the email side is one line in `EMAIL_RULES`. **Worth doing:** a self-service
+  password change that sends no confirmation is the one account event where
+  silence and a compromise look identical.
+
+  *Third: the retry sweeper is a timer thread, and it is the platform's first
+  piece of periodic background work.* It is honest about what it is — per
+  process, non-durable, resolution bounded by `EMAIL_RETRY_INTERVAL_SECONDS` —
+  and safe under two API instances, because the claim is a conditional `UPDATE`
+  so exactly one of them sends. What it is **not** is a scheduler, and the
+  feature that will outgrow it is the **scheduled reminders**
+  `16-notifications.md` left out of scope: a hearing reminder needs "run this at
+  a wall-clock time", which is a different problem from "retry this after a
+  delay". That is the feature that should bring Celery beat, APScheduler, or
+  Trigger.dev with it — and when it does, this sweeper folds into it.
 
 - **Notifications raised two that needed deciding rather than asking, and both
   are recorded here because a later feature will meet them again.**
@@ -188,6 +237,131 @@ change.
   the whole run.
 
 ## Completed
+
+- **Email Delivery Channel (spec `17-email-delivery-channel.md`)** — the second
+  delivery channel for the notifications the platform already creates, and the
+  first feature since Notifications shipped that adds **no business rule at
+  all**. Business modules publish domain events as they already did; the
+  Notification Service turns the ones that matter into notifications as it
+  already did; this feature delivers the subset marked for email and decides
+  nothing else. **No new dependency** — SMTP is in the standard library — and
+  **no business module changed**.
+  - **It consumes notifications, never events, and that is a dependency rather
+    than a discipline.** `EmailDeliveryService` implements a new one-method
+    `NotificationDispatcher` protocol and is handed rows that have already been
+    created, authorized, de-duplicated, and persisted. It holds no event
+    publisher, no dispatcher, and no business service, so there is no path from
+    it to a business event — and everything it does from there only *narrows*, so
+    the spec's *"trust the Notification Service and never attempt to broaden
+    notification visibility"* is structural rather than careful.
+  - **Adding a channel cost one protocol, one list, and one column.**
+    `models/notification.py` predicted that a second channel would be *"one
+    boolean column beside `in_app`, and every row already exists to receive it"*;
+    that prediction was cashed exactly — no new table, no new preference key, no
+    backfill, and an account that has never opened the settings page still has no
+    row and still follows the platform defaults.
+  - **`EMAIL_RULES` is the whole subscription list**, keyed by notification rule
+    rather than by event because an event is not something this module can name.
+    Its seven entries are exactly the spec's "Supported Email Types"; every entry
+    on the *"Events That Must NOT Generate Emails"* list is absent, and its
+    absence is asserted by a parametrized test rather than left to review. The one
+    supported type with nothing behind it is **"Password Changed"**:
+    `AuthService.change_password` publishes no event, so there is no notification
+    to deliver, and creating one would be notification *policy* — which this
+    spec's Out of Scope explicitly forbids this feature from touching. When that
+    rule lands, the email side is one line.
+  - **The wording is not restated anywhere.** The subject is the notification's
+    rendered title and the body's lead is its rendered message, both from
+    `core/notifications.render_notification` in the recipient's language — which
+    is what `models/notification.py` chose to store no prose *for*. The chrome
+    around it (greeting, button label, footer, the security note) lives in
+    `core/email.py` beside the rest of the platform's text, so the `.j2` files
+    carry no sentence of their own and no `{% if language %}` branch.
+  - **A persisted lifecycle, and the claim is a conditional `UPDATE`.**
+    `pending` → `sending` → `sent` | `failed`, with the row as its own lock — the
+    mechanism `ocr_results` and `document_indexes` established. A unique index on
+    `notification_id` makes *one notification, one email* an invariant rather
+    than a heuristic, so retrying re-uses the row and a re-dispatch after a
+    restart cannot produce a second message.
+  - **Retry is a schedule on the row, not a sleep on a thread**, and that is this
+    feature's one genuinely new piece of machinery. A transient failure writes
+    `next_attempt_at` and returns the worker immediately; `EmailRetrySweeper` —
+    a timer thread that also runs once at startup — re-queues what has come due
+    and reclaims anything a dead process left in `sending`. A worker sleeping out
+    an hour-long backoff would hold one of two threads for an hour and lose the
+    schedule on restart; a column survives both. The startup pass is also how
+    deliveries queued by a previous process are picked up at all.
+  - **Transient and permanent are a partition of a closed vocabulary**, not a
+    judgement at a call site. A timeout, a dropped connection, an unreachable
+    provider, and an SMTP **4xx** are retried; a rejected credential, an unknown
+    mailbox, an oversized message, and a broken template are not. Retrying a 5xx
+    is how a platform gets a relay to stop accepting its mail, and retrying a
+    rejected password is how an account gets locked.
+  - **Off by default, and it is the only feature switch on the platform that
+    is.** Every other one defaults to on because the worst case of an
+    unconfigured one is a recorded failure nobody outside the platform sees;
+    email is the platform's only *outward-facing* side effect. Relatedly, a
+    deployment with no relay **queues nothing** rather than accumulating rows
+    whose only outcome is a burst of very old mail the day somebody configures
+    SMTP — including "your case was assigned" for a case that closed weeks ago.
+  - **Preferences are per key *and* per channel**, which is the setting the spec
+    is actually about: silence email for hearing updates without emptying the
+    in-app feed. A change carries only the channels it is changing, so a client
+    written before this channel existed cannot switch it off by omission — and
+    the next channel inherits that protection for free.
+  - **Two Jinja environments, because there is a real attack surface.**
+    `POST /notifications/announcements` puts a human's words into `{message}`,
+    which reaches both bodies — so the HTML part autoescapes and the plain-text
+    part does not (entities in a screen reader are a defect too). A header value
+    carrying a line break is **refused rather than stripped**: a name silently
+    rewritten is a name that was attacked and nobody noticed.
+  - **No email content and no address reaches a log**, which is a stricter line
+    than any other module on the platform holds — because this is the only one
+    handling a personal address. Not even at debug, and not even hashed: an
+    address hashed unsalted is reversible by anyone with a user list. The
+    provider's own message never leaves `services/email_provider.py` for the same
+    reason, since an SMTP rejection quotes the envelope.
+  - **No new permission, and no endpoint listing deliveries.** Email is a channel
+    for notifications rather than a feature of its own, so `notifications:monitor`
+    gates its metrics; a separate `email:monitor` would be a second grant meaning
+    the same thing. A *list* of deliveries would name a person, a rule, a moment,
+    and an address — the live index `services/notification_metrics.py` refuses to
+    build — so the history stays in the table for an operator to query.
+  - **Provider replacement is a registry entry.** `SmtpEmailProvider` and
+    `NullEmailProvider` ship; Resend, SendGrid, SES, and Mailgun each format an
+    HTTP request from an `OutgoingEmail` and map their statuses onto
+    `EmailFailureCode`, with nothing above the boundary moving.
+  - **Validation:** `ruff` and `mypy --strict` clean across `apps/api`; the
+    backend suite passes in full (**3499 tests**, `tests/unit` + `tests/integration`;
+    the `tests/ai` live checks skip without `LLM_API_KEY`), including **198
+    tests** across four new unit modules
+    (`test_email_utils`, `test_email_provider`, `test_email_templates`,
+    `test_email_delivery_service`) and `tests/integration/test_email_delivery.py`,
+    which drives a real domain event through the Notification Service to a
+    composed, addressed message. The migration was first verified by rendering
+    its DDL offline against the PostgreSQL dialect (`alembic upgrade
+    b3d81e5fa27c:head --sql`) — the chain cannot run on SQLite, because
+    `expand_users_for_user_management` uses `split_part` — and has since been
+    **applied to the live database**: `alembic upgrade head` took it from
+    `a91c4f27de63` through the notification tables to `c7e4a91d3f28`, creating
+    `email_deliveries` with all five indexes and the unique constraint, the
+    `email_delivery_status` enum, and the `email` column on
+    `notification_preferences`. Frontend
+    `tsc --noEmit`, ESLint, and `npm run build` clean, with **648 vitest tests
+    passing** — including two new ones asserting that the two channels render
+    independently and that toggling Email sends `{email: false}` with `in_app`
+    **absent** rather than repeated, which is the omission failure the API's
+    optional fields exist to prevent.
+  - **The spec's Testing checklist, mapped:** emails are queued and delivered
+    (`TestEligibility`, `TestSending`, `TestDeliveryPath`); HTML *and* plain text
+    render, with escaping on one and not the other (`TestEscaping`,
+    `TestShippedTemplates`); retries work and are exhausted
+    (`TestFailuresAndRetries`, `TestSweep`); failures are isolated
+    (`test_a_dispatch_failure_never_reaches_the_caller`,
+    `test_the_notification_is_untouched_by_a_failure`); preferences are respected
+    on the email channel alone (`TestPreferences`, both files); and the provider
+    abstraction works, including every SMTP failure's translation
+    (`TestFailureTranslation`, `TestRegistry`).
 
 - **Notifications (In-App) (spec `16-notifications.md`)** — the platform's
   notification system, and the **first consumer** of the event dispatcher rather
@@ -3910,6 +4084,68 @@ change.
 
 ### Notable implementation notes / deviations (build-critical)
 
+- **PostgreSQL is published on host port 5433, not 5432.** A native PostgreSQL
+  install on the development machine already held 5432, and the failure mode when
+  both exist is silent and genuinely confusing rather than merely inconvenient:
+  the native server takes the **IPv4 wildcard** (`0.0.0.0`), Docker is left able
+  to bind **IPv6 only** (`::`), and every connection to `localhost:5432` — from
+  Alembic, from uvicorn, from psql — reaches the *wrong database* and fails
+  password authentication with credentials that are correct for the container.
+  The error says "password authentication failed for user postgres" while
+  `.env` and `docker-compose.yml` agree perfectly, which sends you looking at the
+  password rather than at the port.
+  - `docker-compose.yml` publishes `5433:5432` and `.env` / `.env.example` set
+    `POSTGRES_PORT=5433`. The container still listens on 5432 **internally**, so
+    the `api` compose service (`POSTGRES_HOST=postgres`) is unaffected — only the
+    host-side port moved, and `docker compose up -d postgres` recreated the
+    container against the existing volume with no data loss.
+  - Diagnosing a repeat: `Get-NetTCPConnection -LocalPort 5432 -State Listen`
+    with the owning process resolved shows both listeners at once, and
+    `docker exec -e PGPASSWORD=… legal-postgres psql -h 127.0.0.1 -U postgres`
+    proves whether the *container's* password is actually wrong.
+- **Email is OFF by default (`EMAIL_ENABLED=false`), unlike every other feature
+  switch on the platform.** OCR, indexing, search, RAG, reports, real-time, and
+  notifications all default to on, because the worst case of an unconfigured one
+  is a recorded failure nobody outside the platform sees. Email is the platform's
+  only *outward-facing* side effect. Turning it on needs, at minimum,
+  `SMTP_HOST`, `EMAIL_FROM_ADDRESS`, and either `EMAIL_BASE_URL` or a
+  `CORS_ORIGINS` first entry that is the web application's public address — the
+  last of which is what the "open in the platform" button uses, and without it
+  the mail goes out **linkless but correct** rather than with a broken path.
+- **Local mail capture: Mailpit**, which `architecture.md` names.
+  `docker run -p 1025:1025 -p 8025:8025 axllent/mailpit`, then
+  `SMTP_HOST=localhost`, `SMTP_PORT=1025`, `SMTP_USE_TLS=false`, no credentials;
+  the web UI is on `:8025`. It is deliberately **not** in `docker-compose.yml`:
+  the compose file is the four backing services the platform cannot run without,
+  and a mail catcher is a development convenience.
+- **`EMAIL_PROVIDER=null` is a supported configuration**, not a test-only hack.
+  It accepts every message and discards it, which is what a staging environment
+  or a demonstration wants — the delivery pipeline, the templates, and the
+  metrics all exercise, and nobody is mailed.
+- **The email templates are three files per version**, not two like the prompts:
+  `<name>.v<n>.subject.j2`, `.html.j2`, and `.text.j2`. A version is only
+  *discovered* when all three exist, so a half-finished edit cannot be selected
+  by `version=None`.
+- **Escaping differs from `services/prompts.py` on purpose.** The prompt library
+  turns autoescaping off everywhere (its output is text for a model); the email
+  renderer keeps **two** Jinja environments and escapes the HTML part only. If a
+  fourth part is ever added, it belongs in `ESCAPED_PARTS` or deliberately does
+  not — there is no third option.
+- **`core/config.py` cannot import `core/rag.py`.** It is imported *by* almost
+  everything including that module, so `SUPPORTED_EMAIL_LANGUAGES` is a
+  duplicated literal in `core/config.py`. A unit test asserts the two sets are
+  equal, which is what keeps the copy from drifting.
+- **Test-file basenames must be unique across `tests/unit` and
+  `tests/integration`.** There are no `__init__.py` files, so pytest imports test
+  modules by basename and two files called `test_email_delivery.py` collide with
+  an "import file mismatch" error. The unit one is
+  `test_email_delivery_service.py` for that reason.
+- **The email integration tests request `api_client` from their `_enable_email`
+  fixture**, and the ordering is deliberate rather than decorative: the lifespan's
+  `start_email_workers` runs the retry sweeper's startup pass, which is a *query*,
+  so flipping `EMAIL_ENABLED` before the app starts would have it reach for the
+  real PostgreSQL instead of the test database. It is caught and logged either
+  way; requesting the client first keeps it from happening at all.
 - **TypeScript pinned to 6.x (not 7.x):** `typescript-eslint` (bundled by
   `eslint-config-next`) does not yet support the TS 7 native compiler; TS 7
   broke linting. TS 6.x satisfies strict-mode requirements.

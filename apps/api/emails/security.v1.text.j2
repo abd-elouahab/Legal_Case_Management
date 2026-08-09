@@ -1,0 +1,27 @@
+{#
+  The plain-text half of an account-security email: a password reset, an account
+  activation.
+
+  Two differences from `notification.v1`, and both are the reason this is a
+  separate template rather than a flag on that one:
+
+  * **No link, and `action_url` is never read here.** A message about somebody's
+    password that asks them to click something is the exact shape of a phishing
+    email, and training the platform's users to follow one is a cost that
+    outlasts the convenience. The reader signs in the way they always do.
+  * **It ends with `security_note`** — "if you did not do this, contact your
+    administrator" — which is the only thing that makes an unexpected password
+    reset actionable rather than alarming.
+#}
+{{ chrome.greeting }}
+
+{{ title }}
+
+{{ message }}
+
+{{ chrome.security_note }}
+
+--
+{{ platform_name }}
+{{ chrome.footer }}
+{{ chrome.no_reply }}

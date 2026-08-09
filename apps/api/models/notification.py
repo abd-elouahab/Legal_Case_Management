@@ -308,8 +308,10 @@ class NotificationPreference(Base):
     * an **eighth preference** — hearing reminders, deadline alerts — is a new
       key and a new row, with **no migration**, because ``preference_key`` is an
       open registry like ``timeline_events.event_type``;
-    * a **second channel** — email, WhatsApp, push — is one nullable boolean
-      column beside :attr:`in_app`, and every row already exists to receive it.
+    * a **second channel** — email, WhatsApp, push — is one boolean column beside
+      :attr:`in_app`, and every row already exists to receive it. That prediction
+      has since been cashed: :attr:`email` is that column, added by
+      ``17-email-delivery-channel.md`` with no new table and no backfill.
 
     A row is written only when somebody actually changes something. An account
     that has never opened the settings page has no rows at all and follows
@@ -345,12 +347,29 @@ class NotificationPreference(Base):
     preference_key: Mapped[str] = mapped_column(String(50), nullable=False)
 
     #: Whether in-app notifications of this kind are delivered.
-    #:
-    #: The only channel this feature ships. ``email`` and ``whatsapp`` are the
-    #: columns that join it when those features land, which is the whole reason
-    #: the channel is a *column* rather than the table being called
-    #: ``in_app_preferences``.
     in_app: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+
+    #: Whether emails of this kind are delivered.
+    #:
+    #: **The second channel, and it arrived as one column** — which is exactly
+    #: what the note above predicted when this table shipped with one. Nothing
+    #: else about the preference model changed: no new table, no new key, no
+    #: backfill, and an account that has never opened the settings page still has
+    #: no row and still follows
+    #: :data:`~core.notifications.DEFAULT_PREFERENCES`.
+    #:
+    #: ``NOT NULL DEFAULT true`` rather than nullable, deliberately. A nullable
+    #: column would make "the user has not chosen" and "the user chose on" two
+    #: different stored states for the same behaviour, and every reader would have
+    #: to collapse them — while the platform already has a perfectly good
+    #: representation of "has not chosen": **no row at all**. ``whatsapp``,
+    #: ``push``, and ``sms`` join this the same way when those channels land.
+    #:
+    #: Note that this only ever *narrows*: a notification kind with no entry in
+    #: :data:`~core.email.EMAIL_RULES` is never emailed however this is set.
+    email: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
 
@@ -364,7 +383,7 @@ class NotificationPreference(Base):
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return (
             f"<NotificationPreference user_id={self.user_id!s} "
-            f"key={self.preference_key!r} in_app={self.in_app}>"
+            f"key={self.preference_key!r} in_app={self.in_app} email={self.email}>"
         )
 
 

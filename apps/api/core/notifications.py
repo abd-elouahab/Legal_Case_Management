@@ -208,12 +208,49 @@ class NotificationPreferenceKey(StrEnum):
     SYSTEM_ANNOUNCEMENTS = "system_announcements"
 
 
+class NotificationChannel(StrEnum):
+    """How a notification can reach somebody.
+
+    Two today, and the second arrived exactly as :mod:`models.notification`
+    predicted it would: *"a second channel — email, WhatsApp, push — is one
+    nullable boolean column beside* ``in_app``\\ *, and every row already exists to
+    receive it."*
+
+    A channel is **not** a preference key and the two axes are deliberately
+    independent: a user silences *hearing updates* (a key) or silences *email* (a
+    channel), and the interesting setting is the intersection — keep hearing
+    updates in the application, stop them arriving in a mailbox. That is what
+    ``17-email-delivery-channel.md``'s *"if a user disables email delivery for a
+    supported notification type, no email should be sent"* asks for, and it is
+    why the storage is a column per channel on a row per key rather than either
+    one alone.
+
+    The member values are the **column names** on
+    :class:`~models.notification.NotificationPreference`, which is what lets
+    :meth:`~repositories.notification.NotificationRepository.preferences_for_many`
+    take a channel rather than having a method per channel.
+    """
+
+    IN_APP = "in_app"
+    EMAIL = "email"
+
+
 #: Whether a preference is on for a user who has never expressed one.
 #:
-#: All seven default to **on**, and that is the only defensible default for this
-#: platform: `architecture.md` invariant 3 says every important event produces a
-#: notification for its authorized users, so a default of *off* would make the
-#: invariant false for every account until somebody visited a settings page.
+#: All seven default to **on**, on **both** channels, and that is the only
+#: defensible default for this platform: `architecture.md` invariant 3 says every
+#: important event produces a notification for its authorized users, so a default
+#: of *off* would make the invariant false for every account until somebody
+#: visited a settings page.
+#:
+#: The email channel follows the same default rather than a more cautious one,
+#: and the reason is that the *rule set* is already the cautious part:
+#: :data:`~core.email.EMAIL_RULES` carries seven high-signal notifications —
+#: a password reset, an account activation, a case assignment, two hearing
+#: changes, a finished report, and a maintenance window — and a deployment that
+#: has configured no provider sends nothing at all. Defaulting these to off would
+#: mean a lawyer misses a hearing change because they never opened a settings
+#: page they had no reason to visit.
 #:
 #: A row is written only when a user actually changes something, so an untouched
 #: account costs no storage and silently follows any future change to these
@@ -222,6 +259,63 @@ class NotificationPreferenceKey(StrEnum):
 DEFAULT_PREFERENCES: Mapping[NotificationPreferenceKey, bool] = MappingProxyType(
     dict.fromkeys(NotificationPreferenceKey, True)
 )
+
+
+@dataclass(frozen=True, slots=True)
+class ChannelPreference:
+    """One person's answer for one preference key, across every channel.
+
+    The read shape. A frozen value rather than a bare tuple so a caller reads
+    ``preference.email`` instead of ``preference[1]`` — which matters because a
+    third channel is a third field here and would silently shift every index.
+    """
+
+    in_app: bool = True
+    email: bool = True
+    #: Whether these are the platform's defaults rather than a choice the user
+    #: made. Reported so a settings page can say "default" instead of implying
+    #: somebody picked it — an account that has expressed no opinion has no
+    #: stored row at all.
+    is_default: bool = True
+
+    def for_channel(self, channel: NotificationChannel) -> bool:
+        """Whether this kind of notification is delivered on ``channel``."""
+        return self.email if channel is NotificationChannel.EMAIL else self.in_app
+
+
+@dataclass(frozen=True, slots=True)
+class ChannelPreferenceUpdate:
+    """A change to one preference key. ``None`` means "leave this channel alone".
+
+    Partial by construction, for the reason ``PUT /notifications/preferences``
+    takes a list of changes rather than the whole set: a settings page that
+    toggles the email switch must not silently rewrite the in-app one, and an
+    older client that has never heard of a channel must not turn it off by
+    omission.
+    """
+
+    in_app: bool | None = None
+    email: bool | None = None
+
+    @property
+    def is_empty(self) -> bool:
+        """Whether this change asks for nothing."""
+        return self.in_app is None and self.email is None
+
+
+def default_preference(
+    key: NotificationPreferenceKey, channel: NotificationChannel
+) -> bool:
+    """What ``key`` is set to on ``channel`` for a user who has expressed nothing.
+
+    The channel is taken and currently ignored, and that is the honest signature
+    rather than a redundant one: both channels share :data:`DEFAULT_PREFERENCES`
+    **today**, and the day one of them does not — a channel whose defaults are
+    opt-in, which SMS plausibly is — this is the single function that changes
+    instead of every caller learning a second rule.
+    """
+    del channel
+    return DEFAULT_PREFERENCES.get(key, True)
 
 
 def preference_from_value(value: str) -> NotificationPreferenceKey | None:
@@ -1415,9 +1509,12 @@ __all__ = [
     "RULE_HEARING_SCHEDULED",
     "RULE_HEARING_UPDATED",
     "AnnouncementKind",
+    "ChannelPreference",
+    "ChannelPreferenceUpdate",
     "InvalidNotificationContextError",
     "NotificationAudience",
     "NotificationCategory",
+    "NotificationChannel",
     "NotificationPreferenceKey",
     "NotificationPriority",
     "NotificationRule",
@@ -1429,6 +1526,7 @@ __all__ = [
     "RenderedNotification",
     "build_context",
     "dedupe_key",
+    "default_preference",
     "normalize_context",
     "preference_from_value",
     "render_notification",

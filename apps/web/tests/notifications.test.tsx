@@ -466,7 +466,7 @@ describe("NotificationFeed", () => {
 // --------------------------------------------------------------------------- //
 
 describe("NotificationPreferencesForm", () => {
-  it("renders every preference the server offers", async () => {
+  it("renders every preference the server offers, on every channel", async () => {
     signInAs("lawyer");
     mockFetch({
       [NOTIFICATION_ENDPOINTS.preferences]: { body: notificationPreferencesPayload() },
@@ -474,9 +474,29 @@ describe("NotificationPreferencesForm", () => {
 
     renderWithQuery(<NotificationPreferencesForm />);
 
-    expect(await screen.findByLabelText("Case updates")).toBeChecked();
-    expect(screen.getByLabelText("Text extraction")).toBeChecked();
-    expect(screen.getByLabelText("Platform announcements")).toBeChecked();
+    // Each checkbox carries its full name — the preference *and* the channel —
+    // because the column headings are a grid rather than a table and a screen
+    // reader has no header relationship to follow.
+    expect(await screen.findByLabelText("Case updates — In app")).toBeChecked();
+    expect(screen.getByLabelText("Case updates — Email")).toBeChecked();
+    expect(screen.getByLabelText("Text extraction — In app")).toBeChecked();
+    expect(screen.getByLabelText("Platform announcements — Email")).toBeChecked();
+  });
+
+  it("shows the two channels independently", async () => {
+    signInAs("lawyer");
+    mockFetch({
+      [NOTIFICATION_ENDPOINTS.preferences]: {
+        body: notificationPreferencesPayload({}, { hearing_updates: false }),
+      },
+    });
+
+    renderWithQuery(<NotificationPreferencesForm />);
+
+    // The setting the email channel exists for: keep hearing updates in the
+    // application, stop them arriving in a mailbox.
+    expect(await screen.findByLabelText("Hearings — In app")).toBeChecked();
+    expect(screen.getByLabelText("Hearings — Email")).not.toBeChecked();
   });
 
   it("says when a value is the platform's default rather than a choice", async () => {
@@ -501,12 +521,35 @@ describe("NotificationPreferencesForm", () => {
     });
 
     renderWithQuery(<NotificationPreferencesForm />);
-    await userEvent.click(await screen.findByLabelText("Text extraction"));
+    await userEvent.click(await screen.findByLabelText("Text extraction — In app"));
 
     await waitFor(() => {
       const call = requests.find((request) => request.method === "PUT");
       expect(call?.body).toMatchObject({
         preferences: [{ preference_key: "ocr_completion", in_app: false }],
+      });
+    });
+  });
+
+  it("sends only the channel that changed", async () => {
+    signInAs("lawyer");
+    const { requests } = mockFetch({
+      [NOTIFICATION_ENDPOINTS.preferences]: [
+        { body: notificationPreferencesPayload() },
+        { body: notificationPreferencesPayload({}, { hearing_updates: false }) },
+      ],
+    });
+
+    renderWithQuery(<NotificationPreferencesForm />);
+    await userEvent.click(await screen.findByLabelText("Hearings — Email"));
+
+    await waitFor(() => {
+      const call = requests.find((request) => request.method === "PUT");
+      // `in_app` is **absent**, not `true`: sending it would rewrite a switch
+      // nobody touched, which is the failure the API's optional fields exist to
+      // prevent.
+      expect(call?.body).toEqual({
+        preferences: [{ preference_key: "hearing_updates", email: false }],
       });
     });
   });

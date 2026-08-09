@@ -133,6 +133,7 @@ export const notificationPreferencesSchema = z.object({
     z.object({
       preference_key: z.enum(NOTIFICATION_PREFERENCE_KEYS),
       in_app: z.boolean(),
+      email: z.boolean(),
       is_default: z.boolean(),
     }),
   ),
