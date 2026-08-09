@@ -493,6 +493,65 @@ class Settings(BaseSettings):
     # the server's half of not sending one twice, and the client keeps its own.
     REALTIME_DEDUPE_WINDOW: int = 512
 
+    # --- Notifications (in-app) ---
+    # The platform's notification system: a centralized service subscribed to the
+    # event dispatcher above, turning domain events into persistent, per-user
+    # notifications and delivering them over the same WebSocket channel.
+    # Disabling it stops *creation* — the subscriber becomes a no-op — while
+    # existing notifications stay readable, markable, and filterable. Nothing
+    # else changes: no business module knows this feature exists, so none of them
+    # can be affected by it being off.
+    NOTIFICATIONS_ENABLED: bool = True
+    # Events buffered between the publisher's thread and the notification
+    # worker before one is dropped. `EventSubscriber.handle` must not block a
+    # publisher — it is called inside a request or a worker job that has already
+    # committed its change — so the subscriber hands the event to this queue and
+    # returns, exactly as the WebSocket manager does. Bounded, because the
+    # alternative to dropping a burst the platform cannot keep up with is holding
+    # it in the API's memory.
+    NOTIFICATION_QUEUE_SIZE: int = 2048
+    # Threads turning events into notifications in this API process. One by
+    # default and deliberately: the work is a short read plus a batched insert,
+    # and a second worker would let two events about the same case interleave
+    # their duplicate checks — which is the one race the windowed dedupe cannot
+    # close on its own.
+    NOTIFICATION_WORKER_CONCURRENCY: int = 1
+    # How long a semantically identical notification is suppressed. The second of
+    # the two duplicate mechanisms (see `core/notifications.dedupe_key`): the
+    # first is a unique index on the dispatched event, which is exact, and this
+    # is the window that catches a retried worker or a double-click. Long enough
+    # to cover a retry, far too short to silence a case genuinely updated twice
+    # in a day.
+    NOTIFICATION_DEDUPE_WINDOW_SECONDS: int = 300
+    # Recipients one event may notify. A ceiling rather than a target: a case has
+    # at most three participants, and this exists so that a future audience —
+    # a whole role, an entire firm — cannot turn one event into an unbounded
+    # write. An audience larger than this is truncated and *logged*, never
+    # silently trimmed.
+    NOTIFICATION_MAX_RECIPIENTS: int = 500
+    # Accounts one system announcement may reach in a single batch, and the
+    # ceiling on how many it may reach in total. Announcements are the only path
+    # that writes a row for every active user, so they are the only path that
+    # needs a batch size at all.
+    NOTIFICATION_ANNOUNCEMENT_BATCH_SIZE: int = 200
+    # Longest body an administrator may put in a system announcement. The one
+    # place in this feature where a human's words become a notification, so it is
+    # the one place a length limit is about input rather than about rendering.
+    NOTIFICATION_ANNOUNCEMENT_MAX_LENGTH: int = 500
+    # Notifications returned per page when a request does not ask for a number,
+    # and the ceiling a request may ask for. The panel asks for far fewer than
+    # the history page; both are bounded by the same maximum.
+    NOTIFICATION_PAGE_SIZE: int = 20
+    NOTIFICATION_MAX_PAGE_SIZE: int = 100
+    # Highest unread count the badge reports exactly. Past it the API answers
+    # "this many or more", because counting four thousand unread notifications
+    # precisely costs a full scan to render a badge that would say "99+" anyway.
+    NOTIFICATION_UNREAD_COUNT_CAP: int = 999
+    # Notifications one `PATCH /notifications/read` may mark in one request.
+    # Bounds a single statement rather than the feature: "mark all as read" is
+    # its own endpoint and is one UPDATE whatever the history's size.
+    NOTIFICATION_MAX_BULK_READ: int = 200
+
     # --- Prompt templates ---
     # Which prompt backend to use (see `services/prompts.py`). Templates live in
     # `apps/api/prompts/` as versioned `.j2` files under source control.
@@ -710,6 +769,16 @@ class Settings(BaseSettings):
         "REALTIME_IDLE_TIMEOUT_SECONDS",
         "REALTIME_MAX_FRAMES_PER_MINUTE",
         "REALTIME_DEDUPE_WINDOW",
+        "NOTIFICATION_QUEUE_SIZE",
+        "NOTIFICATION_WORKER_CONCURRENCY",
+        "NOTIFICATION_DEDUPE_WINDOW_SECONDS",
+        "NOTIFICATION_MAX_RECIPIENTS",
+        "NOTIFICATION_ANNOUNCEMENT_BATCH_SIZE",
+        "NOTIFICATION_ANNOUNCEMENT_MAX_LENGTH",
+        "NOTIFICATION_PAGE_SIZE",
+        "NOTIFICATION_MAX_PAGE_SIZE",
+        "NOTIFICATION_UNREAD_COUNT_CAP",
+        "NOTIFICATION_MAX_BULK_READ",
     )
     @classmethod
     def _require_positive(cls, value: int, info: ValidationInfo) -> int:
@@ -874,6 +943,20 @@ class Settings(BaseSettings):
             )
         if self.REALTIME_AUTHORIZATION_TTL_SECONDS < 0:
             raise ValueError("REALTIME_AUTHORIZATION_TTL_SECONDS must not be negative")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_notification_limits(self) -> Settings:
+        """Keep the notification page size and its ceiling coherent.
+
+        The same coupling the search, assistant, and report limits have, and the
+        same reason: a default above the maximum makes every unqualified request
+        fail validation against a bound the caller never chose.
+        """
+        if self.NOTIFICATION_PAGE_SIZE > self.NOTIFICATION_MAX_PAGE_SIZE:
+            raise ValueError(
+                "NOTIFICATION_PAGE_SIZE must not exceed NOTIFICATION_MAX_PAGE_SIZE"
+            )
         return self
 
     @model_validator(mode="after")

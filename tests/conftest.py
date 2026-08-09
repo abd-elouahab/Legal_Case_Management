@@ -1882,6 +1882,120 @@ def event_publisher():  # type: ignore[no-untyped-def]
     return RecordingEventPublisher()
 
 
+# --------------------------------------------------------------------------- #
+# Notification fixtures
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def notification_metrics():  # type: ignore[no-untyped-def]
+    """A fresh notification metrics recorder per test.
+
+    Per test rather than the process-wide one, for the reason every other
+    ``*_metrics`` fixture here is: the real recorder counts for the life of the
+    process, so "one notification was created" would otherwise depend on how many
+    every earlier test produced.
+    """
+    from services.notification_metrics import InMemoryNotificationMetrics
+
+    return InMemoryNotificationMetrics()
+
+
+@pytest.fixture
+def notification_subscriber(session_factory, event_publisher, notification_metrics):  # type: ignore[no-untyped-def]
+    """A notification subscriber wired to the test database, **not started**.
+
+    Deliberately not started, and that is what makes these tests deterministic:
+    :meth:`~services.notification_events.NotificationEventSubscriber.process` is
+    public and synchronous precisely so a test can hand it an event and assert
+    about rows, rather than queueing one and waiting to see whether a thread got
+    there first. A test that waits for a worker is a test that will eventually be
+    flaky.
+
+    Its recipient resolver runs against the same engine, so the authorization
+    chain exercised here is the real one — the real case policy, the real
+    repositories — rather than a mock of it.
+    """
+    from services.notification_events import NotificationEventSubscriber
+
+    return NotificationEventSubscriber(
+        session_factory,
+        publisher=event_publisher,
+        metrics=notification_metrics,
+    )
+
+
+@pytest.fixture
+def make_notification(db_session: Session):  # type: ignore[no-untyped-def]
+    """Factory creating persisted notifications directly.
+
+    For tests about *reading* — the feed, the filters, the badge, read state —
+    which have no business going through an event to arrange their fixtures. The
+    tests about *creation* use ``notification_subscriber`` and a real event.
+
+    ``created_at`` is settable so ordering tests do not depend on wall-clock gaps
+    between rows inserted in the same millisecond, exactly as ``make_case`` and
+    ``make_user`` allow.
+    """
+    import itertools as _itertools
+
+    from core.notifications import NotificationCategory, dedupe_key
+    from models.notification import Notification, NotificationPriority, NotificationType
+
+    counter = _itertools.count(1)
+
+    def _make(
+        *,
+        recipient_id: uuid.UUID,
+        rule_key: str = "case.created",
+        category: NotificationCategory | str = NotificationCategory.CASE,
+        notification_type: NotificationType = NotificationType.INFORMATION,
+        priority: NotificationPriority = NotificationPriority.NORMAL,
+        context: dict[str, object] | None = None,
+        case_id: uuid.UUID | None = None,
+        actor_id: uuid.UUID | None = None,
+        target_type: str | None = None,
+        target_id: uuid.UUID | None = None,
+        event_id: uuid.UUID | None = None,
+        event_type: str | None = None,
+        read_at: datetime | None = None,
+        archived_at: datetime | None = None,
+        created_at: datetime | None = None,
+        dedupe: str | None = None,
+    ):  # type: ignore[no-untyped-def]
+        resolved_category = (
+            category.value if isinstance(category, NotificationCategory) else category
+        )
+        notification = Notification(
+            id=uuid.uuid4(),
+            recipient_id=recipient_id,
+            event_id=event_id,
+            event_type=event_type,
+            rule_key=rule_key,
+            category=resolved_category,
+            notification_type=notification_type,
+            priority=priority,
+            context=context or {"case_number": f"CASE-2026-{next(counter):04d}"},
+            case_id=case_id,
+            actor_id=actor_id,
+            target_type=target_type,
+            target_id=target_id,
+            # Unique per row unless a test is specifically about deduplication,
+            # so an ordinary fixture cannot accidentally suppress its own second
+            # notification through the windowed duplicate check.
+            dedupe_key=dedupe or dedupe_key(rule_key=rule_key, discriminator=str(uuid.uuid4())),
+            read_at=read_at,
+            archived_at=archived_at,
+        )
+        if created_at is not None:
+            notification.created_at = created_at
+        db_session.add(notification)
+        db_session.commit()
+        return notification
+
+    return _make
+
+
 @pytest.fixture
 def api_client(
     db_session: Session,
@@ -1903,6 +2017,8 @@ def api_client(
     event_publisher,  # type: ignore[no-untyped-def]
     session_factory,  # type: ignore[no-untyped-def]
     connection_manager,  # type: ignore[no-untyped-def]
+    notification_metrics,  # type: ignore[no-untyped-def]
+    notification_subscriber,  # type: ignore[no-untyped-def]
 ) -> Iterator[TestClient]:
     """A TestClient whose external collaborators are all doubles.
 
@@ -1926,6 +2042,8 @@ def api_client(
         get_index_job_queue,
         get_llm_provider_dependency,
         get_login_throttle,
+        get_notification_metrics_recorder,
+        get_notification_subscriber_dependency,
         get_ocr_engine_dependency,
         get_ocr_job_queue,
         get_rag_metrics_recorder,
@@ -1970,6 +2088,16 @@ def api_client(
     # PostgreSQL. These two are what make the socket testable at all.
     app.dependency_overrides[get_session_factory] = lambda: session_factory
     app.dependency_overrides[get_manager] = lambda: connection_manager
+    # The notification recorder and subscriber are process-wide for the same
+    # reason the dispatcher is, and are overridden for the same reason: the real
+    # subscriber is registered at startup with worker threads and whatever
+    # backlog earlier tests left, so an assertion about *this* test's counters
+    # would be counting somebody else's. The substituted subscriber is never
+    # started — tests drive `process()` directly.
+    app.dependency_overrides[get_notification_metrics_recorder] = lambda: notification_metrics
+    app.dependency_overrides[get_notification_subscriber_dependency] = (
+        lambda: notification_subscriber
+    )
     try:
         with TestClient(app) as test_client:
             yield test_client

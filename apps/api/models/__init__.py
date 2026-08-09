@@ -18,6 +18,7 @@ from models.conversation import (
 )
 from models.document import Document, DocumentCategory, DocumentVersion
 from models.indexing import DocumentIndex, IndexStatus
+from models.notification import Notification, NotificationPreference
 from models.ocr import OcrPage, OcrResult, OcrStatus
 from models.report import Report, ReportStatus, ReportType
 from models.timeline import TimelineEvent, TimelineEventCategory, TimelineEventType
@@ -38,6 +39,8 @@ __all__ = [
     "FeedbackRating",
     "IndexStatus",
     "MessageFeedback",
+    "Notification",
+    "NotificationPreference",
     "OcrPage",
     "OcrResult",
     "OcrStatus",

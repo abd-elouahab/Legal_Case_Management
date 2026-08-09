@@ -167,9 +167,11 @@ class DomainEventType(StrEnum):
     changes, which is the *"allow future event types without redesign"*
     requirement made structural rather than promised.
 
-    Note what is **not** here: notification, email, and WhatsApp delivery events.
-    Those features are out of this spec's scope, and defining their events now
-    would be inventing their vocabulary before their behaviour.
+    Note what is **not** here: **email and WhatsApp** delivery events. Those
+    features remain out of scope, and defining their events now would be
+    inventing their vocabulary before their behaviour. The notification events
+    below arrived with ``16-notifications.md`` and describe only what that
+    feature actually does.
     """
 
     # --- Case lifecycle ----------------------------------------------------- #
@@ -217,6 +219,43 @@ class DomainEventType(StrEnum):
     # that have to be kept in step.
     TIMELINE_UPDATED = "timeline.updated"
 
+    # --- Accounts ------------------------------------------------------------ #
+    #
+    # What happened to *one person's* account, published on that person's own
+    # topic. Added by ``16-notifications.md``, which names account activation, a
+    # password reset, and a role change among the events a notification is
+    # created for — and they are the first events on this platform whose audience
+    # is a single named individual rather than everyone party to a resource.
+    #
+    # The user service publishes them **without knowing that notifications
+    # exist**, exactly as the case and document services publish theirs: it holds
+    # an `EventPublisher`, which has one method and no way to ask who is
+    # listening. Nothing consumed them before this feature and nothing has to.
+    USER_ACTIVATED = "user.activated"
+    USER_DEACTIVATED = "user.deactivated"
+    USER_ROLE_CHANGED = "user.role_changed"
+    USER_PASSWORD_RESET = "user.password_reset"
+
+    # --- Notifications -------------------------------------------------------- #
+    #
+    # The Notification Service's own events, and the reason it never touches a
+    # socket. ``16-notifications.md`` requires that *"the Notification Service
+    # must never communicate directly with clients"* and that *"all delivery
+    # should use the existing event infrastructure"*; these are how that is
+    # honoured. The service persists a notification and then publishes here, on
+    # the recipient's own topic, and the connection manager routes it like
+    # anything else.
+    #
+    # They are deliberately **not** in `EVENT_RULES` (`core/notifications.py`),
+    # which is what makes a feedback loop impossible rather than merely unlikely:
+    # the notification subscriber receives its own events and has no rule for
+    # them.
+    NOTIFICATION_CREATED = "notification.created"
+    #: Read state changed somewhere. Published so a second tab's unread badge
+    #: follows the tab the person actually read the notification in, which is the
+    #: whole of what a client does with it.
+    NOTIFICATION_READ = "notification.read"
+
     # --- Presence ------------------------------------------------------------ #
     #
     # Published to a user's own topic when their connection count changes, so a
@@ -260,6 +299,15 @@ EVENT_SCOPES: Mapping[DomainEventType, EventScope] = MappingProxyType(
         DomainEventType.REPORT_GENERATED: EventScope.REPORT,
         DomainEventType.REPORT_FAILED: EventScope.REPORT,
         DomainEventType.TIMELINE_UPDATED: EventScope.CASE,
+        # Every one of these is about, and addressed to, exactly one person, so
+        # the user scope is not a convenience — it is the whole authorization
+        # rule, and it is identity equality rather than a database lookup.
+        DomainEventType.USER_ACTIVATED: EventScope.USER,
+        DomainEventType.USER_DEACTIVATED: EventScope.USER,
+        DomainEventType.USER_ROLE_CHANGED: EventScope.USER,
+        DomainEventType.USER_PASSWORD_RESET: EventScope.USER,
+        DomainEventType.NOTIFICATION_CREATED: EventScope.USER,
+        DomainEventType.NOTIFICATION_READ: EventScope.USER,
         DomainEventType.PRESENCE_CHANGED: EventScope.USER,
     }
 )

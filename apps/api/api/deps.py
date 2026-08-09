@@ -23,6 +23,7 @@ from repositories.case import CaseRepository
 from repositories.conversation import ConversationRepository
 from repositories.document import DocumentRepository
 from repositories.indexing import IndexingRepository
+from repositories.notification import NotificationRepository
 from repositories.ocr import OcrRepository
 from repositories.report import ReportRepository
 from repositories.search import SearchRepository
@@ -42,6 +43,15 @@ from services.indexing_worker import index_queue
 from services.job_queue import JobQueue
 from services.llm import LLMProvider, get_llm_provider
 from services.login_throttle import LoginThrottle
+from services.notification import NotificationService
+from services.notification_events import (
+    NotificationEventSubscriber,
+    get_notification_subscriber,
+)
+from services.notification_metrics import (
+    NotificationMetricsRecorder,
+    get_notification_metrics,
+)
 from services.ocr import OcrService
 from services.ocr_engine import OcrEngine, get_ocr_engine
 from services.ocr_queue import OcrJobQueue
@@ -102,9 +112,19 @@ AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 
 def get_user_service(
     users: Annotated[UserRepository, Depends(get_user_repository)],
+    events: Annotated[EventPublisher, Depends(get_event_publisher)],
 ) -> UserService:
-    """Provide the user management service."""
-    return UserService(users)
+    """Provide the user management service.
+
+    The event publisher is injected because account changes are announced:
+    activation, deactivation, a role change, and a password reset each publish a
+    domain event on the affected account's own topic. The service takes the
+    narrow protocol, so it can announce and cannot discover that Notifications is
+    listening — which is what keeps ``16-notifications.md``'s *"business modules
+    should publish domain events without knowing that notifications exist"* a
+    property of the type rather than a convention.
+    """
+    return UserService(users, events=events)
 
 
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
@@ -585,6 +605,81 @@ def get_report_service(
 
 
 ReportServiceDep = Annotated[ReportService, Depends(get_report_service)]
+
+
+def get_notification_repository(session: DbSession) -> NotificationRepository:
+    """Provide a request-scoped notification repository."""
+    return NotificationRepository(session)
+
+
+def get_notification_metrics_recorder() -> NotificationMetricsRecorder:
+    """Provide the process-wide notification metrics recorder.
+
+    Process-wide rather than per request for the same reason the search, RAG,
+    assistant, and real-time recorders are: a counter rebuilt on every request
+    counts to one. It matters more here than for any of those, because most
+    notifications are created on a **background thread** with no request to hang
+    a per-request instance off at all — so the recorder the metrics endpoint
+    reads must be the same object the worker writes to.
+    """
+    return get_notification_metrics()
+
+
+def get_notification_subscriber_dependency() -> NotificationEventSubscriber:
+    """Provide the process-wide notification event subscriber.
+
+    Reached through a dependency for exactly one endpoint —
+    ``GET /notifications/metrics``, which reports the worker's backlog — and for
+    exactly one other reason: a test overrides it, so an assertion about the
+    metrics view does not depend on a thread another test started.
+
+    It is **not** how notifications are created. That path runs from the event
+    dispatcher, on a worker thread with no request; this is the read side of the
+    same object.
+    """
+    return get_notification_subscriber()
+
+
+def get_notification_service(
+    notifications: Annotated[NotificationRepository, Depends(get_notification_repository)],
+    events: Annotated[EventPublisher, Depends(get_event_publisher)],
+    metrics: Annotated[NotificationMetricsRecorder, Depends(get_notification_metrics_recorder)],
+) -> NotificationService:
+    """Provide the notification service with its collaborators injected.
+
+    **What this function does not inject is the load-bearing part.** There is no
+    case service, no document service, no report service, and no user service
+    here — ``16-notifications.md`` requires that the Notification Service *"remain
+    independent from business modules"*, and this is where that would be undone.
+    It takes a repository, a publisher, and a recorder, so there is no path from
+    it into a business module at all.
+
+    The reverse direction is stronger and is not visible in this file: **no
+    business module takes this service**, because notifications are created by a
+    subscriber on the event dispatcher rather than by anybody calling in. That is
+    what makes the spec's *"business logic should never create notifications
+    directly"* a fact about the dependency graph rather than a rule to remember.
+
+    The event publisher is injected because delivery *is* a publication: the
+    service persists a notification and announces it on the recipient's own
+    topic, and the connection manager routes it like any other event. Typed as
+    :class:`~services.events.EventPublisher`, so this service can announce and
+    cannot reach a subscriber, a connection, or a client — which is the spec's
+    *"the Notification Service must never communicate directly with clients"*
+    made a property of the type.
+
+    There is deliberately **no timeline recorder**: the timeline is a case's
+    permanent history, and "Amina was told about this" is not a fact about the
+    case. The business change that produced the notification recorded itself
+    there already.
+    """
+    return NotificationService(notifications, events=events, metrics=metrics)
+
+
+NotificationServiceDep = Annotated[NotificationService, Depends(get_notification_service)]
+NotificationSubscriberDep = Annotated[
+    NotificationEventSubscriber, Depends(get_notification_subscriber_dependency)
+]
 
 
 def get_ocr_service(

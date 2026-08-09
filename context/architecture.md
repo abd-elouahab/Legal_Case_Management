@@ -25,7 +25,7 @@
 | Vector persistence | `qdrant-client` behind the `VectorStore` protocol (`services/vector_store.py`) | The only module that speaks Qdrant's data model **on the write side**. Exposes write, delete, and count — **and deliberately no query**, so retrieval cannot be smuggled in through it |
 | Vector retrieval | `qdrant-client` behind the `VectorSearcher` protocol (`services/vector_search.py`) | The read side, introduced by Semantic Search as its own module rather than as a method on the store. Exposes one `search` call — **and deliberately no write**, so the two halves stay separable in both directions |
 | Result ranking | `Ranker` protocol (`services/search_ranking.py`), `SimilarityRanker` today | Orders retrieved passages. Exists as a seam from the start so a future cross-encoder reranker is one class rather than a redesign |
-| Background Jobs | Two bounded thread pools in the API process — `services/ocr_queue.py` (OCR) and the generic `services/job_queue.py` (indexing); Trigger.dev or Celery + Redis when a second consumer arrives | OCR and indexing today; notifications and scheduled tasks later. Separate pools, because the two stages fail differently and are sized differently. The job's identity, state, and concurrency control live in PostgreSQL rather than in the queue, so the runner is one file to replace |
+| Background Jobs | Bounded thread pools in the API process — `services/ocr_queue.py` (OCR), the generic `services/job_queue.py` (indexing, reports), and `services/notification_events.py`'s own worker; Trigger.dev or Celery + Redis when a second process arrives | OCR, indexing, report generation, and notification creation. Separate pools, because the stages fail differently and are sized differently. For OCR, indexing, and reports the job's identity, state, and concurrency control live in PostgreSQL rather than in the queue, so the runner is one file to replace. **Notifications is deliberately the exception**: its queue carries a *domain event*, which is not a persisted job and has nothing to resume from — so its worker drains on shutdown rather than re-queueing at startup, and a burst past `NOTIFICATION_QUEUE_SIZE` is dropped and counted rather than blocking the publisher that produced it |
 | Email Service | SMTP / Mailpit | Email notifications |
 | WhatsApp Integration | WhatsApp Business API | Real-time WhatsApp alerts |
 | Authentication | JWT + OAuth2 | Secure authentication and authorization |
@@ -137,10 +137,21 @@
   entity**: it has no table, no migration, and no repository, because an event is
   not something anyone reads back — a client that missed one refetches, which is
   authoritative where a replay would only be a hint.
-- `modules/notifications` — Real-time notifications, email notifications, WhatsApp alerts, and reminder scheduling.
-  Not built. It is specified to subscribe to the dispatcher above rather than to
-  couple to business logic, and it is where *persistence* of an event enters the
+- `modules/notifications` — In-app notifications: a centralized Notification
+  Service subscribed to the event dispatcher above, with persistence, categories,
+  types, priorities, per-user preferences, read state, history, and real-time
+  delivery. Implemented inside `apps/api` (`core/notifications.py`,
+  `models/notification.py`, `repositories/notification.py`,
+  `services/notification.py`, `services/notification_events.py`,
+  `services/notification_recipients.py`, `services/notification_metrics.py`,
+  `schemas/notification.py`, `api/v1/notifications/router.py`) and `apps/web`
+  (`components/notifications/`, `app/(protected)/notifications/`, and the bell in
+  `components/layout/notification-button.tsx`), following the same layering as
+  every other module. It is the **first consumer of the dispatcher** rather than
+  another producer on it, and it is where *persistence* of an event enters the
   platform: synchronization is ephemeral by design, a notification is not.
+  **Email delivery, WhatsApp alerts, push, SMS, and reminder scheduling remain
+  unimplemented** and are what the preference model's channel column prepares for.
 - `modules/users` — Administrator, lawyer, and court representative management.
   Implemented inside `apps/api` (`services/user.py`, `repositories/user.py`,
   `api/v1/users/`) and `apps/web` (`components/users/`, `app/(protected)/users/`),
@@ -203,7 +214,14 @@ Stores structured business data:
 - Hearings
 - Court Decisions
 - Reports
-- Notifications
+- Notifications (one row per thing one person was told — its rule, a bounded
+  context, its category, type, priority, target, actor, read state, and the
+  identity of the event it came from. **No title and no message**: the wording is
+  rendered per request in the reader's language, so a history is Arabic for an
+  Arabic reader rather than frozen per row)
+- Notification Preferences (one row per `(user, preference)` the user has
+  actually expressed an opinion about — an untouched account has none and follows
+  the platform defaults)
 - Timeline Events
 - Audit Logs
 - AI Conversations (one thread per user, with its counters and its last-message
@@ -1244,6 +1262,123 @@ Monitoring are all specified to build on.
   that blocks WebSockets all leave the application exactly as it was before this
   feature. The channel makes those polls feel immediate; it is never the reason
   something is correct.
+
+### Notifications (In-App)
+
+Implemented per `context/feature-specs/16-notifications.md`. Not a stage of the
+AI pipeline and not a producer on the event channel: it is the **first consumer**
+of the dispatcher Real-Time Synchronization built, and the point at which
+*persistence of an event* enters the platform.
+
+- **Adding the first consumer took one class and one line**, exactly as
+  `services/events.py` predicted. `NotificationEventSubscriber` implements
+  `EventSubscriber`; `core/lifespan.py` subscribes it beside the WebSocket
+  manager. **No business module changed** — they hold `EventPublisher`, which has
+  one method and no way to ask who is listening — and no business module imports
+  the notification service, so `code-standards.md`'s *"all notifications must be
+  generated by the Notification Service"* is true because there is no function a
+  business module could call, not because nobody has called one.
+- **Delivery goes back onto the same channel, and the service never touches a
+  socket.** It persists a notification and then *publishes*
+  `notification.created` on the recipient's own `user:<id>` topic, which the
+  connection manager already routes and already authorizes — a user topic is
+  identity equality, so a notification cannot reach anyone but its recipient even
+  if the service were wrong about who it was for. The payload carries
+  identifiers, a category, a type, and a priority, and **no wording at all**.
+- **No prose is stored, and that is the load-bearing decision.** A row keeps a
+  `rule_key` and a small screened `context`; the title and message are rendered
+  per request by `core/notifications.py` in the language the reader asks for.
+  Three things follow: an Arabic reader's **whole history** is Arabic rather than
+  frozen per row, which is what `ai-workflow-rules.md`'s localization rules
+  actually require of a persisted feed; *"never log confidential notification
+  contents"* is trivially true because there is nothing to log; and a future
+  email or WhatsApp sender renders from the same module rather than restating the
+  wording. The cost is stated rather than hidden — a withdrawn rule falls back to
+  its category's generic wording instead of raising, because a vague notification
+  is much better than a history page that will not load.
+- **`EVENT_RULES` is the whole subscription list**, and what is *absent* from it
+  is documented as a decision rather than left as a gap: `document.updated`,
+  `ocr.started`, every `indexing.*`, `report.started`, `report.progress`,
+  `timeline.updated` (which would notify everything twice, since it is derived
+  from the same changes), `presence.changed`, and `notification.*` — whose
+  absence is what makes a feedback loop impossible rather than merely unlikely.
+  `user.deactivated` is the instructive one: the rule was written and then
+  removed, because a disabled account cannot sign in to read it.
+- **Three refinements read a payload, and each fails soft.** A case assignment
+  becomes *assigned* or *unassigned*; a `case.updated` whose changed-field labels
+  include the court fields becomes *hearing* news; a status change **into**
+  `waiting_for_hearing` becomes *hearing awaited*. Each derives from wording
+  `services/case.py` publishes without knowing notifications exist, so a renamed
+  label degrades to ordinary case news — less specific, never missing.
+- **Authorization is two passes, and the second is asked last and per person.**
+  The rule's audience says who the platform *intends* to tell;
+  `services/notification_recipients.py` then re-checks each resolved recipient
+  against the policy that owns the resource. It owns no policy of its own —
+  case → `CaseAccessPolicy`, document → its case (which *is* the document check,
+  since `document_access.py` owns no policy either), report → its author, user →
+  identity — so an audience that widened by accident would still be narrowed.
+  A disabled account is dropped here as well.
+- **A case audience is its participants, deliberately not every administrator.**
+  An administrator holds `cases:view-all` and *could* open any case; notifying
+  all of them about every event on the platform would be authorized and would
+  also be noise. The **actor is excluded** for the same reason: the confirmation
+  somebody needs is the response to the request they made.
+- **Duplicates are prevented by two mechanisms covering different halves**, the
+  shape `10-document-indexing.md` established. A unique index on
+  `(recipient_id, event_id)` makes "one dispatched event, one notification per
+  person" an invariant that cannot suppress a genuine repeat, because an event's
+  identity is assigned once and never reused. A hashed `dedupe_key` matched
+  inside `NOTIFICATION_DEDUPE_WINDOW_SECONDS` catches a retried worker or a
+  double-click — a *window* rather than a constraint, because a case genuinely
+  updated twice in a week is two notifications.
+- **Preferences are one row per `(user, key)`, not a column per preference**, and
+  that shape is what "prepare for future delivery channels" means concretely: an
+  eighth preference is a row with no migration, and email or WhatsApp is one
+  nullable boolean beside `in_app`. All seven default to **on**, and a row is
+  written only when somebody changes something — so `architecture.md` invariant 3
+  holds for an account that has never opened the settings page, and a future
+  change to the defaults reaches every untouched account without a backfill.
+- **Failures are isolated by a thread, not by discipline.** `handle()` is a queue
+  put and a return, so resolving recipients and inserting a batch never runs on
+  the request that published the event — there is no longer a call stack
+  connecting them, which is *"notification failures should never affect business
+  operations"* made structural. Two failure paths deliberately **admit** rather
+  than exclude: a preference lookup that could not run is not evidence somebody
+  asked not to be told, and a duplicate is a smaller harm than a missed hearing.
+- **System announcements are the one path a person creates a notification on**,
+  and the reason is structural: `core/events.py` defines no broadcast scope,
+  because every event the platform carries is about something somebody owns and a
+  scope with no owner is a scope with no authorization rule. So an announcement
+  enters through the Notification Service's own API (`notifications:manage`) —
+  the service creating a notification, with no business module involved — and
+  travels the ordinary path from there.
+- **Two authorization questions with two different answers**, the shape Reports
+  established. *May this caller use notifications at all* is `notifications:view`,
+  in `BASE_PERMISSIONS` because a role without it would be told nothing while
+  every other role was. *Whose notification is this* is answered by the
+  repository — every read is keyed by recipient — and refused with **404**,
+  because confirming that another person's notification exists is itself the
+  disclosure. There is deliberately no `notifications:view-all` and no
+  `notification_access.py`. `notifications:monitor` is the one new permission and
+  is administrative like every other `*:monitor`.
+- **Metrics come from two places on purpose**, exactly as the assistant's do.
+  Row counts — stored, unread, recipients, by category — are **SQL aggregates**,
+  because counting them in a process would reset on restart *and* be wrong across
+  instances. Created, delivered, failed, suppressed, deduplicated, dropped, and
+  latency accumulate **in the process** behind `NotificationMetricsRecorder`,
+  with `since` reporting the window. *Delivered* means "published onto the
+  channel", never "arrived in a browser" — the second would measure a client's
+  network.
+- **Nothing depends on it, in either direction.** Every business module works
+  with `NOTIFICATIONS_ENABLED=false`, because none of them knows the feature
+  exists; and the badge polls on a slow interval regardless of the WebSocket
+  channel, so a deployment with `REALTIME_ENABLED=false` still tells a lawyer
+  they were assigned a case.
+- **No notification content, recipient name, or case number reaches a log or a
+  metric.** The logs carry rule keys, categories, priorities, counts, and
+  identifiers only; the metrics are counted **by rule**, which is a throughput
+  figure, where counting by recipient would be a live index of who is being told
+  what.
 
 ## Invariants
 

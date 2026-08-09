@@ -128,7 +128,22 @@
       "Bash(.venv/Scripts/python.exe -m pytest tests/unit/test_document_schemas.py -q)",
       "Bash(.venv/Scripts/python.exe -m pytest tests/unit/test_document_service.py -q)",
       "Bash(.venv/Scripts/python.exe -m pytest tests/integration/test_documents.py -q)",
-      "Bash(docker exec *)"
+      "Bash(docker exec *)",
+      "Bash(python -m pytest tests/ -q)",
+      "Bash(python -m ruff check .)",
+      "Bash(python -m ruff check --fix .)",
+      "Bash(python -m pytest tests/unit/test_notification_utils.py tests/unit/test_notification_service.py tests/unit/test_notification_events.py tests/integration/test_notifications.py -q)",
+      "Bash(python -m pytest tests/unit/test_notification_utils.py --collect-only -q)",
+      "Bash(python -m pytest tests/unit/test_notification_utils.py)",
+      "Bash(python -m pytest tests/unit/test_notification_service.py)",
+      "Bash(python -m pytest tests/unit/test_notification_events.py)",
+      "Bash(python -m pytest tests/integration/test_notifications.py)",
+      "Bash(python -m mypy apps/api)",
+      "Bash(python -m mypy tests)",
+      "Bash(python -m pytest tests/unit/test_notification_service.py -q)",
+      "Bash(python -m pytest tests/ -q --tb=short)",
+      "Bash(python -m pytest tests/ -p no:randomly)",
+      "Bash(python -m pytest tests/integration -q)"
     ]
   }
 }

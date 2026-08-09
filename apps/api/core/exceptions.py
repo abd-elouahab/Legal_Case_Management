@@ -1115,6 +1115,65 @@ class EventPublicationError(AppException):
 
 
 # --------------------------------------------------------------------------- #
+# Notification errors
+#
+# Only two, and the small number is the point rather than an omission.
+# ``16-notifications.md`` requires that *"failures should never affect business
+# operations"* and that *"notification failures should be isolated"* — so
+# everything that can go wrong while *creating* a notification is caught inside
+# the subscriber, logged, and counted. None of it becomes an exception, because
+# there is no request to fail: the business change that produced the event has
+# already committed, which is the same contract
+# :meth:`~services.timeline.TimelineService.record` keeps.
+#
+# What remains are the two failures on the *client-facing* surface: asking for
+# somebody else's notification, and asking a deployment that has the feature
+# switched off to create one.
+#
+# There is deliberately **no per-resource denial class**. A notification belongs
+# to exactly one recipient, and every read in :mod:`repositories.notification` is
+# keyed by them — so "somebody else's notification" and "no such notification"
+# are the same answer, exactly as they are for a conversation and a report.
+# --------------------------------------------------------------------------- #
+
+
+class NotificationNotFoundError(AppException):
+    """No notification with this identifier belongs to the caller.
+
+    **404 rather than 403**, and the three cases it covers — it does not exist,
+    it was archived, or it is somebody else's — are deliberately
+    indistinguishable. The reasoning is the one
+    :class:`ConversationNotFoundError` and :class:`ReportNotFoundError` record:
+    confirming that another user's notification exists is itself the disclosure,
+    and a notification names a case, an actor, and a moment.
+
+    This is the opposite of :class:`CaseAccessDeniedError`'s 403, and the
+    asymmetry is intentional: a lawyer needs to know a case exists so they can
+    ask to be assigned to it, while nobody has any business learning what
+    somebody else was told.
+    """
+
+    status_code = status.HTTP_404_NOT_FOUND
+    error_code = "notification_not_found"
+    message = "Notification not found."
+
+
+class NotificationsDisabledError(AppException):
+    """Notification creation is switched off for this deployment.
+
+    503 rather than 404: the capability exists and the request is valid — an
+    operator has turned creation off. Reading, filtering, and marking existing
+    notifications are **unaffected**, because none of those creates anything, and
+    a deployment that stopped new notifications must not also hide the ones
+    people already have.
+    """
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    error_code = "notifications_disabled"
+    message = "Notifications are currently disabled on this platform."
+
+
+# --------------------------------------------------------------------------- #
 # Timeline errors
 #
 # Only two, because the timeline is read-only over HTTP: events are published by

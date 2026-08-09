@@ -159,8 +159,31 @@ class Permission(StrEnum):
     REPORTS_MONITOR = "reports:monitor"
 
     # --- Notifications ------------------------------------------------------ #
+    #: Read, filter, and mark your **own** notifications, and set your own
+    #: preferences. Note that holding it grants nothing about anybody else: every
+    #: read in :mod:`repositories.notification` is keyed by the recipient, so a
+    #: notification belongs to exactly one person and is invisible to everyone
+    #: else — the same shape a conversation and a report have, and the reason
+    #: there is no ``notifications:view-all``.
+    #:
+    #: Granted to every role through :data:`~core.roles.BASE_PERMISSIONS`:
+    #: `architecture.md` invariant 3 says every important event produces a
+    #: notification for its authorized users, and a role without this would be
+    #: told nothing while every other role was.
     NOTIFICATIONS_VIEW = "notifications:view"
+    #: Publish a platform-wide announcement or maintenance notice. The only way
+    #: a notification is created by a person rather than by an event, and
+    #: therefore the only notification path that needs a capability of its own —
+    #: withheld from lawyers and court representatives, whose role descriptions
+    #: do not extend to addressing the whole platform.
     NOTIFICATIONS_MANAGE = "notifications:manage"
+    #: Read platform-wide notification metrics — created, delivered, unread,
+    #: failed deliveries, average delivery latency. Not scoped to a case or to a
+    #: user, so it is deliberately an administrative capability rather than
+    #: something every recipient holds, exactly like ``ocr:monitor``,
+    #: ``indexing:monitor``, ``search:monitor``, ``ai:monitor``,
+    #: ``reports:monitor``, and ``realtime:monitor``.
+    NOTIFICATIONS_MONITOR = "notifications:monitor"
 
     # --- AI ----------------------------------------------------------------- #
     #: Put a question to the RAG pipeline and receive a grounded, cited answer.

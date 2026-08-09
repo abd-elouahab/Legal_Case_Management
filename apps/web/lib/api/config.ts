@@ -215,6 +215,38 @@ export const REALTIME_ENDPOINTS = {
 } as const;
 
 /**
+ * Notification endpoint paths, relative to the version prefix.
+ *
+ * Notifications sit under `/notifications` rather than under `/users/me` because
+ * a notification is about a case or a document and merely *belongs* to somebody,
+ * exactly as a report does — and not under `/realtime`, because they share that
+ * feature's transport and nothing else: a notification is persistent, filterable,
+ * and readable long after the socket that announced it closed.
+ *
+ * **There is no create, update, or delete path**, and only one write that is not
+ * about the caller's own state. A notification is not a resource a client
+ * manipulates: everything in a feed arrived through the event dispatcher from
+ * modules that do not know this API exists, and the only writes the spec
+ * describes are read state and preferences. `announcements` is the exception, and
+ * it exists because the platform has no broadcast topic an announcement could be
+ * published on.
+ *
+ * `summary` is separate from `list` on purpose: the bell needs the badge on every
+ * page of the application, and fetching a page of notifications to render a
+ * number would download a feed nobody opened.
+ */
+export const NOTIFICATION_ENDPOINTS = {
+  list: "/notifications",
+  summary: "/notifications/summary",
+  detail: (id: string) => `/notifications/${encodeURIComponent(id)}`,
+  read: "/notifications/read",
+  readAll: "/notifications/read-all",
+  preferences: "/notifications/preferences",
+  announcements: "/notifications/announcements",
+  metrics: "/notifications/metrics",
+} as const;
+
+/**
  * Timeline endpoint paths, relative to the version prefix.
  *
  * Read-only, and the shape says so: there is no create, update, or delete path

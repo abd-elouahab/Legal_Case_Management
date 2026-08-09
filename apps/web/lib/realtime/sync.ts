@@ -26,6 +26,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { caseKeys } from "@/hooks/use-cases";
 import { documentKeys } from "@/hooks/use-documents";
 import { indexingKeys } from "@/hooks/use-indexing";
+import { notificationKeys } from "@/hooks/use-notifications";
 import { ocrKeys } from "@/hooks/use-ocr";
 import { reportKeys } from "@/hooks/use-reports";
 import { timelineKeys } from "@/hooks/use-timeline";
@@ -138,6 +139,47 @@ export function staleKeysFor(event: RealtimeEvent): QueryKey[] {
       // every case timeline the client has cached, which on the case list is
       // every case it has visited.
       if (caseId) keys.push(timelineKeys.case(caseId));
+      break;
+
+    // --- Notifications ----------------------------------------------------- //
+    case "notification.created":
+      // The **badge and the feed**, and nothing else. This is what makes
+      // notifications feel instant without the client ever rendering an event:
+      // the payload deliberately carries no title and no message (see
+      // `services/notification.py`), so there is nothing here to patch a cache
+      // with even if it were the right thing to do — the client refetches
+      // through the endpoint that authorizes and *renders* the notification in
+      // its own language.
+      keys.push(notificationKeys.summary());
+      keys.push(notificationKeys.lists());
+      break;
+
+    case "notification.read":
+      // Published on the reader's own topic when their unread count moves, so a
+      // second tab follows the one they actually read it in. The lists too: a
+      // row's read state changed, and a panel left open in another tab would
+      // otherwise keep showing it as unread.
+      keys.push(notificationKeys.summary());
+      keys.push(notificationKeys.lists());
+      break;
+
+    // --- Account ----------------------------------------------------------- //
+    case "user.activated":
+    case "user.deactivated":
+    case "user.role_changed":
+    case "user.password_reset":
+      // Nothing, deliberately, and listed so the omission is visible rather than
+      // looking like one. These arrive on the affected person's *own* topic and
+      // exist so that Notifications can tell them what happened — which is
+      // exactly what the notification events above already invalidate.
+      //
+      // The session is **not** refetched here even though a role change alters
+      // what this account may do, and the reason is that the server has already
+      // handled the cases that matter: deactivation and a password reset both
+      // bump `session_generation`, so the socket's next authorization re-check
+      // closes it and the next API call is a 401 that the session provider
+      // already knows how to act on. Adding a second, event-driven path to the
+      // same outcome would be a second thing to keep in step with the first.
       break;
 
     // --- Presence ---------------------------------------------------------- //

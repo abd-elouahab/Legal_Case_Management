@@ -402,7 +402,17 @@
       "Bash(python -m pytest tests/unit/test_event_utils.py tests/unit/test_event_dispatcher.py tests/unit/test_realtime_protocol.py tests/unit/test_realtime_connection.py tests/unit/test_realtime_access.py tests/unit/test_realtime_manager.py tests/integration/test_realtime.py --collect-only -q -p no:randomly)",
       "Bash(python -m pytest tests --collect-only -q -p no:randomly)",
       "Bash(python -m pytest tests/unit/test_event_utils.py tests/unit/test_event_dispatcher.py tests/unit/test_realtime_protocol.py tests/unit/test_realtime_connection.py tests/unit/test_realtime_access.py tests/unit/test_realtime_manager.py tests/integration/test_realtime.py --collect-only -p no:randomly)",
-      "Bash(python -m pytest tests --collect-only -p no:randomly)"
+      "Bash(python -m pytest tests --collect-only -p no:randomly)",
+      "Bash(rm -f api/v1/notifications/.gitkeep services/notifications/.gitkeep)",
+      "Bash(rmdir services/notifications)",
+      "Bash(python -m pytest tests/unit/test_event_utils.py tests/unit/test_permissions.py tests/unit/test_roles.py tests/unit/test_config.py -q)",
+      "Bash(python -m pytest tests/ -q -x)",
+      "Bash(python -m pytest tests/ -q)",
+      "Bash(python -m pytest tests/unit/test_notification_utils.py -q)",
+      "Bash(python -m pytest tests/unit/test_notification_service.py -q)",
+      "Bash(python -m pytest tests/unit/test_notification_events.py -q)",
+      "Bash(python -m pytest tests/integration/test_notifications.py -q)",
+      "Bash(rm -f components/notifications/.gitkeep)"
     ],
     "additionalDirectories": [
       "\\tmp"

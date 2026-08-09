@@ -14,6 +14,13 @@ Scope boundaries, kept deliberately sharp:
   tokens remain :class:`~services.auth.AuthService`'s job. The one overlap is
   deliberate: a password reset must revoke the target's sessions, which is done
   through the same ``session_generation`` mechanism a password change uses.
+* **Nothing here knows what happens to the events it publishes.** Activation, a
+  role change, a deactivation, and a password reset are announced to the
+  dispatcher as domain events, on the affected account's own topic. This service
+  holds :class:`~services.events.EventPublisher`, which has one method and no way
+  to ask who is listening — so the fact that a notification is created from some
+  of them is not visible from this file, and adding a second consumer (email,
+  WhatsApp, an audit sink) requires no change here.
 """
 
 from __future__ import annotations
@@ -25,10 +32,12 @@ from typing import Any
 import structlog
 
 from core import security
+from core.events import DomainEventType, user_topic
 from core.exceptions import DuplicateEmailError, SelfModificationError, UserNotFoundError
 from models.user import User, UserStatus
 from repositories.user import UserRepository
 from schemas.user import UserCreate, UserListQuery, UserUpdate
+from services.events import EventPublisher, NullEventPublisher
 
 logger = structlog.get_logger(__name__)
 
@@ -60,8 +69,14 @@ class PasswordReset:
 class UserService:
     """Coordinates the administrative user lifecycle."""
 
-    def __init__(self, users: UserRepository) -> None:
+    def __init__(self, users: UserRepository, *, events: EventPublisher | None = None) -> None:
         self._users = users
+        #: Defaults to a publisher that announces nothing, so a script or a unit
+        #: test that is not about events constructs this service unchanged — the
+        #: same contract :class:`~services.case.CaseService` and
+        #: :class:`~services.document.DocumentService` keep. The application
+        #: wires the real dispatcher in :mod:`api.deps`.
+        self._events = events or NullEventPublisher()
 
     # ------------------------------------------------------------- reading #
 
@@ -150,6 +165,11 @@ class UserService:
             logger.info("user_update_rejected", reason="duplicate_email", user_id=str(user.id))
             raise DuplicateEmailError
 
+        # Captured before the write, because both are what the events below
+        # compare against — and after it, `user` *is* the new value.
+        previous_role = user.role
+        previous_status = user.status
+
         for field, value in changes.items():
             setattr(user, field, value)
         user.updated_by = actor.id
@@ -164,6 +184,23 @@ class UserService:
             fields=sorted(changes),
             actor_id=str(actor.id),
         )
+
+        # Published **after the commit** and only for what actually changed. Two
+        # events rather than a generic `user.updated`, for the reason
+        # `services/case.py` publishes `case.archived` rather than a status
+        # change: a consumer that had to infer "this person's role moved" from a
+        # field list would get it wrong the first time a field is added.
+        if saved.role is not previous_role:
+            self._announce(
+                saved,
+                DomainEventType.USER_ROLE_CHANGED,
+                actor=actor,
+                role=saved.role.value,
+                previous_role=previous_role.value,
+            )
+        if saved.status is not previous_status:
+            self._announce_status(saved, previous_status, actor=actor)
+
         return saved
 
     def deactivate_user(self, user_id: uuid.UUID, *, actor: User) -> User:
@@ -189,6 +226,7 @@ class UserService:
             raise SelfModificationError
 
         already_inactive = user.status is UserStatus.INACTIVE
+        previous_status = user.status
         user.status = UserStatus.INACTIVE
         user.updated_by = actor.id
         if not already_inactive:
@@ -204,6 +242,18 @@ class UserService:
             actor_id=str(actor.id),
             sessions_revoked=not already_inactive,
         )
+
+        # Only when something actually changed. Deactivation is idempotent, and a
+        # repeated request must not announce a second time — the same rule
+        # :meth:`~services.case.CaseService.archive_case` follows.
+        if not already_inactive:
+            self._announce(
+                saved,
+                DomainEventType.USER_DEACTIVATED,
+                actor=actor,
+                status=saved.status.value,
+                previous_status=previous_status.value,
+            )
         return saved
 
     # ------------------------------------------------------------ passwords #
@@ -237,7 +287,64 @@ class UserService:
             actor_id=str(actor.id),
             sessions_revoked=True,
         )
+
+        # The payload carries **nothing about the password** — not the temporary
+        # one, not its length, not whether it was generated. An event travels to
+        # consumers this module does not know about, and the credential is the
+        # one value in this service that must not leave the response it was
+        # returned in.
+        self._announce(
+            user, DomainEventType.USER_PASSWORD_RESET, actor=actor, sessions_revoked=True
+        )
         return PasswordReset(user=user, temporary_password=temporary_password)
+
+    # -------------------------------------------------------------- events #
+
+    def _announce_status(self, user: User, previous: UserStatus, *, actor: User) -> None:
+        """Announce an account being enabled or disabled, as the event that fits.
+
+        Two event types rather than one carrying a status, for the reason
+        :meth:`~services.case.CaseService._publish_status_change` gives: a
+        consumer that has to infer "this account was re-enabled" from a pair of
+        status values is a consumer that will get it wrong the first time a
+        status is added.
+        """
+        became_active = user.status is UserStatus.ACTIVE
+        self._announce(
+            user,
+            DomainEventType.USER_ACTIVATED if became_active else DomainEventType.USER_DEACTIVATED,
+            actor=actor,
+            status=user.status.value,
+            previous_status=previous.value,
+        )
+
+    def _announce(
+        self, user: User, event_type: DomainEventType, *, actor: User, **payload: Any
+    ) -> None:
+        """Publish one event about one account, on that account's own topic.
+
+        The topic is the **affected user's**, not the actor's, which is what
+        makes the authorization rule identity equality: an account event is
+        delivered to that person's own connections and to nobody else's, decided
+        without a database lookup (see :mod:`services.realtime_access`).
+
+        The payload carries the **status and role values** and nothing else — no
+        email, no name, no phone number, and no credential. Those are personal
+        data that the authorized read a client makes next will supply, which is
+        the same line ``15-real-time-synchronization.md`` draws for a case's title
+        and a document's filename.
+
+        Never raises: the account change is already committed, and
+        :meth:`~services.events.EventDispatcher.publish` swallows its own
+        failures — so an unreachable consumer cannot turn a successful
+        deactivation into a 500 that invites a duplicating retry.
+        """
+        self._events.publish(
+            event_type=event_type,
+            topic=user_topic(user.id),
+            actor_id=actor.id,
+            payload={"user_id": user.id, "role": user.role.value, **payload},
+        )
 
     # -------------------------------------------------------------- helpers #
 

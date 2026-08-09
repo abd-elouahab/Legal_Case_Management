@@ -48,6 +48,12 @@ export type DomainEventType =
   | "report.generated"
   | "report.failed"
   | "timeline.updated"
+  | "user.activated"
+  | "user.deactivated"
+  | "user.role_changed"
+  | "user.password_reset"
+  | "notification.created"
+  | "notification.read"
   | "presence.changed";
 
 /**

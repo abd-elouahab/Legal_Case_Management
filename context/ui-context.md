@@ -552,18 +552,67 @@ The document viewer supports:
 
 ### Notifications Center
 
-Notifications are displayed in real time.
+Gated on `notifications:view`, which **every role holds** (it is in
+`BASE_PERMISSIONS`): a role that could not see its own alerts would watch a badge
+it could not explain. Nothing here is anybody else's — every read on the API is
+keyed by the recipient, so a feed is private by construction and there is
+deliberately no `notifications:view-all`.
 
-Categories:
+Notifications are displayed in real time and are **persistent**: they arrive over
+the WebSocket channel when it is available and survive a reload, a reconnect, and
+a sign-out either way. Categories are the API's — Case, Document, Hearing, OCR,
+AI, Report, User, and System — and the client treats the set as **open**, so one
+added server-side renders with a neutral icon rather than breaking the feed.
 
-- Case Updates
-- Court Decisions
-- Hearing Reminders
-- Document Uploads
-- AI Report Completion
-- System Alerts
+**The bell** sits in the app header on every page. It shows an unread count, or
+nothing at all when everything is read — a permanently-lit badge is furniture
+people learn to ignore. Past the server's ceiling it reads "999+", and the
+button's accessible name states the count in words, so the state is never
+conveyed by a coloured dot alone. It is the one component that subscribes to the
+reader's own `user:` topic, which is what makes a notification reach a badge
+whatever screen somebody is looking at.
 
-Users can mark notifications as read or filter them by type.
+**The panel** opens from the bell and previews the most recent notifications with
+one filter — *unread only* — plus "mark all as read" and a way to the full page.
+It fetches only while it is open; the badge is a separate, tiny query.
+
+**The page** (`/notifications`) is three tabs:
+
+- **All notifications** — the feed, filtered by read state, category, type, and
+  priority, all of which execute on the server. "Mark all as read" follows the
+  category filter, because a feed narrowed to *Hearings* beside a button that
+  silently marked everything is the most reliable way to lose something somebody
+  meant to keep.
+- **Preferences** — one switch per preference the platform offers, rendered from
+  what the server sends rather than from a list in the client, so a preference
+  added later appears at its default. Each switch **saves itself**; a form that
+  batched them would let somebody leave believing they had switched notifications
+  off. A value nobody has chosen says "platform default" rather than implying
+  they picked it.
+- **Announce** — visible only with `notifications:manage`, and the only place in
+  the application that *creates* a notification. Everything else in a feed
+  arrived through the event dispatcher. The result reports recipients **and** how
+  many have announcements switched off, so an administrator can tell a quiet
+  platform from a silenced one.
+
+Each row is a whole link rather than a "view" button — a target inside a 56-pixel
+row is one a phone user will miss — and it leads to a **resource** the server
+named (case, document, report, account) rather than a URL the server chose. Two
+consequences follow from that split, and both are worth knowing. A **hearing**
+notification opens its *case*, because a hearing is not a resource on this
+platform — it is a set of fields on a case, which is why `cases:update-hearing`
+narrows `cases:update` rather than standing alone. And a **document**
+notification also opens its case, because this client has no document route;
+that is a fact about the web app rather than about the API, which is exactly why
+the server sends a resource and lets each client map it. A notification with no
+target, such as a withdrawn document or a case somebody was just removed from,
+renders as plain text: offering to open either would offer a refusal. Unread is marked three ways at once (a dot, a heavier title, a tinted
+row), and priority is shown **only** when it is High or Critical, so the one row
+that matters is easier to see rather than harder.
+
+Opening a notification does not mark it read. Only the reader knows whether they
+took it in, and a list that emptied its own badge on a prefetch is a list that
+loses things.
 
 ---
 

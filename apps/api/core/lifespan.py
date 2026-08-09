@@ -22,6 +22,7 @@ from core.vector import close_qdrant
 from db.session import dispose_engine
 from services.events import get_event_dispatcher
 from services.indexing_worker import start_index_workers, stop_index_workers
+from services.notification_events import get_notification_subscriber
 from services.ocr_worker import start_ocr_workers, stop_ocr_workers
 from services.report_worker import start_report_workers, stop_report_workers
 from websocket.manager import get_connection_manager
@@ -79,6 +80,56 @@ def _stop_realtime() -> None:
         logger.exception("realtime_shutdown_failed")
 
 
+def _start_notifications() -> None:
+    """Register the notification subscriber on the dispatcher and start its workers.
+
+    **The second consumer**, and the whole of what adding one took: three lines
+    here, exactly as :func:`_start_realtime` predicted. No business module
+    changed, no publisher learned anything, and nothing about the dispatcher
+    moved — they hold ``EventPublisher``, which has one method and no way to ask
+    who is listening.
+
+    Registered **after** the WebSocket manager, and the order is load-bearing
+    rather than cosmetic. The notification service delivers by *publishing*
+    ``notification.created`` back onto the same dispatcher, so the manager has to
+    be subscribed before the first notification is created — otherwise that
+    announcement would go into an empty room and the recipient's badge would sit
+    still until their next poll.
+
+    Never aborts startup, for the same reason the worker pools and the channel do
+    not: an API that refuses to come up because notifications could not be
+    started would take authentication, cases, and documents down over a feature
+    every screen works without.
+    """
+    if not settings.NOTIFICATIONS_ENABLED:
+        logger.info("notifications_disabled")
+        return
+
+    try:
+        subscriber = get_notification_subscriber()
+        subscriber.start()
+        get_event_dispatcher().subscribe(subscriber)
+    except Exception:
+        logger.exception("notifications_startup_failed")
+
+
+def _stop_notifications() -> None:
+    """Unsubscribe the notification consumer and drain its queue. Never raises.
+
+    Drains rather than abandoning, unlike the WebSocket manager — and the
+    difference is the difference between the two features. An undelivered *event*
+    is nothing: the client reconnects and refetches. An uncreated *notification*
+    is a person never being told something happened, and the row that would have
+    said so does not exist anywhere else.
+    """
+    try:
+        subscriber = get_notification_subscriber()
+        get_event_dispatcher().unsubscribe(subscriber.name)
+        subscriber.stop()
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("notifications_shutdown_failed")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """FastAPI lifespan context: startup then shutdown."""
@@ -117,10 +168,20 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # the loop — cannot ask for it: `get_running_loop` fails on any thread that is
     # not the loop's, which that one is not, by design.
     _start_realtime()
+    # After the channel, because notifications *deliver over it*: the service
+    # persists a notification and then publishes `notification.created` back onto
+    # the same dispatcher, so the manager must already be subscribed or the first
+    # badge would not move until its owner's next poll.
+    _start_notifications()
 
     yield
 
     logger.info("application_shutdown")
+    # Before the connections are closed, and this is the one shutdown step that
+    # deliberately *waits*: a notification still in the queue has been decided and
+    # not yet written, and unlike an event — which a reconnecting client refetches
+    # past — there is nowhere else it survives.
+    _stop_notifications()
     # First on the way out, and the mirror of being last in: connections are
     # closed before the workers that publish to them are drained, so a report
     # finishing during shutdown does not queue an event onto sockets that are

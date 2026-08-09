@@ -36,8 +36,11 @@ __all__ = [
 #: notification for its authorized users, and `ui-context.md` shows Notifications
 #: and Settings in the sidebar for all roles. Withholding these would hide the
 #: user's own alerts and preferences from them, which no role description asks
-#: for. Managing *other* users' notification configuration is a separate
-#: permission (``notifications:manage``) and is not part of this baseline.
+#: for. Addressing the whole platform is a separate permission
+#: (``notifications:manage``, which gates announcements and maintenance notices)
+#: and reading platform-wide notification health is another
+#: (``notifications:monitor``); neither is part of this baseline, for the same
+#: reason no other ``*:monitor`` is.
 #:
 #: ``realtime:connect`` joins them for the same reason and one more.
 #: `architecture.md` invariant 2 and `code-standards.md`'s "Real-Time

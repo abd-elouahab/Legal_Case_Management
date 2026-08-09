@@ -14,6 +14,7 @@ from api.v1.cases.router import router as cases_router
 from api.v1.documents.router import router as documents_router
 from api.v1.indexing.router import document_indexing_router
 from api.v1.indexing.router import router as indexing_router
+from api.v1.notifications.router import router as notifications_router
 from api.v1.ocr.router import document_ocr_router
 from api.v1.ocr.router import router as ocr_router
 from api.v1.rag.router import router as rag_router
@@ -97,3 +98,20 @@ api_router.include_router(timeline_router, prefix="/timeline", tags=["timeline"]
 # caller is entitled to. Which events reach it is decided by subscription and by
 # per-resource authorization, not by which URL it was opened at.
 api_router.include_router(realtime_router, prefix="/realtime", tags=["realtime"])
+
+# Notifications is the **first consumer** of the dispatcher above rather than
+# another producer on it, and its API says so: there is no route here that a
+# business module calls, and only one that creates anything at all
+# (`POST /notifications/announcements`, which exists because the platform has no
+# broadcast topic to publish an announcement on). Everything else in a feed
+# arrived through the event channel from modules that do not know this router
+# exists.
+#
+# Mounted at its own prefix rather than under `/users/me` or `/realtime`, and
+# both alternatives are worth naming. It is not a user resource: a notification
+# is about a case or a document and merely *belongs* to somebody, exactly as a
+# report does. And it is not part of real-time synchronization: it shares that
+# feature's transport and nothing else — a notification is persistent, queryable,
+# filterable, and readable long after the socket that announced it closed, which
+# is the whole difference between the two modules.
+api_router.include_router(notifications_router, prefix="/notifications", tags=["notifications"])

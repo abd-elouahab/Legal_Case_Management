@@ -118,6 +118,41 @@ rather than by review:
 - Notification delivery failures must be retried automatically.
 - Scheduled reminders must execute through background workers.
 
+Implemented per `16-notifications.md` (in-app only; email, WhatsApp, push, SMS,
+and scheduled reminders remain unbuilt). The rules that follow are what those six
+mean in this codebase, and each is enforced by a type or a boundary rather than
+by review:
+
+- **Never call the Notification Service from a business module.** There is no
+  import to write: notifications are created by `NotificationEventSubscriber`,
+  which is registered on the dispatcher in `core/lifespan.py`. A feature that
+  finds itself wanting to notify somebody **publishes a domain event** and adds
+  one entry to `EVENT_RULES`.
+- **Name every notification once**, as a `NotificationRule` in
+  `core/notifications.py`. A publisher never chooses a category, a priority, or a
+  wording, and an event with no rule produces nothing — silently and correctly.
+- **Store no prose.** A notification row keeps a rule key and a bounded context;
+  the title and message are rendered per request in the reader's language. That
+  is what makes a persisted feed localizable at all, and it is why *"never log
+  confidential notification contents"* needs no discipline to honour.
+- **Authorize before creating, per recipient, and last.** The audience says who
+  the platform intends to tell; the policy that owns the resource says who may be
+  told, and it is asked about each person individually after the audience is
+  resolved.
+- **Deliver by publishing, never by reaching a client.** The service holds an
+  `EventPublisher` and announces on the recipient's own topic; the WebSocket
+  layer routes it. Importing anything from `websocket/` here is a mistake.
+- **Never fail a business operation.** `handle()` hands the event to a worker
+  thread and returns, so a notification failure has no call stack connecting it
+  to the request that caused it. Every path on that thread logs, counts, and
+  continues.
+- **Prefer a duplicate to a silence.** A preference lookup or a duplicate check
+  that could not run **admits**: a missed hearing notification is a worse failure
+  than a repeated one.
+- **A preference silences what comes next, never what has arrived.** Switching
+  one off stops creation and leaves the existing feed alone, which is the only
+  behaviour that makes the choice reversible.
+
 ---
 
 ## Internationalization (i18n)
@@ -230,7 +265,11 @@ rather than by review:
 - `modules/cases/` — Case lifecycle management.
 - `modules/documents/` — Document management and OCR.
 - `modules/reports/` — Report generation and exports.
-- `modules/notifications/` — Notification service (In-App, Email, WhatsApp).
+- `modules/notifications/` — Notification service (In-App today; Email and
+  WhatsApp are the channels the preference model's `in_app` column is shaped to
+  receive). Implemented inside `apps/api` and `apps/web` like every other module;
+  `services/notification_events.py` is its **one** connection to the rest of the
+  platform, and it points inward — nothing imports the notification service.
 - `modules/users/` — User management and RBAC.
 - `modules/localization/` — Arabic, French, translations, and RTL support.
 - `services/ai/` — AI agents, RAG pipeline, embeddings, prompts, and LLM integrations.

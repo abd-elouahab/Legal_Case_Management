@@ -61,8 +61,15 @@ export const PERMISSIONS = [
   "reports:monitor",
 
   // Notifications
+  //
+  // `notifications:view` is not a row grant either: a notification belongs to
+  // exactly one recipient and every read on the API is keyed by them, so holding
+  // it gives a caller their own feed and nobody else's — the same shape
+  // `reports:view` has, and the reason there is no `notifications:view-all`.
+  // `notifications:manage` gates addressing the whole platform.
   "notifications:view",
   "notifications:manage",
+  "notifications:monitor",
 
   // AI
   //
@@ -127,6 +134,7 @@ export const PERMISSION = {
 
   notificationsView: "notifications:view",
   notificationsManage: "notifications:manage",
+  notificationsMonitor: "notifications:monitor",
 
   aiAsk: "ai:ask",
   aiChat: "ai:chat",

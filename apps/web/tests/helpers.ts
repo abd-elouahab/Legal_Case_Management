@@ -48,6 +48,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     "ai:ask",
     "ai:chat",
     "ai:generate-report",
+    // Their own feed and their own preferences, and nothing about anybody
+    // else's: every read on the API is keyed by the recipient, which is why
+    // there is no `notifications:view-all`. `notifications:manage` (addressing
+    // the whole platform) and `notifications:monitor` are both withheld.
     "notifications:view",
     "settings:view",
   ],
@@ -702,6 +706,142 @@ export function reportMetricsPayload(overrides: Record<string, unknown> = {}) {
     llm_available: true,
     prompt_available: true,
     enabled: true,
+    ...overrides,
+  };
+}
+
+// --------------------------------------------------------------------------- //
+// Notification fixtures
+// --------------------------------------------------------------------------- //
+
+/**
+ * One notification in the API's wire format.
+ *
+ * `title` and `message` are **rendered by the server**, not stored — a
+ * notification row keeps a rule key and a small context, and the wording is
+ * produced per request in the reader's language. So these fixtures carry
+ * finished prose exactly as a response would, and there is deliberately no
+ * client-side template for a test to disagree with.
+ */
+export function notificationPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    category: "case",
+    notification_type: "information",
+    priority: "normal",
+
+    title: "Nouveau dossier",
+    message: "Le dossier CASE-2026-0001 a été créé.",
+    language: "fr",
+
+    event_type: "case.created",
+    rule_key: "case.created",
+
+    case_id: "22222222-2222-4222-8222-222222222222",
+    actor: {
+      id: "11111111-1111-4111-8111-111111111111",
+      full_name: "Amina Benali",
+      role: "administrator",
+    },
+    target: {
+      target_type: "case",
+      target_id: "22222222-2222-4222-8222-222222222222",
+    },
+
+    read_at: null,
+    is_read: false,
+    created_at: "2026-08-08T09:30:00Z",
+    ...overrides,
+  };
+}
+
+/** One page of the feed, with the badge state the panel draws beside it. */
+export function notificationPagePayload(overrides: Record<string, unknown> = {}) {
+  const items = (overrides.items as unknown[] | undefined) ?? [notificationPayload()];
+  const unread = items.filter(
+    (item) => !(item as { is_read?: boolean }).is_read,
+  ).length;
+
+  return {
+    items,
+    total_records: items.length,
+    unread_count: unread,
+    unread_count_capped: false,
+    page: 1,
+    page_size: 20,
+    total_pages: 1,
+    ...overrides,
+  };
+}
+
+/** The bell's state, from `/notifications/summary`. */
+export function notificationSummaryPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    unread_count: 3,
+    unread_count_capped: false,
+    total_count: 7,
+    unread_by_category: { case: 2, report: 1 },
+    highest_unread_priority: "high",
+    ...overrides,
+  };
+}
+
+/**
+ * Every preference, at its default.
+ *
+ * The complete set rather than only stored rows, exactly as the API sends it —
+ * which is what lets a settings page render from one response and a preference
+ * added later appear automatically.
+ */
+export function notificationPreferencesPayload(
+  overrides: Record<string, boolean> = {},
+) {
+  const keys = [
+    "case_updates",
+    "document_updates",
+    "ocr_completion",
+    "ai_report_completion",
+    "hearing_updates",
+    "account_activity",
+    "system_announcements",
+  ] as const;
+
+  return {
+    preferences: keys.map((key) => ({
+      preference_key: key,
+      in_app: overrides[key] ?? true,
+      is_default: !(key in overrides),
+    })),
+  };
+}
+
+/** Platform-wide notification metrics in the API's wire format. */
+export function notificationMetricsPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    since: "2026-08-08T08:00:00Z",
+    enabled: true,
+
+    total_notifications: 42,
+    unread_notifications: 9,
+    read_notifications: 33,
+    read_rate: 78.57,
+    recipients: 6,
+
+    created: 42,
+    delivered: 41,
+    failed: 1,
+    suppressed_by_preference: 3,
+    deduplicated: 2,
+    dropped: 0,
+    pending: 0,
+
+    average_delivery_latency_ms: 12.4,
+
+    notifications_by_category: { case: 20, document: 14, report: 8 },
+    created_by_rule: { "case.created": 20, "document.uploaded": 14 },
+    failures_by_reason: { delivery_failed: 1 },
+
+    window_days: null,
     ...overrides,
   };
 }

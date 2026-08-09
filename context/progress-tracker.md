@@ -5,23 +5,31 @@ change.
 
 ## Current Phase
 
+- **Notifications (In-App) complete (spec `16-notifications.md`).** See the entry
+  at the top of *Completed*.
 - **Real-Time Events & Synchronization complete (spec
-  `15-real-time-synchronization.md`).** See the entry at the top of *Completed*.
+  `15-real-time-synchronization.md`).** See the entry in *Completed*.
 - **AI Report Generation complete (spec `14-ai-report-agent.md`).** See the entry
   in *Completed*.
 
 ## Current Goal
 
-- **Next: Notifications (In-App)** (`ai-workflow-rules.md`'s step 12). It is the
-  first feature designed to consume the event dispatcher rather than to be called
-  directly, and the seam is waiting for it: `EventSubscriber` is a protocol, and
-  `core/lifespan.py` is the one place a second consumer is registered — one class
-  plus one line, with no business module changing. It is also where **persistence
-  of an event** properly enters the platform: real-time synchronization is
-  ephemeral by design (a client that missed something refetches), while
-  `code-standards.md` requires notifications to be *"persistent and
-  recoverable"*. `apps/api/api/v1/notifications/` and
-  `apps/api/services/notifications/` are still empty directories.
+- **Next: Email Notifications** (`ai-workflow-rules.md`'s step 13). The seam is
+  waiting for it in two places, and both were built by the feature just
+  completed. `notification_preferences` is one row per `(user, key)` with an
+  `in_app` boolean, so a second channel is **one nullable column** and every row
+  already exists to receive it. And nothing about a notification's wording lives
+  in the client — `core/notifications.py` renders a title and a message from a
+  rule key and a context, in three languages — so an email sender composes from
+  the same module rather than restating it, which is what
+  `code-standards.md`'s *"notification logic must never be duplicated"* asks for.
+  `apps/api/integrations/email/` is still an empty directory.
+- **Done: Notifications (In-App)** (`ai-workflow-rules.md`'s step 12). The
+  platform's first *consumer* of the event dispatcher rather than another
+  producer on it, and the point at which persistence of an event enters the
+  platform. Adding it changed **no business module**: one `EventSubscriber`
+  implementation and one `subscribe` call in `core/lifespan.py`, exactly as
+  `services/events.py` predicted when the dispatcher shipped.
 - **Done: Real-Time Synchronization** (`ai-workflow-rules.md`'s step 11). Both
   things the AI pipeline had left waiting for it are now available, and neither
   was removed: report generation still polls *and* streams its progress
@@ -30,12 +38,68 @@ change.
   the spec's "graceful degradation" a property of the application rather than a
   claim, and it is what every screen falls back to when the socket is
   unavailable.
-- **Still not built, and still out of scope:** notifications, email delivery,
-  WhatsApp delivery, dashboard analytics, scheduled jobs, collaborative editing,
-  presence *visualization*, summarization as a distinct capability, information
+- **Still not built, and still out of scope:** email delivery, WhatsApp delivery,
+  push notifications, SMS, scheduled reminders, notification *archiving* (the
+  column and the read filters exist; no endpoint writes it), notification
+  grouping, dashboard analytics, scheduled jobs, collaborative editing, presence
+  *visualization*, summarization as a distinct capability, information
   extraction, compliance analysis, translation, and the voice assistant.
 
 ## Open Questions
+
+- **Notifications raised two that needed deciding rather than asking, and both
+  are recorded here because a later feature will meet them again.**
+
+  *First: there is no broadcast topic, and there deliberately is not one.*
+  `16-notifications.md` lists **system maintenance and announcements** among the
+  events to subscribe to, and `core/events.py` states that every event the
+  platform carries is about something somebody owns — *"a scope with no owner
+  would be a scope with no authorization rule"*. A platform-wide announcement has
+  no owner and no resource, so there is no topic it could be published on, and
+  inventing one would put an unauthorized channel into the event system that
+  every future publisher could reach. What ships instead is an **administrative
+  endpoint on the Notification Service itself** (`POST
+  /notifications/announcements`, gated on `notifications:manage`): the service
+  creating a notification, with no business module involved, so the spec's
+  *"business logic should never create notifications directly"* is untouched.
+  Everything downstream is the ordinary path. **If a future feature genuinely
+  needs platform-wide events**, the honest change is a new `EventScope` with an
+  authorization rule of its own, not a special case here.
+
+  *Second: how fresh must a notification's language be?* A notification stores no
+  prose — only its rule key and a bounded context — and the title and message are
+  rendered per request in whichever language the client asks for. That is what
+  makes an Arabic reader's **whole history** Arabic rather than a feed frozen in
+  whichever language was current when each row arrived, and it is the only shape
+  that satisfies `ai-workflow-rules.md`'s localization rules for persisted
+  content. The cost is stated rather than hidden: a rule withdrawn in a later
+  version leaves old rows rendering their *category's* generic wording instead of
+  their own. `render_notification` never raises, because a vague notification is
+  much better than a history page that will not load. **A future email channel
+  inherits this**: it composes from `core/notifications.py` in the recipient's
+  language rather than from a copy of the wording.
+
+- **One thing the spec asks for is deliberately narrower than it sounds, and it
+  is worth stating plainly.** *"Users should be able to configure which
+  notifications they receive"* is honoured **literally**: a preference silences
+  its rule with no exceptions, including the single `CRITICAL` one (an
+  administrator resetting your password). Overriding a preference for
+  "sufficiently important" notifications was considered and **not done** — it
+  would be inventing business behaviour the spec does not describe, and a
+  notification switch that quietly ignores itself is worse than one that does not
+  exist. If the intended policy is "security notices always reach the account
+  holder", the change is one condition in
+  `NotificationService._filter_by_preference` — and it belongs with the **email**
+  channel, which can reach somebody whose in-app feed they never read.
+
+- **The recipient-freshness bound `15-real-time-synchronization.md` recorded does
+  not apply here, and the difference is worth noting.** That feature's 30-second
+  authorization TTL is about a *long-lived socket*; a notification's audience is
+  resolved from the database at the moment the event is handled and re-checked
+  per person against the case policy, so an unassigned lawyer stops being
+  notified immediately. What they may still briefly receive is a *delivery* of a
+  notification already created for them — which is their own notification, on
+  their own topic.
 
 - **Real-Time Synchronization raised one genuine question, and it is a
   *product* one rather than a technical one: how fresh must an authorization
@@ -124,6 +188,80 @@ change.
   the whole run.
 
 ## Completed
+
+- **Notifications (In-App) (spec `16-notifications.md`)** — the platform's
+  notification system, and the **first consumer** of the event dispatcher rather
+  than another producer on it. Business modules publish domain events as they
+  already did; a Notification Service subscribed to that dispatcher turns the
+  ones that matter into persistent, per-user notifications and delivers them over
+  the same WebSocket channel. **Nothing about email, WhatsApp, push, SMS, or
+  scheduled reminders was implemented** — the spec puts all five out of scope.
+  - **No new dependency, backend or frontend, and no business module changed.**
+    Adding the consumer was one `EventSubscriber` implementation
+    (`services/notification_events.py`) and one `subscribe` call in
+    `core/lifespan.py`, exactly as `services/events.py` predicted. The case,
+    document, OCR, indexing, report, and user services are untouched except for
+    the **four account events** the user service now publishes (activation,
+    deactivation, role change, password reset) — which it does holding
+    `EventPublisher`, with no way to learn that anything consumes them.
+  - **Two tables and one migration** (`b3d81e5fa27c`): `notifications` and
+    `notification_preferences`. Two PostgreSQL enums (`notification_type`,
+    `notification_priority`) and two open `VARCHAR` registries (`category`,
+    `rule_key`) — the same split `reports` and `timeline_events` make from
+    opposite ends, and the reason `16-notifications.md`'s *"future categories
+    without redesign"* costs nothing.
+  - **No prose is stored.** A row keeps a rule key and a bounded context; the
+    wording is rendered per request in the reader's language by
+    `core/notifications.py`, in Arabic, French, and English. See *Open Questions*
+    for what that buys and what it costs.
+  - **17 event rules, and every omission is documented as a decision** in
+    `EVENT_RULES` — including `notification.*`, whose absence is what makes a
+    feedback loop impossible rather than merely unlikely, and `user.deactivated`,
+    whose rule was written and then removed because a disabled account cannot
+    sign in to read it.
+  - **Duplicate prevention is two mechanisms covering different halves**: a
+    unique index on `(recipient_id, event_id)`, which is exact and cannot suppress
+    a genuine repeat, and a hashed `dedupe_key` matched inside a bounded window,
+    which catches a retried worker without silencing a case updated twice in a
+    week. The shape `10-document-indexing.md` established.
+  - **Authorization is enforced before creation, per recipient, and asked last.**
+    `services/notification_recipients.py` owns no policy of its own — it
+    delegates to `CaseAccessPolicy` (and, for a report, to ownership) exactly as
+    `document_access`, `ocr_access`, `indexing_access`, `search_access`, and
+    `realtime_access` do. The spec's own example — *"a document upload
+    notification must never be created for a user who cannot access the
+    document"* — is asserted directly in `tests/integration/test_notifications.py`.
+  - **One new permission**, `notifications:monitor`, administrative like every
+    other `*:monitor`. `notifications:view` was already in `BASE_PERMISSIONS`;
+    `notifications:manage` now gates announcements, which is the one path a
+    person creates a notification on.
+  - **The UI is the bell, the panel, and a three-tab centre** — feed, preferences,
+    and (for `notifications:manage`) announcements. The bell subscribes to the
+    reader's own `user:` topic and is the only component that does, which is what
+    makes a notification reach a badge whatever screen somebody is on.
+  - **Nothing depends on it, in either direction.** Every business module works
+    with `NOTIFICATIONS_ENABLED=false` because none of them knows the feature
+    exists, and the badge polls on a slow interval regardless of the channel — so
+    a deployment with `REALTIME_ENABLED=false` still tells a lawyer they were
+    assigned a case.
+  - **Tests:** `tests/unit/test_notification_utils.py` (55),
+    `tests/unit/test_notification_service.py` (43),
+    `tests/unit/test_notification_events.py` (25),
+    `tests/integration/test_notifications.py` (37), and
+    `apps/web/tests/notifications.test.tsx` (33) — 193 in all, on top of the
+    existing suites, which still pass unchanged.
+  - **Validation beyond the tests**, because two of this feature's risks are not
+    things a test asserts:
+    - the migration was diffed against the models with Alembic's own
+      `compare_metadata` (**no drift**) and its `downgrade()` was run to confirm
+      both tables and both enum types are removed — the trap every enum migration
+      here documents;
+    - the application was booted with its real lifespan and the dispatcher's
+      subscriber list read at runtime: `['notifications', 'websocket']`, with the
+      notification worker running, both unregistered on shutdown, and the queue
+      **drained** (`drained=True abandoned=0`) rather than abandoned. Startup was
+      deliberately performed with **no database reachable**, which confirmed the
+      documented contract that neither the workers nor the channel abort it.
 
 - **Real-Time Events & Synchronization (spec `15-real-time-synchronization.md`)**
   — the platform's event backbone, and the first thing built here that is
