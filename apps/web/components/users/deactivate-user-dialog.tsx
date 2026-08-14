@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import {
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/shared/spinner";
-import { useDeactivateUser, userErrorMessage } from "@/hooks/use-users";
+import { useDeactivateUser, useUserErrorMessage } from "@/hooks/use-users";
 import type { ManagedUser } from "@/types/user";
 
 /**
@@ -40,6 +41,9 @@ export function DeactivateUserDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const deactivate = useDeactivateUser();
+  const t = useTranslations("users.deactivateDialog");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useUserErrorMessage();
   const [error, setError] = React.useState<string | null>(null);
 
   // Clear a stale error from a previous attempt when the dialog reopens.
@@ -58,10 +62,10 @@ export function DeactivateUserDialog({
 
     try {
       await deactivate.mutateAsync(user.id);
-      toast.success(`${user.fullName} was deactivated.`);
+      toast.success(t("deactivated", { name: user.fullName }));
       onOpenChange(false);
     } catch (cause) {
-      setError(userErrorMessage(cause));
+      setError(errorMessage(cause));
     }
   }
 
@@ -72,7 +76,7 @@ export function DeactivateUserDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            Deactivate {user ? user.fullName : "this user"}?
+            {user ? t("title", { name: user.fullName }) : t("titleGeneric")}
           </AlertDialogTitle>
           <AlertDialogDescription>
             They will be signed out of every device and will no longer be able to
@@ -88,15 +92,15 @@ export function DeactivateUserDialog({
         ) : null}
 
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={isPending}>{tActions("cancel")}</AlertDialogCancel>
           <Button variant="destructive" onClick={confirm} disabled={isPending}>
             {isPending ? (
               <>
                 <Spinner className="h-4 w-4 text-current" />
-                Deactivating…
+                {t("deactivating")}
               </>
             ) : (
-              "Deactivate"
+              t("confirm")
             )}
           </Button>
         </AlertDialogFooter>

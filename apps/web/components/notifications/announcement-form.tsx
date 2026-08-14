@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { Megaphone } from "lucide-react";
 import { toast } from "sonner";
 
@@ -22,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  notificationErrorMessage,
+  useNotificationErrorMessage,
   usePublishAnnouncement,
 } from "@/hooks/use-notifications";
 import { MAX_ANNOUNCEMENT_LENGTH } from "@/lib/validation/notification";
@@ -47,6 +48,8 @@ import type { AnnouncementKind } from "@/types/notification";
  */
 
 export function AnnouncementForm() {
+  const t = useTranslations("notifications.announcement");
+  const errorMessage = useNotificationErrorMessage();
   const [kind, setKind] = React.useState<AnnouncementKind>("announcement");
   const [message, setMessage] = React.useState("");
 
@@ -65,15 +68,11 @@ export function AnnouncementForm() {
         onSuccess: (result) => {
           setMessage("");
           toast.success(
-            `Announcement sent to ${result.recipients} ${
-              result.recipients === 1 ? "person" : "people"
-            }.` +
-              (result.skipped > 0
-                ? ` ${result.skipped} have platform announcements switched off.`
-                : ""),
+            t("sent", { count: result.recipients }) +
+              (result.skipped > 0 ? ` ${t("skipped", { count: result.skipped })}` : ""),
           );
         },
-        onError: (failure) => toast.error(notificationErrorMessage(failure)),
+        onError: (failure) => toast.error(errorMessage(failure)),
       },
     );
   }
@@ -83,18 +82,15 @@ export function AnnouncementForm() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Megaphone className="h-4 w-4" aria-hidden="true" />
-          Platform announcement
+          {t("title")}
         </CardTitle>
-        <CardDescription>
-          Sent to every active account, as an in-app notification. People who have switched
-          platform announcements off are not notified.
-        </CardDescription>
+        <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
 
       <CardContent>
         <form className="flex flex-col gap-4" onSubmit={onSubmit}>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="announcement-kind">Kind</Label>
+            <Label htmlFor="announcement-kind">{t("kind")}</Label>
             <Select
               value={kind}
               onValueChange={(value) => setKind(value as AnnouncementKind)}
@@ -103,24 +99,21 @@ export function AnnouncementForm() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="announcement">Announcement</SelectItem>
-                <SelectItem value="maintenance">Scheduled maintenance</SelectItem>
+                <SelectItem value="announcement">{t("kinds.announcement")}</SelectItem>
+                <SelectItem value="maintenance">{t("kinds.maintenance")}</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-sm text-muted-foreground">
-              Maintenance is delivered as a high-priority warning; an announcement is
-              ordinary news.
-            </p>
+            <p className="text-sm text-muted-foreground">{t("kindHint")}</p>
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="announcement-message">Message</Label>
+            <Label htmlFor="announcement-message">{t("message")}</Label>
             <Textarea
               id="announcement-message"
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               rows={4}
-              placeholder="The platform will be read-only on Sunday between 08:00 and 10:00."
+              placeholder={t("messagePlaceholder")}
               aria-describedby="announcement-message-count"
               aria-invalid={tooLong}
             />
@@ -130,13 +123,16 @@ export function AnnouncementForm() {
                 tooLong ? "text-sm text-destructive" : "text-sm text-muted-foreground"
               }
             >
-              {trimmed.length} / {MAX_ANNOUNCEMENT_LENGTH} characters
+              {t("characterCount", {
+                used: trimmed.length,
+                max: MAX_ANNOUNCEMENT_LENGTH,
+              })}
             </p>
           </div>
 
           <div className="flex justify-end">
             <Button type="submit" disabled={!canSubmit}>
-              {publish.isPending ? "Sending…" : "Send announcement"}
+              {publish.isPending ? t("sending") : t("submit")}
             </Button>
           </div>
         </form>

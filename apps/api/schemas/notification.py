@@ -195,13 +195,15 @@ class NotificationReadAllRequest(BaseModel):
 
 
 class NotificationPreferenceUpdate(BaseModel):
-    """One preference the caller is changing, on one or both channels.
+    """One preference the caller is changing, on any of the channels.
 
-    **Both channel fields are optional, and that is the compatibility story.** A
+    **Every channel field is optional, and that is the compatibility story.** A
     client that sends only ``in_app`` — which is every client written before the
-    email channel existed — leaves ``email`` exactly as it was, rather than
-    switching it off by not mentioning it. The same protection applies in reverse
-    to whichever channel arrives next.
+    email channel existed — leaves ``email`` and ``whatsapp`` exactly as they
+    were, rather than switching them off by not mentioning them. That protection
+    was written for the email channel and cost nothing when WhatsApp arrived,
+    which is what it was for; it applies in the same way to whichever channel
+    arrives next.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -222,12 +224,21 @@ class NotificationPreferenceUpdate(BaseModel):
             "not email is never emailed however this is set."
         ),
     )
+    whatsapp: bool | None = Field(
+        default=None,
+        description=(
+            "Whether WhatsApp messages of this kind are delivered. Omitted leaves the current "
+            "value alone. It narrows twice over: a notification kind the platform does not "
+            "send over WhatsApp never travels on that channel however this is set, and neither "
+            "does anything at all for an account with no phone number on it."
+        ),
+    )
 
     @model_validator(mode="after")
     def _require_a_change(self) -> NotificationPreferenceUpdate:
         """Refuse an entry that changes nothing.
 
-        A ``{"preference_key": "case_updates"}`` with neither channel is almost
+        A ``{"preference_key": "case_updates"}`` with no channel at all is almost
         certainly a client bug — a field name typo, a stale mapping — and
         accepting it silently would answer 200 while doing nothing, which is the
         hardest kind of failure to notice from the outside.
@@ -236,8 +247,8 @@ class NotificationPreferenceUpdate(BaseModel):
         whole point here: a field validator does not run for a field the request
         omitted, which is precisely the case this needs to catch.
         """
-        if self.in_app is None and self.email is None:
-            raise ValueError("Set `in_app`, `email`, or both.")
+        if self.in_app is None and self.email is None and self.whatsapp is None:
+            raise ValueError("Set at least one of `in_app`, `email`, or `whatsapp`.")
         return self
 
 
@@ -518,6 +529,14 @@ class NotificationPreferenceRead(BaseModel):
             "Whether emails of this kind are delivered. Note that a `true` here does not mean "
             "an email is sent: only the notification kinds the platform marks for email travel "
             "on that channel, and only when a provider is configured."
+        )
+    )
+    whatsapp: bool = Field(
+        description=(
+            "Whether WhatsApp messages of this kind are delivered. As with email, a `true` "
+            "here does not mean a message is sent: only the kinds the platform marks for "
+            "WhatsApp travel on that channel, only when a provider is configured, and only to "
+            "an account that has a phone number on it."
         )
     )
     is_default: bool = Field(

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslations } from "next-intl";
 import { Upload } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
@@ -28,9 +29,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/shared/spinner";
 import { UploadProgress } from "@/components/documents/upload-progress";
 import { useDocumentCases } from "@/hooks/use-document-cases";
+import { useFieldError } from "@/hooks/use-field-error";
 import {
-  documentErrorMessage,
   documentFieldErrors,
+  useDocumentErrorMessage,
   useUploadDocument,
 } from "@/hooks/use-documents";
 import {
@@ -41,7 +43,6 @@ import {
 } from "@/lib/validation/document";
 import {
   DOCUMENT_CATEGORIES,
-  DOCUMENT_CATEGORY_LABELS,
   MAX_DOCUMENT_SIZE_MB,
   SUPPORTED_DOCUMENT_EXTENSIONS,
   type DocumentCategory,
@@ -51,7 +52,7 @@ import {
  * Upload dialog: choose a file, a case, a category, and an optional description.
  *
  * Owns nothing but presentation and form state: the request, cache invalidation,
- * and error translation all live in `useUploadDocument` / `documentErrorMessage`,
+ * and error translation all live in `useUploadDocument` / `useDocumentErrorMessage`,
  * per the standard that components carry no business logic.
  *
  * Progress is real, not a spinner — `useUploadDocument` reports transmitted bytes
@@ -83,6 +84,12 @@ export function UploadDocumentDialog({
 }) {
   const upload = useUploadDocument();
   const cases = useDocumentCases({ enabled: open && !caseId });
+  const t = useTranslations("documents.uploadDialog");
+  const tUpload = useTranslations("documents.upload");
+  const tCategories = useTranslations("documents.categories");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useDocumentErrorMessage();
+  const fieldError = useFieldError();
   const [formError, setFormError] = React.useState<string | null>(null);
   const [progress, setProgress] = React.useState<number | null>(null);
 
@@ -151,7 +158,7 @@ export function UploadDocumentDialog({
         onProgress: setProgress,
       });
 
-      toast.success(`${created.originalFilename} was uploaded.`);
+      toast.success(t("uploaded", { filename: created.originalFilename }));
       onOpenChange(false);
     } catch (error) {
       setProgress(null);
@@ -161,7 +168,7 @@ export function UploadDocumentDialog({
       }
       // Only surface the banner when nothing could be attached to a field —
       // otherwise the same complaint would appear twice.
-      if (Object.keys(fields).length === 0) setFormError(documentErrorMessage(error));
+      if (Object.keys(fields).length === 0) setFormError(errorMessage(error));
     }
   });
 
@@ -171,10 +178,15 @@ export function UploadDocumentDialog({
     <Dialog open={open} onOpenChange={isPending ? undefined : onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Upload document</DialogTitle>
+          <DialogTitle>{t("title")}</DialogTitle>
+          {/* The extension list and the size ceiling are interpolated rather than
+              concatenated: a sentence assembled from three JSX fragments cannot be
+              reordered by a translator, and Arabic needs to reorder it. */}
           <DialogDescription>
-            Attach a file to a case. Supported types:{" "}
-            {SUPPORTED_DOCUMENT_EXTENSIONS.join(", ")} — up to {MAX_DOCUMENT_SIZE_MB} MB.
+            {t("description", {
+              types: SUPPORTED_DOCUMENT_EXTENSIONS.join(", "),
+              maxSize: MAX_DOCUMENT_SIZE_MB,
+            })}
           </DialogDescription>
         </DialogHeader>
 
@@ -187,7 +199,7 @@ export function UploadDocumentDialog({
             ) : null}
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="upload-document-file">File</Label>
+              <Label htmlFor="upload-document-file">{t("file")}</Label>
               <Input
                 id="upload-document-file"
                 type="file"
@@ -199,19 +211,22 @@ export function UploadDocumentDialog({
               />
               {chosenFile ? (
                 <p className="text-xs text-muted-foreground">
-                  {chosenFile.name} — {Math.max(1, Math.round(chosenFile.size / 1024))} KB
+                  {tUpload("chosenFile", {
+                    name: chosenFile.name,
+                    kilobytes: Math.max(1, Math.round(chosenFile.size / 1024)),
+                  })}
                 </p>
               ) : null}
               {errors.file ? (
                 <p id="upload-document-file-error" role="alert" className="text-sm text-destructive">
-                  {errors.file.message}
+                  {fieldError(errors.file.message)}
                 </p>
               ) : null}
             </div>
 
             {caseId ? null : (
               <div className="flex flex-col gap-2">
-                <Label htmlFor="upload-document-case">Case</Label>
+                <Label htmlFor="upload-document-case">{t("case")}</Label>
                 <Select
                   value={selectedCaseId || undefined}
                   onValueChange={(value) => setValue("caseId", value, { shouldValidate: true })}
@@ -219,7 +234,7 @@ export function UploadDocumentDialog({
                 >
                   <SelectTrigger id="upload-document-case">
                     <SelectValue
-                      placeholder={cases.isLoading ? "Loading cases…" : "Select a case"}
+                      placeholder={cases.isLoading ? t("loadingCases") : t("selectCase")}
                     />
                   </SelectTrigger>
                   <SelectContent>
@@ -232,14 +247,14 @@ export function UploadDocumentDialog({
                 </Select>
                 {errors.caseId ? (
                   <p role="alert" className="text-sm text-destructive">
-                    {errors.caseId.message}
+                    {fieldError(errors.caseId.message)}
                   </p>
                 ) : null}
               </div>
             )}
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="upload-document-category">Category</Label>
+              <Label htmlFor="upload-document-category">{t("category")}</Label>
               <Select
                 value={category}
                 onValueChange={(value) =>
@@ -248,36 +263,36 @@ export function UploadDocumentDialog({
                 disabled={isPending}
               >
                 <SelectTrigger id="upload-document-category">
-                  <SelectValue placeholder="Select a category" />
+                  <SelectValue placeholder={t("selectCategory")} />
                 </SelectTrigger>
                 <SelectContent>
                   {DOCUMENT_CATEGORIES.map((option) => (
                     <SelectItem key={option} value={option}>
-                      {DOCUMENT_CATEGORY_LABELS[option]}
+                      {tCategories(option)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               {errors.category ? (
                 <p role="alert" className="text-sm text-destructive">
-                  {errors.category.message}
+                  {fieldError(errors.category.message)}
                 </p>
               ) : null}
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="upload-document-description">Description (optional)</Label>
+              <Label htmlFor="upload-document-description">{t("descriptionField")}</Label>
               <Textarea
                 id="upload-document-description"
                 rows={3}
                 maxLength={MAX_DESCRIPTION_LENGTH}
                 disabled={isPending}
-                placeholder="What this document is, and why it matters to the case."
+                placeholder={t("descriptionPlaceholder")}
                 {...register("description")}
               />
               {errors.description ? (
                 <p role="alert" className="text-sm text-destructive">
-                  {errors.description.message}
+                  {fieldError(errors.description.message)}
                 </p>
               ) : null}
             </div>
@@ -292,18 +307,18 @@ export function UploadDocumentDialog({
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              {tActions("cancel")}
             </Button>
             <Button type="submit" disabled={isPending}>
               {isPending ? (
                 <>
                   <Spinner className="h-4 w-4 text-current" />
-                  Uploading…
+                  {tUpload("uploading")}
                 </>
               ) : (
                 <>
                   <Upload className="h-4 w-4" />
-                  Upload
+                  {t("submit")}
                 </>
               )}
             </Button>

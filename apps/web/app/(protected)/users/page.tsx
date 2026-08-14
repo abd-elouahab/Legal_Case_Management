@@ -21,8 +21,8 @@ export default function UsersPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Users"
-        description="Manage administrators, lawyers, and court representatives."
+        titleKey="users.title"
+        descriptionKey="users.description"
       />
       <UserDirectory />
     </PageContainer>

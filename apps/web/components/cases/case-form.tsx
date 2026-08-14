@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { AlertCircle } from "lucide-react";
 import type { UseFormRegisterReturn } from "react-hook-form";
 
@@ -16,13 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCaseAssignees } from "@/hooks/use-case-assignees";
-import {
-  CASE_PRIORITIES,
-  CASE_PRIORITY_LABELS,
-  CASE_STATUS_LABELS,
-  type CasePriority,
-  type CaseStatus,
-} from "@/types/case";
+import { CASE_PRIORITIES, type CasePriority, type CaseStatus } from "@/types/case";
 
 /**
  * Shared form fields for creating and editing a case.
@@ -145,6 +140,7 @@ function AssigneeSelect({
   error,
 }: {
   id: string;
+  /** Already translated by the caller. */
   label: string;
   role: "lawyer" | "court";
   value: string;
@@ -153,17 +149,15 @@ function AssigneeSelect({
   error?: string;
 }) {
   const { users, isLoading } = useCaseAssignees(role);
+  const t = useTranslations("cases.form");
+  const tStates = useTranslations("common.states");
 
   return (
     <Field
       id={id}
       label={label}
       error={error}
-      hint={
-        !isLoading && users.length === 0
-          ? "No active accounts hold this role yet."
-          : undefined
-      }
+      hint={!isLoading && users.length === 0 ? t("noEligibleAccounts") : undefined}
     >
       <Select
         value={value || UNASSIGNED}
@@ -171,10 +165,12 @@ function AssigneeSelect({
         onValueChange={(next) => onChange(next === UNASSIGNED ? "" : next)}
       >
         <SelectTrigger id={id} aria-invalid={Boolean(error)}>
-          <SelectValue placeholder={isLoading ? "Loading…" : "Unassigned"} />
+          <SelectValue
+            placeholder={isLoading ? tStates("loading") : t("unassigned")}
+          />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+          <SelectItem value={UNASSIGNED}>{t("unassigned")}</SelectItem>
           {users.map((user) => (
             <SelectItem key={user.id} value={user.id}>
               {user.fullName}
@@ -204,6 +200,14 @@ export function CaseFormFieldset({
   formError,
   idPrefix,
 }: CaseFormFieldsetProps) {
+  const t = useTranslations("cases.form");
+  const tStates = useTranslations("common.states");
+  // The status and priority vocabularies are the module's own, shared with the
+  // badges and the filters — a form that restated them would be a second place
+  // for "In Progress" to be worded.
+  const tStatuses = useTranslations("cases.statuses");
+  const tPriorities = useTranslations("cases.priorities");
+
   const id = (field: string) => `${idPrefix}-${field}`;
   const describedBy = (field: CaseFieldName, elementId: string) =>
     errors[field] ? `${elementId}-error` : undefined;
@@ -224,13 +228,13 @@ export function CaseFormFieldset({
       {caseNumber ? (
         <Field
           id={id("case-number")}
-          label="Case number"
+          label={t("caseNumber")}
           error={errors.caseNumber}
-          hint="Leave empty to generate the next number automatically."
+          hint={t("caseNumberHint")}
         >
           <Input
             id={id("case-number")}
-            placeholder="CASE-2026-0001"
+            placeholder={t("caseNumberPlaceholder")}
             disabled={disabled}
             aria-invalid={Boolean(errors.caseNumber)}
             aria-describedby={describedBy("caseNumber", id("case-number"))}
@@ -239,10 +243,10 @@ export function CaseFormFieldset({
         </Field>
       ) : null}
 
-      <Field id={id("title")} label="Title" error={errors.title}>
+      <Field id={id("title")} label={t("title")} error={errors.title}>
         <Input
           id={id("title")}
-          placeholder="Benali v. Société Atlas"
+          placeholder={t("titlePlaceholder")}
           disabled={disabled}
           aria-invalid={Boolean(errors.title)}
           aria-describedby={describedBy("title", id("title"))}
@@ -252,14 +256,14 @@ export function CaseFormFieldset({
 
       <Field
         id={id("description")}
-        label="Description"
+        label={t("description")}
         error={errors.description}
-        hint="Optional."
+        hint={tStates("optional")}
       >
         <Textarea
           id={id("description")}
           rows={4}
-          placeholder="Summary of the matter."
+          placeholder={t("descriptionPlaceholder")}
           disabled={disabled}
           aria-invalid={Boolean(errors.description)}
           aria-describedby={describedBy("description", id("description"))}
@@ -270,13 +274,13 @@ export function CaseFormFieldset({
       <div className="grid gap-5 sm:grid-cols-2">
         <Field
           id={id("category")}
-          label="Category"
+          label={t("category")}
           error={errors.category}
-          hint="Optional — e.g. Commercial, Labour, Family."
+          hint={t("categoryHint")}
         >
           <Input
             id={id("category")}
-            placeholder="Commercial"
+            placeholder={t("categoryPlaceholder")}
             disabled={disabled}
             aria-invalid={Boolean(errors.category)}
             aria-describedby={describedBy("category", id("category"))}
@@ -284,19 +288,19 @@ export function CaseFormFieldset({
           />
         </Field>
 
-        <Field id={id("priority")} label="Priority" error={errors.priority}>
+        <Field id={id("priority")} label={t("priority")} error={errors.priority}>
           <Select
             value={priority}
             disabled={disabled}
             onValueChange={(value) => onPriorityChange(value as CasePriority)}
           >
             <SelectTrigger id={id("priority")} aria-invalid={Boolean(errors.priority)}>
-              <SelectValue placeholder="Select a priority" />
+              <SelectValue placeholder={t("selectPriority")} />
             </SelectTrigger>
             <SelectContent>
               {CASE_PRIORITIES.map((option) => (
                 <SelectItem key={option} value={option}>
-                  {CASE_PRIORITY_LABELS[option]}
+                  {tPriorities(option)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -306,9 +310,9 @@ export function CaseFormFieldset({
 
       <Field
         id={id("status")}
-        label="Status"
+        label={t("status")}
         error={errors.status}
-        hint="Only the moves this case can legally make are offered."
+        hint={t("statusHint")}
       >
         <Select
           value={status}
@@ -316,22 +320,27 @@ export function CaseFormFieldset({
           onValueChange={(value) => onStatusChange(value as CaseStatus)}
         >
           <SelectTrigger id={id("status")} aria-invalid={Boolean(errors.status)}>
-            <SelectValue placeholder="Select a status" />
+            <SelectValue placeholder={t("selectStatus")} />
           </SelectTrigger>
           <SelectContent>
             {statuses.map((option) => (
               <SelectItem key={option} value={option}>
-                {CASE_STATUS_LABELS[option]}
+                {tStatuses(option)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </Field>
 
-      <Field id={id("court-name")} label="Court" error={errors.courtName} hint="Optional.">
+      <Field
+        id={id("court-name")}
+        label={t("court")}
+        error={errors.courtName}
+        hint={tStates("optional")}
+      >
         <Input
           id={id("court-name")}
-          placeholder="Tribunal de Commerce de Casablanca"
+          placeholder={t("courtPlaceholder")}
           disabled={disabled}
           aria-invalid={Boolean(errors.courtName)}
           aria-describedby={describedBy("courtName", id("court-name"))}
@@ -340,7 +349,7 @@ export function CaseFormFieldset({
       </Field>
 
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field id={id("filing-date")} label="Filing date" error={errors.filingDate}>
+        <Field id={id("filing-date")} label={t("filingDate")} error={errors.filingDate}>
           <Input
             id={id("filing-date")}
             type="date"
@@ -353,7 +362,7 @@ export function CaseFormFieldset({
 
         <Field
           id={id("next-hearing-date")}
-          label="Next hearing"
+          label={t("nextHearing")}
           error={errors.nextHearingDate}
         >
           <Input
@@ -371,7 +380,7 @@ export function CaseFormFieldset({
         <div className="grid gap-5 sm:grid-cols-2">
           <AssigneeSelect
             id={id("assigned-lawyer")}
-            label="Assigned lawyer"
+            label={t("assignedLawyer")}
             role="lawyer"
             value={assignedLawyerId}
             onChange={onAssignedLawyerChange}
@@ -381,7 +390,7 @@ export function CaseFormFieldset({
 
           <AssigneeSelect
             id={id("assigned-representative")}
-            label="Assigned court representative"
+            label={t("assignedRepresentative")}
             role="court"
             value={assignedCourtRepresentativeId}
             onChange={onAssignedCourtRepresentativeChange}

@@ -43,30 +43,17 @@ export const TIMELINE_EVENT_TYPES = [
 /** A type the platform is known to record. Not the full domain of `eventType`. */
 export type KnownTimelineEventType = (typeof TIMELINE_EVENT_TYPES)[number];
 
-/** Human-readable labels for the filter menu (future: i18n keys). */
-export const TIMELINE_EVENT_TYPE_LABELS: Record<KnownTimelineEventType, string> = {
-  case_created: "Case created",
-  case_updated: "Case updated",
-  case_archived: "Case archived",
-  case_restored: "Case restored",
-  status_changed: "Status changed",
-  priority_changed: "Priority changed",
-  lawyer_assigned: "Lawyer assigned",
-  lawyer_removed: "Lawyer removed",
-  representative_assigned: "Representative assigned",
-  representative_removed: "Representative removed",
-  document_uploaded: "Document uploaded",
-  document_updated: "Document updated",
-  document_replaced: "Document replaced",
-  document_deleted: "Document deleted",
-  document_downloaded: "Document downloaded",
-  // "Text extraction" rather than "OCR": a case history is read by lawyers and
-  // court staff, not by the people who built the pipeline.
-  ocr_started: "Text extraction started",
-  ocr_completed: "Text extraction completed",
-  ocr_failed: "Text extraction failed",
-  ocr_retried: "Text extraction retried",
-};
+/**
+ * Where an event type's label lives: `timeline.events` in the message catalogues.
+ *
+ * The catalogue says *"Text extraction started"* rather than *"OCR started"*, for
+ * the reason the old constant recorded: a case history is read by lawyers and
+ * court staff, not by the people who built the pipeline. A type this build has
+ * never heard of renders through the provider's `getMessageFallback`, which
+ * humanizes the key — the same thing `timelineEventLabel` did with a regex.
+ */
+export const TIMELINE_EVENT_NAMESPACE = "timeline.events";
+
 
 /**
  * Event families, mirroring the API's `TimelineEventCategory`.
@@ -115,13 +102,3 @@ export interface TimelineEvent {
   createdAt: string;
 }
 
-/** The label for an event type, falling back to a readable form of the identifier. */
-export function timelineEventLabel(eventType: string): string {
-  const known = TIMELINE_EVENT_TYPE_LABELS[eventType as KnownTimelineEventType];
-  if (known) return known;
-
-  // A type this build has never heard of still reads as English rather than as a
-  // database value.
-  const words = eventType.replace(/_/g, " ").trim();
-  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "Event";
-}

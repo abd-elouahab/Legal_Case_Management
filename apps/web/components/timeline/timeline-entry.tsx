@@ -1,8 +1,9 @@
 "use client";
 
 import { TimelineIcon } from "@/components/timeline/timeline-icon";
-import { formatDateTime, formatEventTime } from "@/lib/format";
-import { ROLE_LABELS, USER_ROLES, type UserRole } from "@/types/user";
+import { useTranslations } from "next-intl";
+import { useDateFormat } from "@/hooks/use-date-format";
+import { roleMessageKey, USER_ROLES } from "@/types/user";
 import type { TimelineEvent } from "@/types/timeline";
 
 /**
@@ -30,15 +31,19 @@ import type { TimelineEvent } from "@/types/timeline";
  * falls back to the stored value.
  */
 
-function roleLabel(actorRole: string | null): string | null {
-  if (!actorRole) return null;
-  return (USER_ROLES as readonly string[]).includes(actorRole)
-    ? ROLE_LABELS[actorRole as UserRole]
-    : actorRole;
-}
-
 export function TimelineEntry({ event }: { event: TimelineEvent }) {
-  const role = roleLabel(event.actorRole);
+  const { formatDateTime, formatEventTime } = useDateFormat();
+  const t = useTranslations("timeline");
+  const tRoles = useTranslations("users.roles");
+
+  // `actorRole` is a snapshot taken when the event happened, so a role retired
+  // since then must still read back. A value the platform still recognises is
+  // translated; anything else is shown as stored rather than dropped.
+  const role = event.actorRole
+    ? (USER_ROLES as readonly string[]).includes(event.actorRole)
+      ? tRoles(roleMessageKey(event.actorRole))
+      : event.actorRole
+    : null;
 
   return (
     <li className="flex gap-3">
@@ -66,7 +71,7 @@ export function TimelineEntry({ event }: { event: TimelineEvent }) {
 
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
           <span className="font-medium text-foreground/80">
-            {event.actorName ?? "System"}
+            {event.actorName ?? t("system")}
           </span>
           {role ? (
             <>

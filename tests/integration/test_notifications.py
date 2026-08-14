@@ -26,6 +26,7 @@ from fastapi.testclient import TestClient
 
 from core.config import settings
 from core.events import DomainEventType
+from core.localization import default_language
 from models.user import UserRole
 from tests.helpers import PDF_BYTES
 
@@ -118,7 +119,10 @@ class TestFeed:
         item = body["items"][0]
         assert "CASE-2026-0042" in item["message"]
         assert item["title"]
-        assert item["language"] == "fr"
+        # No `?language=` was sent, so the feed renders in the language this
+        # reader is addressed in — their stored preference, then the platform's
+        # default, then the application's. This account has chosen nothing.
+        assert item["language"] == default_language()
 
     def test_the_same_row_is_rendered_in_the_language_asked_for(
         self, api_client: TestClient, lawyer_user: Any, lawyer_headers: dict[str, str],

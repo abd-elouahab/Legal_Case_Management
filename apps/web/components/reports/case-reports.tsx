@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { ReportList } from "@/components/reports/report-list";
 
 /**
@@ -15,11 +17,9 @@ import { ReportList } from "@/components/reports/report-list";
  * drift: a change to how a report is opened, exported, or deleted lands in both.
  */
 export function CaseReports({ caseId }: { caseId: string }) {
+  const t = useTranslations("reports.caseSection");
+
   return (
-    <ReportList
-      caseId={caseId}
-      title="Reports"
-      description="Structured, cited reports generated from this case's indexed documents. Only the reports you generated appear here."
-    />
+    <ReportList caseId={caseId} title={t("title")} description={t("description")} />
   );
 }

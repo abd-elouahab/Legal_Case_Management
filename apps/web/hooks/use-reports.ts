@@ -11,6 +11,7 @@ import {
 
 import { timelineKeys } from "@/hooks/use-timeline";
 import { ApiError, NetworkError } from "@/lib/api/errors";
+import { useErrorMessage, type ErrorCodeMap } from "@/hooks/use-error-message";
 import {
   deleteReport,
   exportReportFile,
@@ -73,43 +74,29 @@ export const reportKeys = {
 };
 
 /**
- * Translate a failure into a message safe to show the user.
+ * Translate a failure into a sentence in the reader's language.
  *
- * Branches on the API's machine-readable `code` rather than on message text,
- * which is localizable and may change. Three codes carry the server's own message
- * through verbatim, because only the server knows the specifics: how many runs
- * the caller already has in flight, which state a report is actually in, and
- * which export format this deployment can produce.
+ * Branches on the API's machine-readable `code` rather than on message text —
+ * which the server writes in English, with no knowledge of who is reading it.
+ * `hooks/use-error-message.ts` records why that matters; the short version is
+ * that an interface which is Arabic everywhere except when something goes wrong
+ * is not localized. Codes with no entry here fall through to the shared
+ * `errors.*` sentences and then to a generic one.
  */
-export function reportErrorMessage(error: unknown): string {
-  if (error instanceof NetworkError) return error.message;
+const REPORT_ERRORS: ErrorCodeMap = {
+  report_not_found: "notFound",
+  report_not_ready: "notReady",
+  too_many_active_reports: "tooManyActive",
+  report_export_unavailable: "exportUnavailable",
+  report_already_running: "alreadyRunning",
+  reports_disabled: "disabled",
+  case_not_found: "caseNotFound",
+  forbidden: "noGenerateAccess",
+  missing_token: "sessionExpired",
+};
 
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case "report_not_found":
-        return "This report is no longer available.";
-      case "report_not_ready":
-      case "too_many_active_reports":
-      case "report_export_unavailable":
-        return error.message;
-      case "report_already_running":
-        return "This report is already being generated.";
-      case "reports_disabled":
-        return "Report generation is currently disabled on this platform.";
-      case "case_not_found":
-        return "That case no longer exists. Refresh the page and try again.";
-      case "forbidden":
-        return "You do not have permission to generate reports for this case.";
-      case "invalid_token":
-      case "token_expired":
-      case "missing_token":
-        return "Your session has expired. Sign in again to continue.";
-      default:
-        return error.message || "Something went wrong. Please try again.";
-    }
-  }
-
-  return "Something went wrong. Please try again.";
+export function useReportErrorMessage(): (error: unknown) => string {
+  return useErrorMessage("reports.errors", REPORT_ERRORS);
 }
 
 /** Whether a failure is the API saying "no such report belongs to you". */

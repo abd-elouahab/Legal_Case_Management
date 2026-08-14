@@ -1,6 +1,7 @@
 "use client";
 
 import { AnnouncementForm } from "@/components/notifications/announcement-form";
+import { useTranslations } from "next-intl";
 import { NotificationFeed } from "@/components/notifications/notification-feed";
 import { NotificationPreferencesForm } from "@/components/notifications/notification-preferences-form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,6 +31,7 @@ import { PERMISSION } from "@/types/authorization";
  * as a refreshed grant rather than a duplicate.
  */
 export function NotificationCenter() {
+  const t = useTranslations("notifications.center");
   const user = useCurrentUser();
   const { can, isLoading } = usePermissions();
 
@@ -40,9 +42,9 @@ export function NotificationCenter() {
   return (
     <Tabs defaultValue="feed" className="flex flex-col gap-4">
       <TabsList>
-        <TabsTrigger value="feed">All notifications</TabsTrigger>
-        <TabsTrigger value="preferences">Preferences</TabsTrigger>
-        {canAnnounce ? <TabsTrigger value="announce">Announce</TabsTrigger> : null}
+        <TabsTrigger value="feed">{t("all")}</TabsTrigger>
+        <TabsTrigger value="preferences">{t("preferences")}</TabsTrigger>
+        {canAnnounce ? <TabsTrigger value="announce">{t("announce")}</TabsTrigger> : null}
       </TabsList>
 
       <TabsContent value="feed">

@@ -70,6 +70,7 @@ from core.notifications import (
     NotificationRule,
     NotificationTarget,
     dedupe_key,
+    default_preference,
     normalize_context,
     preference_from_value,
 )
@@ -148,9 +149,11 @@ class NotificationDispatcher(Protocol):
     so a bug in a channel is a message that did not go out, never one that went to
     the wrong person.
 
-    :class:`~services.email_delivery.EmailDeliveryService` implements it today;
-    WhatsApp, SMS, and push implement the same one method, which is why this is
-    named for *dispatch* rather than for email.
+    :class:`~services.email_delivery.EmailDeliveryService` and
+    :class:`~services.whatsapp_delivery.WhatsAppDeliveryService` implement it
+    today, and the second one implementing it **unchanged** is the evidence that
+    this protocol was the right width: SMS and push implement the same one method,
+    which is why this is named for *dispatch* rather than for email.
     """
 
     def dispatch(self, notifications: Sequence[Notification]) -> None:
@@ -646,14 +649,7 @@ class NotificationService:
         """
         stored = self._notifications.preferences_for(actor.id)
         return {
-            key: stored.get(
-                key.value,
-                ChannelPreference(
-                    in_app=DEFAULT_PREFERENCES.get(key, True),
-                    email=DEFAULT_PREFERENCES.get(key, True),
-                    is_default=True,
-                ),
-            )
+            key: stored.get(key.value, _platform_default(key))
             for key in NotificationPreferenceKey
         }
 
@@ -791,6 +787,26 @@ class NotificationService:
             enabled=settings.NOTIFICATIONS_ENABLED,
             window_days=window_days,
         )
+
+
+def _platform_default(key: NotificationPreferenceKey) -> ChannelPreference:
+    """What one preference looks like for an account that has expressed nothing.
+
+    Built by asking :func:`~core.notifications.default_preference` **per channel**
+    rather than by repeating one lookup once per field, which is what let the
+    WhatsApp channel arrive without touching this function: a fourth channel is an
+    enum member and a field on :class:`~core.notifications.ChannelPreference`, and
+    this keeps answering for it. It is also the seam that matters the day a channel
+    genuinely wants a different default — SMS plausibly does — because that
+    decision then lives in one function rather than in a constructor here.
+    """
+    return ChannelPreference(
+        **{
+            channel.value: default_preference(key, channel)
+            for channel in NotificationChannel
+        },
+        is_default=True,
+    )
 
 
 def _aware(value: datetime) -> datetime:

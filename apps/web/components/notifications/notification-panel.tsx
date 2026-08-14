@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { BellOff, Loader2 } from "lucide-react";
 
@@ -9,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
-  notificationErrorMessage,
+  useNotificationErrorMessage,
   useMarkAllNotificationsRead,
   useMarkNotificationsRead,
   useNotifications,
@@ -36,6 +37,8 @@ import { DEFAULT_NOTIFICATION_QUERY } from "@/types/notification";
 const PANEL_PAGE_SIZE = 8;
 
 export function NotificationPanel({ onNavigate }: { onNavigate?: () => void }) {
+  const t = useTranslations("notifications.panel");
+  const errorMessage = useNotificationErrorMessage();
   const [unreadOnly, setUnreadOnly] = React.useState(false);
 
   const query = React.useMemo(
@@ -57,7 +60,7 @@ export function NotificationPanel({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="flex w-[22rem] max-w-[calc(100vw-2rem)] flex-col sm:w-96">
       <div className="flex items-center justify-between gap-2 px-3 py-2">
-        <p className="text-sm font-semibold text-foreground">Notifications</p>
+        <p className="text-sm font-semibold text-foreground">{t("title")}</p>
         <Button
           variant="ghost"
           size="sm"
@@ -65,7 +68,7 @@ export function NotificationPanel({ onNavigate }: { onNavigate?: () => void }) {
           onClick={() => setUnreadOnly((current) => !current)}
           aria-pressed={unreadOnly}
         >
-          {unreadOnly ? "Show all" : "Unread only"}
+          {unreadOnly ? t("showAll") : t("unreadOnly")}
         </Button>
       </div>
 
@@ -75,20 +78,20 @@ export function NotificationPanel({ onNavigate }: { onNavigate?: () => void }) {
         {isPending ? (
           <div className="flex items-center justify-center gap-2 px-3 py-10 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            Loading notifications…
+            {t("loading")}
           </div>
         ) : isError ? (
           <p
             role="alert"
             className="px-3 py-8 text-center text-sm text-destructive"
           >
-            {notificationErrorMessage(error)}
+            {errorMessage(error)}
           </p>
         ) : items.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-3 py-10 text-center">
             <BellOff className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
             <p className="text-sm text-muted-foreground">
-              {unreadOnly ? "Nothing unread." : "No notifications yet."}
+              {unreadOnly ? t("nothingUnread") : t("empty")}
             </p>
           </div>
         ) : (
@@ -120,12 +123,12 @@ export function NotificationPanel({ onNavigate }: { onNavigate?: () => void }) {
           onClick={() => markAllRead.mutate(null)}
           disabled={!hasUnread || markAllRead.isPending}
         >
-          {markAllRead.isPending ? "Marking…" : "Mark all as read"}
+          {markAllRead.isPending ? t("marking") : t("markAllRead")}
         </Button>
 
         <Button asChild variant="ghost" size="sm" className="text-xs">
           <Link href={ROUTES.notifications} onClick={onNavigate}>
-            View all
+            {t("viewAll")}
           </Link>
         </Button>
       </div>

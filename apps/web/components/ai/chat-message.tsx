@@ -1,10 +1,12 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Bot, Info, TriangleAlert, User as UserIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { CitationList } from "@/components/ai/citation-list";
 import { MessageFeedbackControls } from "@/components/ai/message-feedback";
+import { useNumberFormat } from "@/hooks/use-number-format";
 import { cn } from "@/lib/utils";
 import type { AssistantCitation, ConversationMessage } from "@/types/assistant";
 
@@ -42,11 +44,12 @@ export function ChatMessage({
   conversationId: string;
 }) {
   const isUser = message.role === "user";
+  const t = useTranslations("assistant.message");
 
   return (
     <article
       className={cn("flex gap-3", isUser ? "flex-row-reverse" : "flex-row")}
-      aria-label={isUser ? "Your message" : "Assistant answer"}
+      aria-label={isUser ? t("yourMessage") : t("assistantAnswer")}
     >
       <span
         className={cn(
@@ -77,21 +80,14 @@ export function ChatMessage({
             {message.insufficientEvidence ? (
               <p className="flex items-start gap-2 rounded-md border border-[var(--state-warning)]/30 bg-[var(--state-warning)]/5 px-3 py-2 text-xs text-muted-foreground">
                 <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>
-                  No supporting document was found for this question, so the assistant did
-                  not answer from anything. Documents become answerable once their text
-                  has been extracted and indexed.
-                </span>
+                <span>{t("insufficientEvidence")}</span>
               </p>
             ) : null}
 
             {message.truncated ? (
               <p className="flex items-start gap-2 rounded-md border border-[var(--state-warning)]/30 bg-[var(--state-warning)]/5 px-3 py-2 text-xs text-muted-foreground">
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>
-                  This answer reached the length limit and stops early. Ask a narrower
-                  question to see the rest.
-                </span>
+                <span>{t("truncated")}</span>
               </p>
             ) : null}
 
@@ -122,13 +118,22 @@ export function ChatMessage({
  * earlier one, which is invisible from the answer alone.
  */
 function MessageProvenance({ message }: { message: ConversationMessage }) {
+  const t = useTranslations("assistant.message");
+  const { formatNumber } = useNumberFormat();
+
   const parts: string[] = [];
 
+  // An ICU plural rather than a conditional "s", and a formatted duration rather
+  // than `toFixed`: both the plural rule and the decimal mark are language facts.
   if (message.retrievedCount !== null) {
-    parts.push(`${message.retrievedCount} passage${message.retrievedCount === 1 ? "" : "s"}`);
+    parts.push(t("passageCount", { count: message.retrievedCount }));
   }
   if (message.durationMs !== null) {
-    parts.push(`${(message.durationMs / 1000).toFixed(1)}s`);
+    parts.push(
+      t("durationSeconds", {
+        seconds: formatNumber(Math.round(message.durationMs / 100) / 10),
+      }),
+    );
   }
   if (message.model) parts.push(message.model);
 
@@ -139,9 +144,9 @@ function MessageProvenance({ message }: { message: ConversationMessage }) {
       {message.contextTurns > 0 ? (
         <Badge
           variant="outline"
-          title="This question was read against what was asked before it"
+          title={t("followUpTitle")}
         >
-          Follow-up
+          {t("followUp")}
         </Badge>
       ) : null}
       {parts.length > 0 ? <span>{parts.join(" · ")}</span> : null}
@@ -175,9 +180,11 @@ export function PendingMessage({
   streaming: boolean;
   citations: AssistantCitation[];
 }) {
+  const t = useTranslations("assistant.message");
+
   return (
     <>
-      <article className="flex flex-row-reverse gap-3" aria-label="Your message">
+      <article className="flex flex-row-reverse gap-3" aria-label={t("yourMessage")}>
         <span
           className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
           aria-hidden="true"
@@ -193,7 +200,7 @@ export function PendingMessage({
         </div>
       </article>
 
-      <article className="flex gap-3" aria-label="Assistant answer in progress">
+      <article className="flex gap-3" aria-label={t("answerInProgress")}>
         <span
           className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
           aria-hidden="true"
@@ -208,7 +215,7 @@ export function PendingMessage({
                 {answer}
                 {streaming ? (
                   <span
-                    className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-muted-foreground align-text-bottom"
+                    className="ms-0.5 inline-block h-4 w-1.5 animate-pulse bg-muted-foreground align-text-bottom"
                     aria-hidden="true"
                   />
                 ) : null}
@@ -221,10 +228,10 @@ export function PendingMessage({
                   <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground" />
                 </span>
                 {retrievedCount === null
-                  ? "Searching your documents…"
+                  ? t("searching")
                   : retrievedCount === 0
-                    ? "No matching passages found…"
-                    : `Read ${retrievedCount} passage${retrievedCount === 1 ? "" : "s"} — writing the answer…`}
+                    ? t("noPassages")
+                    : t("writing", { count: retrievedCount })}
               </p>
             )}
           </div>

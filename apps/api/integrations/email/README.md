@@ -24,6 +24,7 @@ only exception, and an exception is a second place a reader has to know about.
 | Response shapes | `schemas/email.py` |
 | Endpoint | `GET /api/v1/notifications/email/metrics` |
 
-The same applies to `integrations/whatsapp/` and `integrations/court/` when those
-are built. The directories are kept rather than deleted only because removing a
-scaffold is a change to make deliberately rather than in passing.
+The same applied to `integrations/whatsapp/` when it was built — see the README
+there — and applies to `integrations/court/` when that one is. The directories are
+kept rather than deleted only because removing a scaffold is a change to make
+deliberately rather than in passing.

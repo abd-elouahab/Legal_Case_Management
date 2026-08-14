@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -33,6 +34,8 @@ export function ReportProgress({
   report: Report;
   className?: string;
 }) {
+  const t = useTranslations("reports.progress");
+
   if (!report.isActive) return null;
 
   const total = report.sectionsTotal ?? 0;
@@ -45,10 +48,10 @@ export function ReportProgress({
         <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
         <span aria-live="polite">
           {queued
-            ? "Queued — waiting for a worker"
+            ? t("queued")
             : total > 0
-              ? `Writing section ${Math.min(done + 1, total)} of ${total}`
-              : "Preparing"}
+              ? t("writingSection", { current: Math.min(done + 1, total), total })
+              : t("preparing")}
         </span>
       </div>
 
@@ -57,7 +60,7 @@ export function ReportProgress({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={report.progressPercent}
-        aria-label="Report generation progress"
+        aria-label={t("label")}
         className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
       >
         <div

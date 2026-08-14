@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Search, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -16,9 +17,7 @@ import { useCaseAssignees } from "@/hooks/use-case-assignees";
 import type { CaseListQueryState } from "@/hooks/use-case-list-query";
 import {
   CASE_PRIORITIES,
-  CASE_PRIORITY_LABELS,
   CASE_STATUSES,
-  CASE_STATUS_LABELS,
   type CasePriority,
   type CaseStatus,
 } from "@/types/case";
@@ -69,15 +68,19 @@ function DateFilter({
 export function CaseFilters({ list }: { list: CaseListQueryState }) {
   const lawyers = useCaseAssignees("lawyer");
   const representatives = useCaseAssignees("court");
+  const t = useTranslations("cases.filters");
+  const tStatuses = useTranslations("cases.statuses");
+  const tPriorities = useTranslations("cases.priorities");
+  const tActions = useTranslations("common.actions");
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-border p-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
         <div className="flex flex-1 flex-col gap-2">
-          <Label htmlFor="case-search">Search</Label>
+          <Label htmlFor="case-search">{tActions("search")}</Label>
           <div className="relative">
             <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
               aria-hidden="true"
             />
             <Input
@@ -85,14 +88,14 @@ export function CaseFilters({ list }: { list: CaseListQueryState }) {
               type="search"
               value={list.textInput.search}
               onChange={(event) => list.setSearch(event.target.value)}
-              placeholder="Search by case number, title, description, or court"
-              className="pl-9"
+              placeholder={t("searchPlaceholder")}
+              className="ps-9"
             />
           </div>
         </div>
 
         <div className="flex flex-col gap-2 lg:w-52">
-          <Label htmlFor="case-status-filter">Status</Label>
+          <Label htmlFor="case-status-filter">{t("status")}</Label>
           <Select
             value={list.query.status ?? ANY}
             onValueChange={(value) =>
@@ -100,13 +103,13 @@ export function CaseFilters({ list }: { list: CaseListQueryState }) {
             }
           >
             <SelectTrigger id="case-status-filter">
-              <SelectValue placeholder="All statuses" />
+              <SelectValue placeholder={t("allStatuses")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={ANY}>All statuses</SelectItem>
+              <SelectItem value={ANY}>{t("allStatuses")}</SelectItem>
               {CASE_STATUSES.map((option) => (
                 <SelectItem key={option} value={option}>
-                  {CASE_STATUS_LABELS[option]}
+                  {tStatuses(option)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -114,7 +117,7 @@ export function CaseFilters({ list }: { list: CaseListQueryState }) {
         </div>
 
         <div className="flex flex-col gap-2 lg:w-44">
-          <Label htmlFor="case-priority-filter">Priority</Label>
+          <Label htmlFor="case-priority-filter">{t("priority")}</Label>
           <Select
             value={list.query.priority ?? ANY}
             onValueChange={(value) =>
@@ -122,13 +125,13 @@ export function CaseFilters({ list }: { list: CaseListQueryState }) {
             }
           >
             <SelectTrigger id="case-priority-filter">
-              <SelectValue placeholder="All priorities" />
+              <SelectValue placeholder={t("allPriorities")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={ANY}>All priorities</SelectItem>
+              <SelectItem value={ANY}>{t("allPriorities")}</SelectItem>
               {CASE_PRIORITIES.map((option) => (
                 <SelectItem key={option} value={option}>
-                  {CASE_PRIORITY_LABELS[option]}
+                  {tPriorities(option)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -138,26 +141,26 @@ export function CaseFilters({ list }: { list: CaseListQueryState }) {
         {list.isFiltered ? (
           <Button type="button" variant="ghost" onClick={list.reset}>
             <X className="h-4 w-4" />
-            Clear
+            {tActions("clear")}
           </Button>
         ) : null}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <div className="flex flex-col gap-2">
-          <Label htmlFor="case-court-filter">Court</Label>
+          <Label htmlFor="case-court-filter">{t("court")}</Label>
           <Input
             id="case-court-filter"
             type="search"
             value={list.textInput.courtName}
             onChange={(event) => list.setCourtName(event.target.value)}
-            placeholder="Any court"
+            placeholder={t("anyCourt")}
           />
         </div>
 
         {lawyers.isAvailable ? (
           <div className="flex flex-col gap-2">
-            <Label htmlFor="case-lawyer-filter">Assigned lawyer</Label>
+            <Label htmlFor="case-lawyer-filter">{t("assignedLawyer")}</Label>
             <Select
               value={list.query.assignedLawyerId ?? ANY}
               onValueChange={(value) =>
@@ -165,10 +168,10 @@ export function CaseFilters({ list }: { list: CaseListQueryState }) {
               }
             >
               <SelectTrigger id="case-lawyer-filter">
-                <SelectValue placeholder="Any lawyer" />
+                <SelectValue placeholder={t("anyLawyer")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ANY}>Any lawyer</SelectItem>
+                <SelectItem value={ANY}>{t("anyLawyer")}</SelectItem>
                 {lawyers.users.map((user) => (
                   <SelectItem key={user.id} value={user.id}>
                     {user.fullName}
@@ -181,7 +184,7 @@ export function CaseFilters({ list }: { list: CaseListQueryState }) {
 
         {representatives.isAvailable ? (
           <div className="flex flex-col gap-2">
-            <Label htmlFor="case-representative-filter">Assigned representative</Label>
+            <Label htmlFor="case-representative-filter">{t("assignedRepresentative")}</Label>
             <Select
               value={list.query.assignedCourtRepresentativeId ?? ANY}
               onValueChange={(value) =>
@@ -189,10 +192,10 @@ export function CaseFilters({ list }: { list: CaseListQueryState }) {
               }
             >
               <SelectTrigger id="case-representative-filter">
-                <SelectValue placeholder="Any representative" />
+                <SelectValue placeholder={t("anyRepresentative")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ANY}>Any representative</SelectItem>
+                <SelectItem value={ANY}>{t("anyRepresentative")}</SelectItem>
                 {representatives.users.map((user) => (
                   <SelectItem key={user.id} value={user.id}>
                     {user.fullName}
@@ -207,25 +210,25 @@ export function CaseFilters({ list }: { list: CaseListQueryState }) {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <DateFilter
           id="case-filing-from"
-          label="Filed from"
+          label={t("filedFrom")}
           value={list.query.filingDateFrom}
           onChange={(value) => list.setFilingDateRange(value, list.query.filingDateTo)}
         />
         <DateFilter
           id="case-filing-to"
-          label="Filed until"
+          label={t("filedUntil")}
           value={list.query.filingDateTo}
           onChange={(value) => list.setFilingDateRange(list.query.filingDateFrom, value)}
         />
         <DateFilter
           id="case-hearing-from"
-          label="Hearing from"
+          label={t("hearingFrom")}
           value={list.query.hearingDateFrom}
           onChange={(value) => list.setHearingDateRange(value, list.query.hearingDateTo)}
         />
         <DateFilter
           id="case-hearing-to"
-          label="Hearing until"
+          label={t("hearingUntil")}
           value={list.query.hearingDateTo}
           onChange={(value) => list.setHearingDateRange(list.query.hearingDateFrom, value)}
         />

@@ -123,6 +123,13 @@ class UserRead(BaseModel):
     full_name: str = Field(description="Display name, composed from the name parts.")
     phone: str | None = Field(default=None, description="Contact phone number, if provided.")
     profile_image: str | None = Field(default=None, description="Avatar location, if set.")
+    # Added by `20-settings.md`, and added *here* rather than only on the Settings
+    # response so that `GET /auth/me` — which every client already calls on load —
+    # carries it. A second endpoint returning a second user shape is how two user
+    # shapes start to drift, which is what this model exists to prevent.
+    job_title: str | None = Field(
+        default=None, description="Self-described position, e.g. 'Senior Associate'."
+    )
     role: UserRole = Field(description="Platform role, which determines the permissions below.")
     status: UserStatus = Field(description="Account lifecycle state; only `active` may sign in.")
     is_active: bool = Field(description="Whether the account may authenticate (`status == active`).")

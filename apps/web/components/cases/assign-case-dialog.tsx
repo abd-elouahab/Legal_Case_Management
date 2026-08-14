@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { AlertCircle, UserCog } from "lucide-react";
 import { toast } from "sonner";
 
@@ -24,7 +25,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/shared/spinner";
 import { useCaseAssignees } from "@/hooks/use-case-assignees";
-import { caseErrorMessage, useUpdateCaseAssignments } from "@/hooks/use-cases";
+import { useCaseErrorMessage, useUpdateCaseAssignments } from "@/hooks/use-cases";
 import type { LegalCase } from "@/types/case";
 import type { UpdateCaseAssignmentsPayload } from "@/types/case-management";
 import type { UserRole } from "@/types/user";
@@ -60,6 +61,8 @@ function AssignmentSelect({
   disabled: boolean;
 }) {
   const { users, isLoading } = useCaseAssignees(role);
+  const t = useTranslations("cases.form");
+  const tStates = useTranslations("common.states");
 
   return (
     <div className="flex flex-col gap-2">
@@ -70,10 +73,12 @@ function AssignmentSelect({
         onValueChange={(next) => onChange(next === UNASSIGNED ? "" : next)}
       >
         <SelectTrigger id={id}>
-          <SelectValue placeholder={isLoading ? "Loading…" : "Unassigned"} />
+          <SelectValue
+            placeholder={isLoading ? tStates("loading") : t("unassigned")}
+          />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+          <SelectItem value={UNASSIGNED}>{t("unassigned")}</SelectItem>
           {users.map((user) => (
             <SelectItem key={user.id} value={user.id}>
               {user.fullName}
@@ -82,9 +87,7 @@ function AssignmentSelect({
         </SelectContent>
       </Select>
       {!isLoading && users.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          No active accounts hold this role yet.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("noEligibleAccounts")}</p>
       ) : null}
     </div>
   );
@@ -100,6 +103,10 @@ export function AssignCaseDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const updateAssignments = useUpdateCaseAssignments();
+  const t = useTranslations("cases.assignDialog");
+  const tForm = useTranslations("cases.form");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useCaseErrorMessage();
   const [error, setError] = React.useState<string | null>(null);
   const [lawyerId, setLawyerId] = React.useState("");
   const [representativeId, setRepresentativeId] = React.useState("");
@@ -132,17 +139,17 @@ export function AssignCaseDialog({
     }
 
     if (Object.keys(payload).length === 0) {
-      toast.info("No assignment changes to save.");
+      toast.info(t("noChanges"));
       onOpenChange(false);
       return;
     }
 
     try {
       const updated = await updateAssignments.mutateAsync({ id: legalCase.id, payload });
-      toast.success(`Assignments for ${updated.caseNumber} were updated.`);
+      toast.success(t("updated", { caseNumber: updated.caseNumber }));
       onOpenChange(false);
     } catch (cause) {
-      setError(caseErrorMessage(cause));
+      setError(errorMessage(cause));
     }
   }
 
@@ -152,11 +159,11 @@ export function AssignCaseDialog({
     <Dialog open={open} onOpenChange={isPending ? undefined : onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Manage assignments</DialogTitle>
+          <DialogTitle>{t("title")}</DialogTitle>
           <DialogDescription>
             {legalCase
-              ? `Choose who works on ${legalCase.caseNumber}. Selecting "Unassigned" removes the current assignment.`
-              : "Choose who works on this case."}
+              ? t("description", { caseNumber: legalCase.caseNumber })
+              : t("descriptionGeneric")}
           </DialogDescription>
         </DialogHeader>
 
@@ -170,7 +177,7 @@ export function AssignCaseDialog({
 
           <AssignmentSelect
             id="assign-case-lawyer"
-            label="Assigned lawyer"
+            label={tForm("assignedLawyer")}
             role="lawyer"
             value={lawyerId}
             onChange={setLawyerId}
@@ -179,7 +186,7 @@ export function AssignCaseDialog({
 
           <AssignmentSelect
             id="assign-case-representative"
-            label="Assigned court representative"
+            label={tForm("assignedRepresentative")}
             role="court"
             value={representativeId}
             onChange={setRepresentativeId}
@@ -194,18 +201,18 @@ export function AssignCaseDialog({
             onClick={() => onOpenChange(false)}
             disabled={isPending}
           >
-            Cancel
+            {tActions("cancel")}
           </Button>
           <Button type="button" onClick={confirm} disabled={isPending}>
             {isPending ? (
               <>
                 <Spinner className="h-4 w-4 text-current" />
-                Saving…
+                {tActions("saving")}
               </>
             ) : (
               <>
                 <UserCog className="h-4 w-4" />
-                Save assignments
+                {t("submit")}
               </>
             )}
           </Button>

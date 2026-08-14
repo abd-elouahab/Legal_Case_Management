@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslations } from "next-intl";
 import { Save } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
@@ -18,7 +19,8 @@ import {
 import { Spinner } from "@/components/shared/spinner";
 import { CaseFormFieldset } from "@/components/cases/case-form";
 import { usePermissions } from "@/hooks/use-permissions";
-import { caseErrorMessage, caseFieldErrors, useUpdateCase } from "@/hooks/use-cases";
+import { caseFieldErrors, useCaseErrorMessage, useUpdateCase } from "@/hooks/use-cases";
+import { useFieldError } from "@/hooks/use-field-error";
 import { editCaseFormSchema, type EditCaseFormValues } from "@/lib/validation/case";
 import { PERMISSION } from "@/types/authorization";
 import type { LegalCase } from "@/types/case";
@@ -105,6 +107,10 @@ export function EditCaseDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const updateCase = useUpdateCase();
+  const t = useTranslations("cases.editDialog");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useCaseErrorMessage();
+  const fieldError = useFieldError();
   const { can } = usePermissions();
   const canAssign = can(PERMISSION.casesAssign);
   const [formError, setFormError] = React.useState<string | null>(null);
@@ -172,21 +178,21 @@ export function EditCaseDialog({
 
     if (Object.keys(payload).length === 0) {
       // The API rejects an empty PATCH; there is genuinely nothing to save.
-      toast.info("No changes to save.");
+      toast.info(t("noChanges"));
       onOpenChange(false);
       return;
     }
 
     try {
       const updated = await updateCase.mutateAsync({ id: legalCase.id, payload });
-      toast.success(`Case ${updated.caseNumber} was updated.`);
+      toast.success(t("updated", { caseNumber: updated.caseNumber }));
       onOpenChange(false);
     } catch (error) {
       const fields = caseFieldErrors(error);
       for (const [field, message] of Object.entries(fields)) {
         setError(field as keyof EditCaseFormValues, { message });
       }
-      if (Object.keys(fields).length === 0) setFormError(caseErrorMessage(error));
+      if (Object.keys(fields).length === 0) setFormError(errorMessage(error));
     }
   });
 
@@ -196,11 +202,11 @@ export function EditCaseDialog({
     <Dialog open={open} onOpenChange={isPending ? undefined : onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Edit case</DialogTitle>
+          <DialogTitle>{t("title")}</DialogTitle>
           <DialogDescription>
             {legalCase
-              ? `Update ${legalCase.caseNumber} — its details, status, priority, court, or assignments.`
-              : "Update this case."}
+              ? t("description", { caseNumber: legalCase.caseNumber })
+              : t("descriptionGeneric")}
           </DialogDescription>
         </DialogHeader>
 
@@ -216,16 +222,16 @@ export function EditCaseDialog({
               nextHearingDate: register("nextHearingDate"),
             }}
             errors={{
-              title: errors.title?.message,
-              description: errors.description?.message,
-              category: errors.category?.message,
-              status: errors.status?.message,
-              priority: errors.priority?.message,
-              courtName: errors.courtName?.message,
-              filingDate: errors.filingDate?.message,
-              nextHearingDate: errors.nextHearingDate?.message,
-              assignedLawyerId: errors.assignedLawyerId?.message,
-              assignedCourtRepresentativeId: errors.assignedCourtRepresentativeId?.message,
+              title: fieldError(errors.title?.message),
+              description: fieldError(errors.description?.message),
+              category: fieldError(errors.category?.message),
+              status: fieldError(errors.status?.message),
+              priority: fieldError(errors.priority?.message),
+              courtName: fieldError(errors.courtName?.message),
+              filingDate: fieldError(errors.filingDate?.message),
+              nextHearingDate: fieldError(errors.nextHearingDate?.message),
+              assignedLawyerId: fieldError(errors.assignedLawyerId?.message),
+              assignedCourtRepresentativeId: fieldError(errors.assignedCourtRepresentativeId?.message),
             }}
             status={status}
             // Only the moves the API would accept, taken from the case itself —
@@ -253,18 +259,18 @@ export function EditCaseDialog({
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              {tActions("cancel")}
             </Button>
             <Button type="submit" disabled={isPending}>
               {isPending ? (
                 <>
                   <Spinner className="h-4 w-4 text-current" />
-                  Saving…
+                  {tActions("saving")}
                 </>
               ) : (
                 <>
                   <Save className="h-4 w-4" />
-                  Save changes
+                  {tActions("saveChanges")}
                 </>
               )}
             </Button>

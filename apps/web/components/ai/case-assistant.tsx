@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Bot } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,6 +32,7 @@ import { PERMISSION } from "@/types/authorization";
  */
 export function CaseAssistant({ caseId }: { caseId: string }) {
   const { can, isLoading } = usePermissions();
+  const t = useTranslations("assistant.caseSection");
 
   if (isLoading || !can(PERMISSION.aiChat)) return null;
 
@@ -39,14 +41,11 @@ export function CaseAssistant({ caseId }: { caseId: string }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Bot className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-          AI assistant
+          {t("title")}
         </CardTitle>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-col">
-        <p className="mb-4 text-sm text-muted-foreground">
-          Ask about this case&apos;s documents. Every answer is built only from files
-          filed under this case, and cites the document and page it came from.
-        </p>
+        <p className="mb-4 text-sm text-muted-foreground">{t("description")}</p>
         <AssistantWorkspace caseId={caseId} />
       </CardContent>
     </Card>

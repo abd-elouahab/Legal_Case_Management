@@ -54,3 +54,37 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
+
+// --------------------------------------------------------------------------- //
+// Translations
+//
+// Components render through `useTranslations`, which needs the locale context
+// `components/i18n/locale-provider.tsx` supplies — and these tests render
+// components directly rather than through the application shell. Rather than wrap
+// every `render` call, the hook is bound here to the **real English catalogue**
+// through next-intl's own `createTranslator`.
+//
+// Two properties make that the right trade rather than a shortcut. The
+// translations are the ones the application ships, so a test asserting on
+// "Cases" is asserting on the string a user sees; and a **missing key still
+// fails**, because `createTranslator` is the same machinery the provider uses.
+// What is deliberately not covered here is the provider's own behaviour —
+// resolution, catalogue loading, RTL, and the missing-key report — which is
+// exercised by `tests/localization.test.tsx` against the real component.
+// --------------------------------------------------------------------------- //
+
+vi.mock("next-intl", async () => {
+  const actual = await vi.importActual<typeof import("next-intl")>("next-intl");
+  const messages = (await import("@/messages/en.json")).default;
+
+  return {
+    ...actual,
+    useLocale: () => "en",
+    useTranslations: (namespace?: string) =>
+      actual.createTranslator({
+        locale: "en",
+        messages: messages as Record<string, unknown>,
+        namespace,
+      }),
+  };
+});

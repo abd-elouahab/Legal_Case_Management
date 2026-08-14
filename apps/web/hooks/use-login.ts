@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 
 import { login as loginRequest } from "@/lib/api/auth";
-import { ApiError, NetworkError } from "@/lib/api/errors";
+import { useErrorMessage, type ErrorCodeMap } from "@/hooks/use-error-message";
 import { DEFAULT_AUTHENTICATED_ROUTE, safeRedirectTarget } from "@/lib/routes";
 import { useSessionStore } from "@/stores/session-store";
 import type { LoginCredentials } from "@/types/auth";
@@ -17,32 +17,27 @@ import type { LoginCredentials } from "@/types/auth";
  */
 
 /**
- * Translate a failure into a message safe to show a user.
+ * Translate a failure into a message safe to show a user, in their language.
  *
  * Invalid credentials deliberately stay vague — the API does not distinguish an
  * unknown email from a wrong password, and neither should the UI.
+ *
+ * **The lockout message used to be the server's, verbatim**, on the grounds that
+ * only the server knows how long the wait is. `21-localization.md` ends that: the
+ * sign-in screen is the one screen somebody reaches *before* the platform knows
+ * who they are, so it renders in the language stored on the device — and an
+ * English lockout sentence there is the first thing an Arabic reader would see.
+ * The remaining wait is in the `Retry-After` header and in the log; the sentence
+ * is the platform's.
  */
-function toErrorMessage(error: unknown): string {
-  if (error instanceof NetworkError) return error.message;
+const LOGIN_ERRORS: ErrorCodeMap = {
+  invalid_credentials: "invalidCredentials",
+  account_disabled: "accountDisabled",
+  too_many_login_attempts: "tooManyAttempts",
+};
 
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case "invalid_credentials":
-        return "Incorrect email or password.";
-      case "account_disabled":
-        return "This account has been disabled. Contact an administrator.";
-      case "too_many_login_attempts":
-        // The server's message already states how long to wait, and it is the
-        // only place that knows the remaining lockout.
-        return error.message;
-      case "validation_error":
-        return error.details[0]?.message ?? "Check the details you entered.";
-      default:
-        return error.message || "Unable to sign in. Please try again.";
-    }
-  }
-
-  return "Unable to sign in. Please try again.";
+function useLoginErrorMessage(): (error: unknown) => string {
+  return useErrorMessage("auth.errors", LOGIN_ERRORS);
 }
 
 /**
@@ -67,6 +62,7 @@ export function useLogin(): {
 } {
   const router = useRouter();
   const setSession = useSessionStore((state) => state.setSession);
+  const errorMessage = useLoginErrorMessage();
   const [isPending, setIsPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -83,13 +79,13 @@ export function useLogin(): {
         const target = safeRedirectTarget(readRedirectTarget());
         router.replace(target ?? DEFAULT_AUTHENTICATED_ROUTE);
       } catch (cause) {
-        setError(toErrorMessage(cause));
+        setError(errorMessage(cause));
         setIsPending(false);
       }
       // On success `isPending` stays true through the navigation, keeping the
       // button disabled so the form cannot be submitted twice.
     },
-    [router, setSession],
+    [errorMessage, router, setSession],
   );
 
   const reset = React.useCallback(() => setError(null), []);
@@ -97,4 +93,4 @@ export function useLogin(): {
   return { submit, isPending, error, reset };
 }
 
-export { toErrorMessage as loginErrorMessage };
+export { useLoginErrorMessage };

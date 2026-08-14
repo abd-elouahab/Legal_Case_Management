@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { AlertCircle, Eye, EyeOff } from "lucide-react";
 import type { UseFormRegisterReturn } from "react-hook-form";
 
@@ -16,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ROLE_LABELS, STATUS_LABELS, USER_ROLES, USER_STATUSES } from "@/types/user";
+import { roleMessageKey, USER_ROLES, USER_STATUSES } from "@/types/user";
 import type { UserRole, UserStatus } from "@/types/user";
 
 /**
@@ -108,6 +109,10 @@ export function UserFormFieldset({
   formError,
   idPrefix,
 }: UserFormFieldsetProps) {
+  const t = useTranslations("users.form");
+  const tRoles = useTranslations("users.roles");
+  const tStatuses = useTranslations("users.statuses");
+  const tStates = useTranslations("common.states");
   const [showPassword, setShowPassword] = React.useState(false);
 
   const id = (field: string) => `${idPrefix}-${field}`;
@@ -124,11 +129,11 @@ export function UserFormFieldset({
       ) : null}
 
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field id={id("first-name")} label="First name" error={errors.firstName}>
+        <Field id={id("first-name")} label={t("firstName")} error={errors.firstName}>
           <Input
             id={id("first-name")}
             autoComplete="given-name"
-            placeholder="Amina"
+            placeholder={t("firstNamePlaceholder")}
             disabled={disabled}
             aria-invalid={Boolean(errors.firstName)}
             aria-describedby={describedBy("firstName", id("first-name"))}
@@ -136,11 +141,11 @@ export function UserFormFieldset({
           />
         </Field>
 
-        <Field id={id("last-name")} label="Last name" error={errors.lastName}>
+        <Field id={id("last-name")} label={t("lastName")} error={errors.lastName}>
           <Input
             id={id("last-name")}
             autoComplete="family-name"
-            placeholder="Benali"
+            placeholder={t("lastNamePlaceholder")}
             disabled={disabled}
             aria-invalid={Boolean(errors.lastName)}
             aria-describedby={describedBy("lastName", id("last-name"))}
@@ -149,7 +154,7 @@ export function UserFormFieldset({
         </Field>
       </div>
 
-      <Field id={id("email")} label="Email" error={errors.email}>
+      <Field id={id("email")} label={t("email")} error={errors.email}>
         <Input
           id={id("email")}
           type="email"
@@ -163,7 +168,12 @@ export function UserFormFieldset({
         />
       </Field>
 
-      <Field id={id("phone")} label="Phone" error={errors.phone} hint="Optional.">
+      <Field
+        id={id("phone")}
+        label={t("phone")}
+        error={errors.phone}
+        hint={tStates("optional")}
+      >
         <Input
           id={id("phone")}
           type="tel"
@@ -180,17 +190,17 @@ export function UserFormFieldset({
       {password ? (
         <Field
           id={id("password")}
-          label="Password"
+          label={t("password")}
           error={errors.password}
-          hint="The user can change it once they sign in."
+          hint={t("passwordHint")}
         >
           <div className="relative">
             <Input
               id={id("password")}
               type={showPassword ? "text" : "password"}
               autoComplete="new-password"
-              placeholder="Choose an initial password"
-              className="pr-10"
+              placeholder={t("passwordPlaceholder")}
+              className="pe-10"
               disabled={disabled}
               aria-invalid={Boolean(errors.password)}
               aria-describedby={describedBy("password", id("password"))}
@@ -202,9 +212,9 @@ export function UserFormFieldset({
               size="icon"
               onClick={() => setShowPassword((visible) => !visible)}
               disabled={disabled}
-              aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-label={showPassword ? t("hidePassword") : t("showPassword")}
               aria-pressed={showPassword}
-              className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground"
+              className="absolute end-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground"
             >
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
@@ -213,38 +223,38 @@ export function UserFormFieldset({
       ) : null}
 
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field id={id("role")} label="Role" error={errors.role}>
+        <Field id={id("role")} label={t("role")} error={errors.role}>
           <Select
             value={role}
             disabled={disabled}
             onValueChange={(value) => onRoleChange(value as UserRole)}
           >
             <SelectTrigger id={id("role")} aria-invalid={Boolean(errors.role)}>
-              <SelectValue placeholder="Select a role" />
+              <SelectValue placeholder={t("selectRole")} />
             </SelectTrigger>
             <SelectContent>
               {USER_ROLES.map((option) => (
                 <SelectItem key={option} value={option}>
-                  {ROLE_LABELS[option]}
+                  {tRoles(roleMessageKey(option))}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </Field>
 
-        <Field id={id("status")} label="Status" error={errors.status}>
+        <Field id={id("status")} label={t("status")} error={errors.status}>
           <Select
             value={status}
             disabled={disabled}
             onValueChange={(value) => onStatusChange(value as UserStatus)}
           >
             <SelectTrigger id={id("status")} aria-invalid={Boolean(errors.status)}>
-              <SelectValue placeholder="Select a status" />
+              <SelectValue placeholder={t("selectStatus")} />
             </SelectTrigger>
             <SelectContent>
               {USER_STATUSES.map((option) => (
                 <SelectItem key={option} value={option}>
-                  {STATUS_LABELS[option]}
+                  {tStatuses(option)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -262,10 +272,10 @@ export function UserFormFieldset({
           />
           <div className="flex flex-col gap-0.5">
             <Label htmlFor={id("must-change")} className="cursor-pointer">
-              Require a password change at first sign-in
+              {t("requirePasswordChange")}
             </Label>
             <p className="text-xs text-muted-foreground">
-              The user keeps the password above only until they choose their own.
+              {t("requirePasswordChangeHint")}
             </p>
           </div>
         </div>

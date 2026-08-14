@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import { ErrorState } from "@/components/shared/error-state";
 import { LoadingState } from "@/components/shared/loading-state";
 import { Spinner } from "@/components/shared/spinner";
 import {
-  documentErrorMessage,
+  useDocumentErrorMessage,
   useDownloadDocument,
   usePreviewDocument,
 } from "@/hooks/use-documents";
@@ -49,6 +50,9 @@ export function DocumentPreviewDialog({
 }) {
   const preview = usePreviewDocument();
   const download = useDownloadDocument();
+  const t = useTranslations("documents.preview");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useDocumentErrorMessage();
   const [objectUrl, setObjectUrl] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -84,7 +88,7 @@ export function DocumentPreviewDialog({
         url = URL.createObjectURL(file.blob);
         setObjectUrl(url);
       } catch (cause) {
-        if (!revoked) setError(documentErrorMessage(cause));
+        if (!revoked) setError(errorMessage(cause));
       }
     })();
 
@@ -92,14 +96,14 @@ export function DocumentPreviewDialog({
       revoked = true;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [open, documentId, filename, fetchPreview]);
+  }, [open, documentId, filename, fetchPreview, errorMessage]);
 
   async function saveInstead() {
     if (!document) return;
     try {
       await download.mutateAsync({ id: document.id, filename: document.originalFilename });
     } catch (cause) {
-      setError(documentErrorMessage(cause));
+      setError(errorMessage(cause));
     }
   }
 
@@ -109,29 +113,34 @@ export function DocumentPreviewDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-hidden sm:max-w-4xl">
         <DialogHeader>
-          <DialogTitle className="truncate">{document?.originalFilename ?? "Preview"}</DialogTitle>
+          <DialogTitle className="truncate">
+            {document?.originalFilename ?? t("title")}
+          </DialogTitle>
           <DialogDescription>
             {document
-              ? `Version ${document.version} · ${document.fileSizeLabel}`
-              : "Loading the document…"}
+              ? t("versionAndSize", {
+                  version: document.version,
+                  size: document.fileSizeLabel,
+                })
+              : t("loadingDocument")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="min-h-72 overflow-auto rounded-lg border border-border bg-muted/30">
           {error ? (
             <ErrorState
-              title="Cannot preview this document"
-              description={`${error} You can still download it.`}
+              title={t("failedTitle")}
+              description={t("failedDescription", { reason: error })}
             />
           ) : !objectUrl ? (
-            <LoadingState label="Loading preview…" />
+            <LoadingState label={t("loading")} />
           ) : isImage ? (
             /* A blob URL is not a static asset: `next/image` can neither optimize
                nor load one, so a plain <img> is the only option here. */
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={objectUrl}
-              alt={document?.originalFilename ?? "Document preview"}
+              alt={document?.originalFilename ?? t("imageAlt")}
               className="mx-auto max-h-[65vh] w-auto"
             />
           ) : (
@@ -140,7 +149,7 @@ export function DocumentPreviewDialog({
             // matching Content-Security-Policy on the response itself.
             <iframe
               src={objectUrl}
-              title={`Preview of ${document?.originalFilename ?? "document"}`}
+              title={t("frameTitle", { filename: document?.originalFilename ?? "" })}
               sandbox=""
               className="h-[65vh] w-full border-0 bg-background"
             />
@@ -149,18 +158,18 @@ export function DocumentPreviewDialog({
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Close
+            {tActions("close")}
           </Button>
           <Button type="button" onClick={saveInstead} disabled={download.isPending}>
             {download.isPending ? (
               <>
                 <Spinner className="h-4 w-4 text-current" />
-                Downloading…
+                {t("downloading")}
               </>
             ) : (
               <>
                 <Download className="h-4 w-4" />
-                Download
+                {tActions("download")}
               </>
             )}
           </Button>

@@ -41,6 +41,7 @@ from core.indexing import (
     LANGUAGE_UNKNOWN,
     detect_language,
 )
+from core.localization import default_language
 from core.search import normalize_query, query_fingerprint
 
 #: Shortest question worth answering, in characters after normalisation.
@@ -283,23 +284,29 @@ def resolve_answer_language(question: str, requested: str | None = None) -> str:
     * otherwise the language is **detected from the question** with the same
       script heuristic that labelled every indexed passage
       (:func:`~core.indexing.detect_language`), so one rule serves both sides;
-    * and anything the heuristic does not resolve to Arabic falls back to
-      **French**.
+    * and anything the heuristic does not resolve confidently falls back to the
+      **application default** (:func:`~core.localization.default_language`).
 
-    **That last clause deliberately swallows a detected ``en``, and it is the
-    one judgement call in this function.** ``detect_language`` tells French from
-    English by *diacritics*, which the codebase already recorded as producing
-    ``en`` for accent-free French. On a page of prose that is harmless — the
-    label is a filter hint. On a **question** it is not, and it is not even rare:
-    *"Quand le loyer est-il payable ?"* is impeccable French containing no
-    accented character at all, so the heuristic cannot do better than a coin
-    flip on short French questions.
+    **The detected-``en``/unknown branch is the one judgement call in this
+    function, and ``21-localization.md`` changed its answer.**
+    ``detect_language`` tells French from English by *diacritics*, which the
+    codebase already recorded as producing ``en`` for accent-free French. On a
+    page of prose that is harmless — the label is a filter hint. On a **question**
+    it is not, and it is not even rare: *"Quand le loyer est-il payable ?"* is
+    impeccable French containing no accented character at all, so the heuristic
+    cannot do better than a coin flip on short French questions.
 
-    Given that, French is the right fallback for this platform rather than
-    English: ``project-overview.md`` names Arabic and French as the interface
-    and AI-interaction languages, and English appears only as a third language
-    documents may be written in. A user who genuinely wants English asks for it,
-    and that request is honoured above.
+    Until Localization shipped, French was hard-coded here as the safer of the
+    two, because English was not an interface language and a French-speaking user
+    was overwhelmingly the likelier author of an ambiguous question. Two things
+    changed. English is now a first-class interface language *and the shipped
+    application default*, so a deployment's own answer is a better guess than this
+    module's; and the detection branch is now **nearly unreachable**, because
+    :class:`~services.assistant.AssistantService` supplies the asker's stored
+    language preference as ``requested`` on every message. The heuristic is what
+    remains for an API client that sends neither — and for that caller the honest
+    answer is the deployment's default rather than a language this function
+    picked for it.
     """
     if requested:
         wanted = requested.strip().lower()
@@ -308,7 +315,7 @@ def resolve_answer_language(question: str, requested: str | None = None) -> str:
 
     detected = detect_language(question)
     if detected in {LANGUAGE_UNKNOWN, LANGUAGE_ENGLISH}:
-        return LANGUAGE_FRENCH
+        return default_language()
     return detected
 
 

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { Bell } from "lucide-react";
 
 import { NotificationPanel } from "@/components/notifications/notification-panel";
@@ -49,6 +50,7 @@ import { cn } from "@/lib/utils";
  */
 
 export function NotificationButton() {
+  const t = useTranslations("notifications.panel");
   const [open, setOpen] = React.useState(false);
   const user = useCurrentUser();
   const { can, isLoading } = usePermissions();
@@ -71,8 +73,8 @@ export function NotificationButton() {
   const capped = data?.unreadCountCapped ?? false;
   const hasUnread = unread > 0;
   const label = hasUnread
-    ? `Notifications, ${capped ? `more than ${unread}` : unread} unread`
-    : "Notifications";
+    ? t("unreadLabel", { count: capped ? t("moreThan", { count: unread }) : unread })
+    : t("title");
   const badge = capped ? `${unread}+` : String(unread);
 
   return (
@@ -86,7 +88,7 @@ export function NotificationButton() {
                 <span
                   aria-hidden="true"
                   className={cn(
-                    "absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center",
+                    "absolute -end-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center",
                     "rounded-full bg-info px-1 text-[10px] font-semibold leading-none",
                     "text-background ring-2 ring-background",
                     // A four-character count ("999+") needs the room; a
@@ -100,7 +102,7 @@ export function NotificationButton() {
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent>Notifications</TooltipContent>
+        <TooltipContent>{t("title")}</TooltipContent>
       </Tooltip>
 
       <PopoverContent align="end" className="w-auto p-0">

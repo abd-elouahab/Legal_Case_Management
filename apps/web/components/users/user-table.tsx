@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 
 import {
@@ -15,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/users/user-avatar";
 import { UserRoleBadge, UserStatusBadge } from "@/components/users/user-badges";
 import { UserRowActions } from "@/components/users/user-row-actions";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { useDateFormat } from "@/hooks/use-date-format";
 import { userRoute } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type { ManagedUser } from "@/types/user";
@@ -33,41 +34,41 @@ import type { SortOrder, UserSortField } from "@/types/user-management";
  * shows identity, role, and status without a horizontal scroll at all.
  */
 
-interface SortableColumn {
-  field: UserSortField;
-  label: string;
-}
-
+/** A sortable column heading, translating its own label from the field. */
 function SortButton({
-  column,
+  field,
   sortBy,
   sortOrder,
   onToggle,
 }: {
-  column: SortableColumn;
+  field: UserSortField;
   sortBy: UserSortField;
   sortOrder: SortOrder;
   onToggle: (field: UserSortField) => void;
 }) {
-  const isActive = sortBy === column.field;
+  const t = useTranslations("users.table");
+  const tSort = useTranslations("common.sort");
+
+  const isActive = sortBy === field;
   const Icon = !isActive ? ChevronsUpDown : sortOrder === "asc" ? ArrowUp : ArrowDown;
+  const label = t(`columns.${field}`);
 
   return (
     <Button
       variant="ghost"
       size="sm"
-      onClick={() => onToggle(column.field)}
+      onClick={() => onToggle(field)}
       className={cn(
-        "-ml-2 h-8 gap-1 px-2 font-medium",
+        "-ms-2 h-8 gap-1 px-2 font-medium",
         isActive ? "text-foreground" : "text-muted-foreground",
       )}
     >
-      {column.label}
+      {label}
       <Icon className="h-4 w-4" aria-hidden="true" />
       <span className="sr-only">
         {isActive
-          ? `Sorted ${sortOrder === "asc" ? "ascending" : "descending"}. Activate to reverse.`
-          : `Sort by ${column.label}`}
+          ? tSort(sortOrder === "asc" ? "sortedAscending" : "sortedDescending")
+          : tSort("sortBy", { column: label })}
       </span>
     </Button>
   );
@@ -107,6 +108,11 @@ export function UserTable({
   /** Dim the table while a new page or filter is loading. */
   isRefreshing?: boolean;
 }) {
+  const { formatDate, formatDateTime } = useDateFormat();
+  const t = useTranslations("users.table");
+  const tTime = useTranslations("common.time");
+  const tActions = useTranslations("common.actions");
+
   return (
     <div
       className={cn(
@@ -120,7 +126,7 @@ export function UserTable({
           <TableRow>
             <TableHead aria-sort={ariaSort("name", sortBy, sortOrder)}>
               <SortButton
-                column={{ field: "name", label: "Name" }}
+                field="name"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onToggle={onToggleSort}
@@ -128,20 +134,20 @@ export function UserTable({
             </TableHead>
             <TableHead aria-sort={ariaSort("email", sortBy, sortOrder)}>
               <SortButton
-                column={{ field: "email", label: "Email" }}
+                field="email"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onToggle={onToggleSort}
               />
             </TableHead>
-            <TableHead>Role</TableHead>
-            <TableHead>Status</TableHead>
+            <TableHead>{t("columns.role")}</TableHead>
+            <TableHead>{t("columns.status")}</TableHead>
             <TableHead
               className="hidden lg:table-cell"
               aria-sort={ariaSort("last_login", sortBy, sortOrder)}
             >
               <SortButton
-                column={{ field: "last_login", label: "Last sign-in" }}
+                field="last_login"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onToggle={onToggleSort}
@@ -152,14 +158,14 @@ export function UserTable({
               aria-sort={ariaSort("created_at", sortBy, sortOrder)}
             >
               <SortButton
-                column={{ field: "created_at", label: "Created" }}
+                field="created_at"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onToggle={onToggleSort}
               />
             </TableHead>
-            <TableHead className="w-12 text-right">
-              <span className="sr-only">Actions</span>
+            <TableHead className="w-12 text-end">
+              <span className="sr-only">{tActions("openMenu")}</span>
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -195,14 +201,14 @@ export function UserTable({
               </TableCell>
 
               <TableCell className="hidden text-muted-foreground lg:table-cell">
-                {formatDateTime(user.lastLoginAt, "Never")}
+                {formatDateTime(user.lastLoginAt, tTime("never"))}
               </TableCell>
 
               <TableCell className="hidden text-muted-foreground lg:table-cell">
                 {formatDate(user.createdAt)}
               </TableCell>
 
-              <TableCell className="text-right">
+              <TableCell className="text-end">
                 <UserRowActions
                   user={user}
                   isSelf={user.id === currentUserId}

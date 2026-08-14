@@ -1,17 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { FileText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { caseRoute } from "@/lib/routes";
-import { DOCUMENT_CATEGORY_LABELS } from "@/types/document";
-import {
-  relevancePercent,
-  searchLanguageLabel,
-  type SearchResult,
-} from "@/types/search";
+import { relevancePercent, type SearchResult } from "@/types/search";
 
 /**
  * One retrieved passage.
@@ -43,6 +39,9 @@ import {
 export function SearchResultCard({ result }: { result: SearchResult }) {
   const document = result.document;
   const relevance = relevancePercent(result.score);
+  const t = useTranslations("search.result");
+  const tCategories = useTranslations("documents.categories");
+  const tLanguages = useTranslations("common.languages");
 
   return (
     <Card>
@@ -55,11 +54,14 @@ export function SearchResultCard({ result }: { result: SearchResult }) {
             />
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-foreground">
-                {document?.originalFilename ?? "Document"}
+                {document?.originalFilename ?? t("document")}
               </p>
               <p className="text-xs text-muted-foreground">
-                Page {result.pageNumber} · Passage {result.chunkNumber + 1} · Version{" "}
-                {result.documentVersion}
+                {t("provenance", {
+                  page: result.pageNumber,
+                  passage: result.chunkNumber + 1,
+                  version: result.documentVersion,
+                })}
               </p>
             </div>
           </div>
@@ -67,15 +69,15 @@ export function SearchResultCard({ result }: { result: SearchResult }) {
           <div className="flex shrink-0 items-center gap-2">
             {document ? (
               <Badge variant="outline">
-                {DOCUMENT_CATEGORY_LABELS[document.category]}
+                {tCategories(document.category)}
               </Badge>
             ) : null}
             {result.language ? (
-              <Badge variant="outline">{searchLanguageLabel(result.language)}</Badge>
+              <Badge variant="outline">{tLanguages(result.language)}</Badge>
             ) : null}
             {/* The number *and* the word, never colour alone. */}
-            <Badge variant="secondary" title={`Similarity ${result.score}`}>
-              {relevance}% match
+            <Badge variant="secondary" title={t("similarity", { score: result.score })}>
+              {t("match", { percent: relevance })}
             </Badge>
           </div>
         </div>
@@ -88,12 +90,12 @@ export function SearchResultCard({ result }: { result: SearchResult }) {
         </p>
 
         <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span>Result {result.rank}</span>
+          <span>{t("rank", { rank: result.rank })}</span>
           <Link
             href={caseRoute(result.caseId)}
             className="font-medium text-primary underline-offset-4 hover:underline"
           >
-            Open case
+            {t("openCase")}
           </Link>
         </div>
       </CardContent>

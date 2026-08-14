@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { Bot, RotateCcw, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -10,9 +11,9 @@ import { ChatComposer } from "@/components/ai/chat-composer";
 import { ChatMessage, PendingMessage } from "@/components/ai/chat-message";
 import { FollowUpSuggestions } from "@/components/ai/follow-up-suggestions";
 import {
-  assistantErrorMessage,
   isAssistantUnavailable,
   lastAnswer,
+  useAssistantErrorMessage,
   useChatSession,
   useConversation,
 } from "@/hooks/use-assistant";
@@ -65,6 +66,8 @@ export function AssistantChat({
 }) {
   const conversation = useConversation(conversationId);
   const session = useChatSession(conversationId);
+  const t = useTranslations("assistant.chat");
+  const errorMessage = useAssistantErrorMessage();
   const [draft, setDraft] = React.useState("");
   const bottomRef = React.useRef<HTMLDivElement>(null);
 
@@ -88,8 +91,8 @@ export function AssistantChat({
       <div className={cn("flex flex-1 items-center justify-center", className)}>
         <EmptyState
           icon={Bot}
-          title="No conversation open"
-          description="Start a new conversation to ask questions about the documents on your cases. Every answer cites the file and page it came from."
+          titleKey="assistant.chat.noConversationTitle"
+          descriptionKey="assistant.chat.noConversationDescription"
         />
       </div>
     );
@@ -98,9 +101,9 @@ export function AssistantChat({
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col gap-4", className)}>
       <div
-        className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto pr-1"
+        className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto pe-1"
         role="log"
-        aria-label="Conversation"
+        aria-label={t("transcript")}
         aria-live="polite"
       >
         {conversation.isLoading ? (
@@ -115,19 +118,19 @@ export function AssistantChat({
             className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
           >
             <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            <span>{assistantErrorMessage(conversation.error)}</span>
+            <span>{errorMessage(conversation.error)}</span>
           </p>
         ) : messages.length === 0 && !session.pending ? (
           <EmptyState
             icon={Bot}
-            title="Ask your first question"
-            description="Answers are built only from the documents on cases you have access to, and every statement carries the file and page it came from. If the documents do not support an answer, the assistant says so rather than guessing."
+            titleKey="assistant.chat.firstQuestionTitle"
+            descriptionKey="assistant.chat.firstQuestionDescription"
           />
         ) : (
           <>
             {conversation.data?.hasMoreMessages ? (
               <p className="text-center text-xs text-muted-foreground">
-                Earlier messages in this conversation are not shown.
+                {t("earlierHidden")}
               </p>
             ) : null}
 
@@ -159,16 +162,14 @@ export function AssistantChat({
           <p role="alert" className="flex items-start gap-2 text-sm text-destructive">
             <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <span>
-              {assistantErrorMessage(session.error)}
-              {isAssistantUnavailable(session.error)
-                ? " Your documents and their text are unaffected."
-                : null}
+              {errorMessage(session.error)}
+              {isAssistantUnavailable(session.error) ? ` ${t("documentsUnaffected")}` : null}
             </span>
           </p>
           <div>
             <Button type="button" variant="outline" size="sm" onClick={session.reset}>
               <RotateCcw className="h-4 w-4" aria-hidden="true" />
-              Dismiss and try again
+              {t("dismissAndRetry")}
             </Button>
           </div>
         </div>
@@ -190,11 +191,7 @@ export function AssistantChat({
         disabled={conversation.isError || !canSend}
         value={draft}
         onValueChange={setDraft}
-        placeholder={
-          caseId
-            ? "Ask about this case's documents…"
-            : "Ask about your documents — for example, when is the rent payable?"
-        }
+        placeholder={caseId ? t("placeholderCase") : t("placeholder")}
       />
     </div>
   );

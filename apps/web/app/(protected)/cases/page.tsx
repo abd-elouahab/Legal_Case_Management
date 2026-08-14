@@ -22,8 +22,8 @@ export default function CasesPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Cases"
-        description="Create, organize, and track legal cases through their lifecycle."
+        titleKey="cases.title"
+        descriptionKey="cases.description"
       />
       <CaseList />
     </PageContainer>

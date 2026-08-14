@@ -25,13 +25,16 @@ from sqlalchemy.orm import Session
 from core.config import settings
 from core.email import EmailFailureCode
 from core.events import DomainEventType
+from core.localization import default_language
 from core.notifications import (
     EVENT_RULES,
     RULE_CASE_ASSIGNED,
     ChannelPreferenceUpdate,
+    NotificationCategory,
     NotificationPreferenceKey,
     NotificationTarget,
     NotificationTargetType,
+    render_notification,
 )
 from models.email import EmailDeliveryStatus
 from models.user import UserRole
@@ -160,6 +163,24 @@ def _stored(db_session: Session) -> list[Any]:
     from models.email import EmailDelivery
 
     return list(db_session.query(EmailDelivery).all())
+
+
+def _whatsapp(db_session: Session) -> Any:
+    """A WhatsApp channel, for the wiring test only.
+
+    `get_notification_channels` takes one argument per channel, so a test about
+    the *email* channel needs something to pass for the others. Built with the
+    discarding provider so it cannot do anything: this test is about the wiring,
+    and a real one here would be a second feature's test hiding in this file."""
+    from services.whatsapp_delivery import build_whatsapp_delivery_service
+    from services.whatsapp_provider import NullWhatsAppProvider
+    from services.whatsapp_templates import get_whatsapp_template_renderer
+
+    return build_whatsapp_delivery_service(
+        db_session,
+        provider=NullWhatsAppProvider(),
+        templates=get_whatsapp_template_renderer(),
+    )
 
 
 def _aware(value: datetime) -> datetime:
@@ -478,7 +499,14 @@ class TestSending:
 
         message = provider.sent[0]
         assert message.to_address == "amina@firm.example"
-        assert message.subject == "Dossier attribué"
+        # The subject is the notification's own rendered title, in the language
+        # the recipient reads — not a copy of the wording. This account has
+        # chosen nothing, so it is the application default's.
+        assert message.subject == render_notification(
+            rule_key="case.assigned",
+            category=NotificationCategory.CASE,
+            language=default_language(),
+        ).title
         assert "CASE-2026-0001" in message.text_body
         assert "CASE-2026-0001" in message.html_body
         assert message.html_body.startswith("<html")
@@ -894,6 +922,9 @@ class TestWiring:
     def test_the_request_path_wires_the_email_channel(
         self, db_session: Session, provider: FakeEmailProvider, queue: RecordingQueue
     ) -> None:
+        """`get_notification_channels` takes one argument per channel, so this
+        asserts *inclusion* rather than equality — a third channel was added since
+        this test was written, and a fourth should not have to change it."""
         from api.deps import get_notification_channels
 
         service = EmailDeliveryService(
@@ -903,7 +934,7 @@ class TestWiring:
             get_email_template_renderer(),
             queue,
         )
-        assert get_notification_channels(service) == [service]
+        assert service in get_notification_channels(service, _whatsapp(db_session))
 
     def test_the_worker_path_wires_it_too(
         self, db_session: Session, monkeypatch: pytest.MonkeyPatch
@@ -915,18 +946,21 @@ class TestWiring:
         from services.notification_events import _delivery_channels
 
         channels = _delivery_channels(db_session)
-        assert len(channels) == 1
-        assert isinstance(channels[0], Service)
+        assert any(isinstance(channel, Service) for channel in channels)
 
-    def test_no_channel_is_built_when_the_feature_is_off(
+    def test_no_email_channel_is_built_when_the_feature_is_off(
         self, db_session: Session, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """So a deployment with `EMAIL_ENABLED=false` does not construct a
-        delivery service per event."""
+        delivery service per event — and switching this channel off says nothing
+        about the others, which is what makes them independent switches."""
+        from services.email_delivery import EmailDeliveryService as Service
         from services.notification_events import _delivery_channels
 
         monkeypatch.setattr(settings, "EMAIL_ENABLED", False)
-        assert _delivery_channels(db_session) == ()
+        assert not any(
+            isinstance(channel, Service) for channel in _delivery_channels(db_session)
+        )
 
     def test_a_service_with_no_channels_still_creates_notifications(
         self, db_session: Session, lawyer: Any

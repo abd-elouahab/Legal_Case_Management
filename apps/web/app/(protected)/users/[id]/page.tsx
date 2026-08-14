@@ -24,8 +24,8 @@ export default async function UserDetailsPage({
   return (
     <PageContainer>
       <PageHeader
-        title="User details"
-        description="Profile, role, account status, and activity."
+        titleKey="userDetails.title"
+        descriptionKey="userDetails.description"
       />
       <UserDetails userId={id} />
     </PageContainer>

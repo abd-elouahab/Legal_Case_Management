@@ -64,7 +64,7 @@ from typing import Any, Final
 
 from core.events import DomainEventType
 from core.indexing import LANGUAGE_ARABIC, LANGUAGE_ENGLISH, LANGUAGE_FRENCH
-from core.rag import SUPPORTED_ANSWER_LANGUAGES
+from core.localization import resolve_language
 from models.notification import NotificationPriority, NotificationType
 
 # --------------------------------------------------------------------------- #
@@ -211,19 +211,19 @@ class NotificationPreferenceKey(StrEnum):
 class NotificationChannel(StrEnum):
     """How a notification can reach somebody.
 
-    Two today, and the second arrived exactly as :mod:`models.notification`
-    predicted it would: *"a second channel — email, WhatsApp, push — is one
-    nullable boolean column beside* ``in_app``\\ *, and every row already exists to
-    receive it."*
+    Three today, and the second and third both arrived exactly as
+    :mod:`models.notification` predicted they would: *"a second channel — email,
+    WhatsApp, push — is one nullable boolean column beside* ``in_app``\\ *, and
+    every row already exists to receive it."*
 
     A channel is **not** a preference key and the two axes are deliberately
-    independent: a user silences *hearing updates* (a key) or silences *email* (a
-    channel), and the interesting setting is the intersection — keep hearing
-    updates in the application, stop them arriving in a mailbox. That is what
-    ``17-email-delivery-channel.md``'s *"if a user disables email delivery for a
-    supported notification type, no email should be sent"* asks for, and it is
-    why the storage is a column per channel on a row per key rather than either
-    one alone.
+    independent: a user silences *hearing updates* (a key) or silences *WhatsApp*
+    (a channel), and the interesting setting is the intersection — keep hearing
+    updates in the application and in a mailbox, stop them arriving on a phone.
+    That is what ``17-email-delivery-channel.md`` and
+    ``18-whatsapp-delivery-channel.md`` both ask for when they require a channel
+    to be switchable *independently* of the others, and it is why the storage is a
+    column per channel on a row per key rather than either one alone.
 
     The member values are the **column names** on
     :class:`~models.notification.NotificationPreference`, which is what lets
@@ -233,17 +233,18 @@ class NotificationChannel(StrEnum):
 
     IN_APP = "in_app"
     EMAIL = "email"
+    WHATSAPP = "whatsapp"
 
 
 #: Whether a preference is on for a user who has never expressed one.
 #:
-#: All seven default to **on**, on **both** channels, and that is the only
+#: All seven default to **on**, on **every** channel, and that is the only
 #: defensible default for this platform: `architecture.md` invariant 3 says every
 #: important event produces a notification for its authorized users, so a default
 #: of *off* would make the invariant false for every account until somebody
 #: visited a settings page.
 #:
-#: The email channel follows the same default rather than a more cautious one,
+#: The outbound channels follow the same default rather than a more cautious one,
 #: and the reason is that the *rule set* is already the cautious part:
 #: :data:`~core.email.EMAIL_RULES` carries seven high-signal notifications —
 #: a password reset, an account activation, a case assignment, two hearing
@@ -251,6 +252,14 @@ class NotificationChannel(StrEnum):
 #: has configured no provider sends nothing at all. Defaulting these to off would
 #: mean a lawyer misses a hearing change because they never opened a settings
 #: page they had no reason to visit.
+#:
+#: :data:`~core.whatsapp.WHATSAPP_RULES` is narrower still, and the WhatsApp
+#: channel adds a **second** natural gate on top of the rule set: an account with
+#: no phone number on it receives nothing, and most accounts on this platform are
+#: created without one. So the default reaching an untouched account is "yes, if
+#: the platform has a number for you and this is one of the seven things worth a
+#: message", which is what somebody who has given the platform their number would
+#: expect.
 #:
 #: A row is written only when a user actually changes something, so an untouched
 #: account costs no storage and silently follows any future change to these
@@ -266,12 +275,14 @@ class ChannelPreference:
     """One person's answer for one preference key, across every channel.
 
     The read shape. A frozen value rather than a bare tuple so a caller reads
-    ``preference.email`` instead of ``preference[1]`` — which matters because a
-    third channel is a third field here and would silently shift every index.
+    ``preference.email`` instead of ``preference[1]`` — which matters because the
+    third channel was a third field here and would otherwise have silently
+    shifted every index.
     """
 
     in_app: bool = True
     email: bool = True
+    whatsapp: bool = True
     #: Whether these are the platform's defaults rather than a choice the user
     #: made. Reported so a settings page can say "default" instead of implying
     #: somebody picked it — an account that has expressed no opinion has no
@@ -279,8 +290,14 @@ class ChannelPreference:
     is_default: bool = True
 
     def for_channel(self, channel: NotificationChannel) -> bool:
-        """Whether this kind of notification is delivered on ``channel``."""
-        return self.email if channel is NotificationChannel.EMAIL else self.in_app
+        """Whether this kind of notification is delivered on ``channel``.
+
+        A lookup keyed by the channel's own value rather than a chain of
+        comparisons, because the member values **are** the field names here and
+        on :class:`~models.notification.NotificationPreference` — so a fourth
+        channel is a field and an enum member, and this method does not change.
+        """
+        return bool(getattr(self, channel.value, self.in_app))
 
 
 @dataclass(frozen=True, slots=True)
@@ -296,11 +313,14 @@ class ChannelPreferenceUpdate:
 
     in_app: bool | None = None
     email: bool | None = None
+    whatsapp: bool | None = None
 
     @property
     def is_empty(self) -> bool:
         """Whether this change asks for nothing."""
-        return self.in_app is None and self.email is None
+        return all(
+            getattr(self, channel.value) is None for channel in NotificationChannel
+        )
 
 
 def default_preference(
@@ -309,10 +329,10 @@ def default_preference(
     """What ``key`` is set to on ``channel`` for a user who has expressed nothing.
 
     The channel is taken and currently ignored, and that is the honest signature
-    rather than a redundant one: both channels share :data:`DEFAULT_PREFERENCES`
-    **today**, and the day one of them does not — a channel whose defaults are
-    opt-in, which SMS plausibly is — this is the single function that changes
-    instead of every caller learning a second rule.
+    rather than a redundant one: all three channels share
+    :data:`DEFAULT_PREFERENCES` **today**, and the day one of them does not — a
+    channel whose defaults are opt-in, which SMS plausibly is — this is the single
+    function that changes instead of every caller learning a second rule.
     """
     del channel
     return DEFAULT_PREFERENCES.get(key, True)
@@ -1318,13 +1338,15 @@ def resolve_notification_language(requested: str | None) -> str:
 
     The same resolver shape as :func:`~core.reports.resolve_report_language`, and
     for the same reason there is no detection step: there is no free text to
-    detect from, only an explicit choice to honour and French to fall back to.
+    detect from, only an explicit choice to honour and the application's default
+    to fall back to.
+
+    Since ``21-localization.md`` shipped, both halves are
+    :func:`~core.localization.resolve_language`'s rather than this function's, so
+    a notification, the email carrying it, and the WhatsApp message carrying it
+    cannot be resolved by three implementations that agree today.
     """
-    if requested:
-        wanted = requested.strip().lower()
-        if wanted in SUPPORTED_ANSWER_LANGUAGES:
-            return wanted
-    return LANGUAGE_FRENCH
+    return resolve_language(requested)
 
 
 @dataclass(frozen=True, slots=True)

@@ -80,6 +80,16 @@ class User(Base):
     #: Images themselves live in MinIO, never in PostgreSQL.
     profile_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
+    #: How this person describes their position — "Senior Associate", "Greffier".
+    #:
+    #: Added by ``20-settings.md``, which names it under Profile and is the first
+    #: thing on the platform to want it. **Free text and optional**, deliberately:
+    #: it is a label a colleague reads beside a name, and it decides nothing.
+    #: :attr:`role` is what the platform authorizes against, and the two must not
+    #: be confusable — which is why this is ``job_title`` rather than ``title``
+    #: and why nothing reads it outside a profile view.
+    job_title: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
     role: Mapped[UserRole] = mapped_column(
         Enum(
             UserRole,

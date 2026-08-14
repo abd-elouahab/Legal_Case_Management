@@ -70,16 +70,24 @@ export interface ManagedUser {
   permissions: readonly Permission[];
 }
 
-/** Human-readable role labels (future: i18n keys). */
-export const ROLE_LABELS: Record<UserRole, string> = {
-  administrator: "Administrator",
-  lawyer: "Lawyer",
-  court: "Court Representative",
-};
+/**
+ * Where the words for a role and a status live.
+ *
+ * `users.roles` and `users.statuses` in the message catalogues — not here, since
+ * `21-localization.md`. A module constant cannot read the reader's language, so a
+ * badge built from one stayed English on an Arabic screen, which is exactly what
+ * `code-standards.md` forbids. The *values* stay here because a role is a fact
+ * about the platform's authorization model and a translation is not.
+ *
+ * Note the catalogue key for the court role is `court_representative` rather than
+ * `court`: the API's `UserRole` value is `court`, and the catalogue was written
+ * against the wire value the *notification* and *timeline* payloads carry. Call
+ * sites map through {@link roleMessageKey} rather than each remembering.
+ */
+export const ROLE_NAMESPACE = "users.roles";
+export const USER_STATUS_NAMESPACE = "users.statuses";
 
-/** Human-readable status labels (future: i18n keys). */
-export const STATUS_LABELS: Record<UserStatus, string> = {
-  active: "Active",
-  inactive: "Inactive",
-  suspended: "Suspended",
-};
+/** The catalogue key for a role value. */
+export function roleMessageKey(role: UserRole | string): string {
+  return role === "court" ? "court_representative" : role;
+}

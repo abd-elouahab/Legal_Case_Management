@@ -112,6 +112,7 @@ from schemas.report import ReportCreate, ReportListQuery
 from schemas.search import SearchFilterInput
 from services.events import EventPublisher, NullEventPublisher
 from services.job_queue import JobQueue, NullJobQueue
+from services.localization import LanguageDirectory, resolve_actor_language
 from services.rag import RagOutcome, RagService
 from services.report_access import ReportAccessPolicy
 from services.report_export import (
@@ -354,6 +355,7 @@ class ReportService:
         *,
         timeline: TimelineRecorder | None = None,
         events: EventPublisher | None = None,
+        languages: LanguageDirectory | None = None,
     ) -> None:
         self._reports = reports
         self._cases = cases
@@ -372,6 +374,15 @@ class ReportService:
         # the history it exists to preserve. That is the spec's Streaming section
         # met with the same infrastructure as everything else.
         self._events: EventPublisher = events or NullEventPublisher()
+        # ``21-localization.md``: *"generated reports should use the user's
+        # preferred language by default"*, while *"users should also be able to
+        # explicitly request a report in another supported language"*. This is the
+        # only collaborator that can answer what the default **is** — and it is the
+        # one-method `LanguageDirectory` rather than a settings service, so the
+        # report agent can ask which language somebody reads in and nothing else
+        # about them. The same seam the assistant takes, so *"the user's preferred
+        # language"* means one thing on both AI surfaces.
+        self._languages = languages
         # Compiled once per instance rather than per report: compilation
         # validates every edge and builds the executor, and neither depends on
         # which report is being generated.
@@ -419,7 +430,19 @@ class ReportService:
             )
             raise TooManyActiveReportsError(settings.REPORT_MAX_ACTIVE_PER_USER)
 
-        language = resolve_report_language(payload.language)
+        # The request's language first, then the requester's stored preference —
+        # which is the spec's default-and-override in one expression, and in the
+        # safe direction: ``payload.language`` is a **parameter**, so asking for one
+        # report in Arabic changes nothing about the account that asked. The
+        # language is settled here, before the row is written, so it is a property
+        # of the *run* rather than of whenever a worker got to it: a preference
+        # changed while a report is generating cannot switch a document's language
+        # halfway through its sections.
+        language = resolve_report_language(
+            resolve_actor_language(
+                self._languages, actor.id, requested=payload.language
+            )
+        )
         template = template_for(payload.report_type)
 
         report = self._reports.create(

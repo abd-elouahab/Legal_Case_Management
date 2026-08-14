@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { ArrowDown, ArrowUp, ChevronsUpDown, FileText } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -15,10 +16,10 @@ import {
 import { ReportProgress } from "@/components/reports/report-progress";
 import { ReportRowActions } from "@/components/reports/report-row-actions";
 import { ReportStatusBadge } from "@/components/reports/report-status-badge";
-import { formatDateTime } from "@/lib/format";
+import { useDateFormat } from "@/hooks/use-date-format";
 import { caseRoute } from "@/lib/routes";
 import { cn } from "@/lib/utils";
-import { reportFailureLabel, reportTypeLabel, type Report } from "@/types/report";
+import type { Report } from "@/types/report";
 import type { ReportSortField, SortOrder } from "@/types/report-management";
 
 /**
@@ -46,41 +47,41 @@ import type { ReportSortField, SortOrder } from "@/types/report-management";
  * below `lg` — so a phone still shows what identifies a report.
  */
 
-interface SortableColumn {
-  field: ReportSortField;
-  label: string;
-}
-
+/** A sortable column heading, translating its own label from the field. */
 function SortButton({
-  column,
+  field,
   sortBy,
   sortOrder,
   onToggle,
 }: {
-  column: SortableColumn;
+  field: ReportSortField;
   sortBy: ReportSortField;
   sortOrder: SortOrder;
   onToggle: (field: ReportSortField) => void;
 }) {
-  const isActive = sortBy === column.field;
+  const t = useTranslations("reports.table");
+  const tSort = useTranslations("common.sort");
+
+  const isActive = sortBy === field;
   const Icon = !isActive ? ChevronsUpDown : sortOrder === "asc" ? ArrowUp : ArrowDown;
+  const label = t(`columns.${field}`);
 
   return (
     <Button
       variant="ghost"
       size="sm"
-      onClick={() => onToggle(column.field)}
+      onClick={() => onToggle(field)}
       className={cn(
-        "-ml-2 h-8 gap-1 px-2 font-medium",
+        "-ms-2 h-8 gap-1 px-2 font-medium",
         isActive ? "text-foreground" : "text-muted-foreground",
       )}
     >
-      {column.label}
+      {label}
       <Icon className="h-4 w-4" aria-hidden="true" />
       <span className="sr-only">
         {isActive
-          ? `Sorted ${sortOrder === "asc" ? "ascending" : "descending"}. Activate to reverse.`
-          : `Sort by ${column.label}`}
+          ? tSort(sortOrder === "asc" ? "sortedAscending" : "sortedDescending")
+          : tSort("sortBy", { column: label })}
       </span>
     </Button>
   );
@@ -113,6 +114,12 @@ export function ReportTable({
   /** Hidden inside a case workspace, where every row is that case. */
   showCase?: boolean;
 }) {
+  const { formatDateTime } = useDateFormat();
+  const t = useTranslations("reports.table");
+  const tTypes = useTranslations("reports.types");
+  const tFailures = useTranslations("reports.failures");
+  const tActions = useTranslations("common.actions");
+
   return (
     <div className="w-full overflow-x-auto rounded-lg border border-border">
       <Table>
@@ -120,32 +127,34 @@ export function ReportTable({
           <TableRow>
             <TableHead aria-sort={ariaSort("title", sortBy, sortOrder)}>
               <SortButton
-                column={{ field: "title", label: "Report" }}
+                field="title"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onToggle={onToggleSort}
               />
             </TableHead>
 
-            {showCase ? <TableHead className="hidden lg:table-cell">Case</TableHead> : null}
+            {showCase ? (
+              <TableHead className="hidden lg:table-cell">{t("columns.case")}</TableHead>
+            ) : null}
 
             <TableHead aria-sort={ariaSort("status", sortBy, sortOrder)}>
               <SortButton
-                column={{ field: "status", label: "Status" }}
+                field="status"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onToggle={onToggleSort}
               />
             </TableHead>
 
-            <TableHead className="hidden xl:table-cell">Sections</TableHead>
+            <TableHead className="hidden xl:table-cell">{t("columns.sections")}</TableHead>
 
             <TableHead
               className="hidden xl:table-cell"
               aria-sort={ariaSort("created_at", sortBy, sortOrder)}
             >
               <SortButton
-                column={{ field: "created_at", label: "Requested" }}
+                field="created_at"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onToggle={onToggleSort}
@@ -153,7 +162,7 @@ export function ReportTable({
             </TableHead>
 
             <TableHead className="w-12">
-              <span className="sr-only">Actions</span>
+              <span className="sr-only">{tActions("openMenu")}</span>
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -171,13 +180,13 @@ export function ReportTable({
                     <button
                       type="button"
                       onClick={() => onView(report)}
-                      className="text-left text-sm font-medium text-foreground hover:underline"
+                      className="text-start text-sm font-medium text-foreground hover:underline"
                       dir="auto"
                     >
                       {report.title}
                     </button>
                     <span className="text-xs text-muted-foreground">
-                      {reportTypeLabel(report.reportType)}
+                      {tTypes(report.reportType)}
                     </span>
                   </div>
                 </div>
@@ -189,7 +198,7 @@ export function ReportTable({
                     href={caseRoute(report.caseId)}
                     className="text-sm text-accent hover:underline"
                   >
-                    Open case
+                    {t("openCase")}
                   </Link>
                 </TableCell>
               ) : null}
@@ -200,7 +209,7 @@ export function ReportTable({
                   {report.isActive ? <ReportProgress report={report} /> : null}
                   {report.status === "failed" ? (
                     <span className="text-xs text-muted-foreground">
-                      {reportFailureLabel(report.errorCode)}
+                      {tFailures(report.errorCode ?? "unknown")}
                     </span>
                   ) : null}
                 </div>
@@ -208,7 +217,10 @@ export function ReportTable({
 
               <TableCell className="hidden text-sm text-muted-foreground xl:table-cell">
                 {report.status === "completed"
-                  ? `${report.groundedSections ?? 0}/${report.sectionsTotal ?? 0} grounded`
+                  ? t("groundedOf", {
+                      grounded: report.groundedSections ?? 0,
+                      total: report.sectionsTotal ?? 0,
+                    })
                   : "—"}
               </TableCell>
 

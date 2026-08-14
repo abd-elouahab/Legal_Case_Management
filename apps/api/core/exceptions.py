@@ -7,6 +7,7 @@ to clients; unexpected errors are logged and returned as a generic 500.
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 import structlog
@@ -15,9 +16,62 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from core.config import settings
+from core.observability import (
+    ErrorCategory,
+    LogEvent,
+    MonitoringComponent,
+    SecurityEventType,
+)
 from schemas.errors import ErrorDetail, ErrorResponse
+from services.error_tracker import get_error_tracker
+from services.security_monitor import get_security_monitor
 
 logger = structlog.get_logger(__name__)
+
+
+# --------------------------------------------------------------------------- #
+# Monitoring — attached here, and nowhere in the business modules
+# --------------------------------------------------------------------------- #
+#
+# **This is where security monitoring happens, and the reason is worth stating.**
+# ``22-monitoring.md`` asks the platform to watch failed logins, repeated
+# authorization failures, invalid tokens, and excessive requests, while requiring
+# that *"business modules should not contain monitoring-specific logic"*. Every
+# one of those four is already an exception this module handles:
+# :class:`InvalidCredentialsError`, :class:`AuthorizationError`,
+# :class:`InvalidTokenError`, :class:`TooManyLoginAttemptsError`. So the
+# classification happens **once, here**, over exceptions that were being raised
+# anyway — and :class:`~services.auth.AuthService`,
+# :class:`~services.authorization.AuthorizationService`, and every access policy
+# stay exactly as they were, with no idea that monitoring exists.
+#
+# The mapping below is the whole of it: an error code, and what it means to
+# somebody watching the platform for trouble.
+
+#: Error codes that are security events, and the event each one is.
+_SECURITY_EVENTS: dict[str, SecurityEventType] = {
+    "invalid_credentials": SecurityEventType.LOGIN_FAILED,
+    "too_many_login_attempts": SecurityEventType.LOGIN_LOCKED_OUT,
+    "invalid_token": SecurityEventType.TOKEN_INVALID,
+    "token_expired": SecurityEventType.TOKEN_EXPIRED,
+    "missing_token": SecurityEventType.TOKEN_INVALID,
+    "unauthorized": SecurityEventType.TOKEN_INVALID,
+    "forbidden": SecurityEventType.PERMISSION_DENIED,
+    "account_disabled": SecurityEventType.ACCOUNT_DISABLED,
+}
+
+#: Suffix identifying the platform's *per-resource* denial classes.
+#:
+#: Every one of them — ``CaseAccessDeniedError``, ``DocumentAccessDeniedError``,
+#: ``OcrAccessDeniedError``, ``IndexAccessDeniedError``,
+#: ``SearchAccessDeniedError``, ``TimelineAccessDeniedError`` — subclasses
+#: :class:`AuthorizationError` and deliberately keeps its generic ``forbidden``
+#: code, because a 403 body must never say which rule refused it. So the *class*
+#: is what tells them apart, and telling them apart is worth doing: a caller
+#: without the capability is a configuration question, while a caller who holds
+#: it and asked for somebody else's case is the pattern that matters.
+_RESOURCE_DENIAL_SUFFIX: str = "AccessDeniedError"
 
 
 class AppException(Exception):
@@ -1174,6 +1228,107 @@ class NotificationsDisabledError(AppException):
 
 
 # --------------------------------------------------------------------------- #
+# Dashboard errors
+#
+# Two, and the absence of a third is the point: the dashboard writes nothing, so
+# there is no create, update, or delete path that could fail. Every other way a
+# widget can go wrong is handled *inside* the response — a widget that could not
+# be computed comes back marked unavailable, because the spec requires that one
+# failing widget must not prevent the dashboard from loading.
+# --------------------------------------------------------------------------- #
+
+
+class DashboardWidgetNotFoundError(AppException):
+    """No such widget is available to this caller.
+
+    **404, and it deliberately conflates two situations**: a widget key this
+    version does not define, and one the caller lacks the capabilities for. The
+    reasoning is the one :class:`NotificationNotFoundError` records, applied to a
+    catalog rather than to a row — answering 403 for the second would turn the
+    per-widget endpoint into an oracle for "which analytics does this deployment
+    have that I am not trusted with", which is precisely what the spec's *"users
+    must never see widgets they are not authorized to access"* is protecting.
+
+    A client never has to guess: ``GET /dashboard/widgets`` returns exactly the
+    widgets this caller may refresh.
+    """
+
+    status_code = status.HTTP_404_NOT_FOUND
+    error_code = "dashboard_widget_not_found"
+    message = "Dashboard widget not found."
+
+
+class DashboardDisabledError(AppException):
+    """The dashboard is switched off for this deployment.
+
+    503 rather than 404: the capability exists and the request is valid — an
+    operator has turned it off. Nothing else is affected, because the dashboard
+    owns no data: every case, document, report, and notification stays exactly as
+    readable through its own module's API as it was.
+    """
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    error_code = "dashboard_disabled"
+    message = "The dashboard is currently disabled on this platform."
+
+
+# --------------------------------------------------------------------------- #
+# Settings errors
+#
+# Only two, and both are about the *request* rather than about a resource. The
+# Settings module has no "not found": a setting the platform does not define is a
+# request naming something that never existed, and a caller's own settings always
+# exist — an account with no stored rows has the platform defaults, which is an
+# answer rather than an absence. There is likewise no "settings disabled": every
+# other feature switch on this platform turns off an outward-facing side effect
+# or an expensive pipeline, and a deployment where nobody can change their
+# password is not a configuration anybody wants.
+# --------------------------------------------------------------------------- #
+
+
+class UnknownSettingError(AppException):
+    """A request named a setting this version of the platform does not define.
+
+    **422 rather than 404**, because the identifier arrived in a request body
+    rather than in a path: nothing was looked up and nothing was missing — the
+    payload is simply not one the API accepts. It names the offending key in
+    ``details`` so a client can say *which* row of a settings form was rejected,
+    and so an older client sending a key a newer server dropped gets an
+    actionable answer rather than a blanket refusal.
+
+    Registries are read **tolerantly on the way out** (see
+    :func:`~core.settings.user_setting_from_value`) and strictly on the way in,
+    and the asymmetry is deliberate: a stored key an instance does not recognise
+    must not stop somebody's settings page from loading, while an unrecognised
+    key somebody is trying to *write* is a bug worth reporting.
+    """
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    error_code = "unknown_setting"
+    message = "One or more settings are not recognised."
+
+
+class InvalidSettingValueError(AppException):
+    """A supplied value is not acceptable for the setting it was sent for.
+
+    422, and — the part that matters — **nothing has been written when this is
+    raised**. ``20-settings.md``: *"Invalid configuration should never corrupt
+    stored preferences."* The service validates the whole batch before issuing a
+    single statement, so a form with one bad field leaves every other field
+    exactly as it was rather than half-applied. That is the same all-or-nothing
+    rule Case Management applies to a request touching a field the caller cannot
+    reach.
+
+    ``details`` carries one entry per rejected key, each naming the key and why
+    — never the value, which is the user's own text.
+    """
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    error_code = "invalid_setting_value"
+    message = "One or more settings have an invalid value."
+
+
+# --------------------------------------------------------------------------- #
 # Timeline errors
 #
 # Only two, because the timeline is read-only over HTTP: events are published by
@@ -1255,12 +1410,111 @@ def _build_response(
     )
 
 
+def _client_source(request: Request) -> str | None:
+    """Return an opaque client identifier for security counting, or ``None``.
+
+    Derived from ``X-Forwarded-For`` **only** when the deployment says it sits
+    behind a trusted proxy, which is the same rule
+    :mod:`services.login_throttle` applies and for the stronger of the two
+    reasons: there, a spoofed header lets somebody get another client locked out;
+    here it would only distort a count — but two rules for one question is how
+    the two answers start to disagree.
+
+    The value is handed to :class:`~services.security_monitor.SecurityMonitor`,
+    which folds it into a salted digest and discards it. It is never stored,
+    logged, or returned.
+    """
+    try:
+        if settings.TRUST_PROXY_HEADERS:
+            forwarded = request.headers.get("X-Forwarded-For")
+            if forwarded:
+                return forwarded.split(",")[0].strip() or None
+        client = request.client
+        return client.host if client else None
+    except Exception:  # pragma: no cover - defensive
+        return None
+
+
+def _observe_application_error(request: Request, exc: AppException) -> None:
+    """Record one handled failure as a metric, and as a security event if it is one.
+
+    Called from the handler rather than from anything that raises, which is the
+    property that keeps every business module free of monitoring code. Wrapped
+    whole in a ``try``: this runs while the platform is already answering an
+    error, and a monitoring failure here would replace a clean 403 with a 500.
+    """
+    try:
+        event = _SECURITY_EVENTS.get(exc.error_code)
+        if type(exc).__name__.endswith(_RESOURCE_DENIAL_SUFFIX):
+            event = SecurityEventType.RESOURCE_ACCESS_DENIED
+        if exc.status_code == status.HTTP_429_TOO_MANY_REQUESTS and event is None:
+            event = SecurityEventType.RATE_LIMITED
+
+        if event is not None:
+            user = getattr(request.state, "user", None)
+            role = getattr(getattr(user, "role", None), "value", None)
+            get_security_monitor().record(
+                event,
+                role=role,
+                reason=exc.error_code,
+                source=_client_source(request),
+            )
+
+        # Only server faults are tracked as errors. A 404, a 403, and a 422 are
+        # the platform working: recording them here would bury the failures an
+        # operator can act on under the ordinary traffic of a public API, and the
+        # metrics registry already counts every 4xx by route and status class.
+        if exc.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
+            get_error_tracker().record(
+                category=ErrorCategory.HANDLED,
+                component=MonitoringComponent.API,
+                exception_type=type(exc).__name__,
+                message=getattr(exc, "detail", None) or exc.message,
+                location=_raise_location(exc),
+                operation=_route_template(request),
+                status_code=exc.status_code,
+            )
+    except Exception:  # pragma: no cover - defensive
+        return
+
+
+def _route_template(request: Request) -> str | None:
+    """The matched route template, for grouping. Never the resolved path.
+
+    Delegates to :func:`~core.middleware._route_of` rather than re-deriving it,
+    so an error group's ``operation`` and the metric label for the same request
+    are always the same string — two independent derivations is how a monitoring
+    page ends up unable to join its own two halves.
+    """
+    try:
+        from core.middleware import UNMATCHED_ROUTE, _route_of
+
+        route = _route_of(request)
+        return None if route == UNMATCHED_ROUTE else route
+    except Exception:  # pragma: no cover - defensive
+        return None
+
+
+def _raise_location(exc: BaseException) -> str | None:
+    """``file.py:line`` for the deepest frame of ``exc``, if it has a traceback."""
+    try:
+        traceback = exc.__traceback__
+        if traceback is None:
+            return None
+        while traceback.tb_next is not None:
+            traceback = traceback.tb_next
+        filename = traceback.tb_frame.f_code.co_filename.replace("\\", "/").rsplit("/", 1)[-1]
+        return f"{filename}:{traceback.tb_lineno}"
+    except Exception:  # pragma: no cover - defensive
+        return None
+
+
 async def _app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
     # Server-fault exceptions are logged at error level; client faults stay at
     # warning so an operator's error feed is not filled with ordinary 4xx traffic.
     log = logger.error if exc.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR else logger.warning
     log(
-        "application_error",
+        LogEvent.APPLICATION_ERROR,
         error_code=exc.error_code,
         status_code=exc.status_code,
         message=exc.message,
@@ -1268,6 +1522,7 @@ async def _app_exception_handler(request: Request, exc: AppException) -> JSONRes
         # body (e.g. an unknown permission identifier) but still need them logged.
         detail=getattr(exc, "detail", None),
     )
+    _observe_application_error(request, exc)
     return _build_response(
         status_code=exc.status_code,
         error_code=exc.error_code,
@@ -1310,7 +1565,22 @@ async def _validation_exception_handler(request: Request, exc: RequestValidation
 
 async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     # Log the full exception server-side; never expose internals to the client.
-    logger.exception("unhandled_exception", path=request.url.path, method=request.method)
+    logger.exception(LogEvent.UNHANDLED_EXCEPTION, path=request.url.path, method=request.method)
+    # Tracked as well as logged, and the difference is what each is for: the log
+    # entry is one occurrence with its full traceback, and the tracked group is
+    # *"this has now happened 240 times since 09:14"* — which is the sentence that
+    # decides whether anybody is woken up. Wrapped, because a monitoring failure
+    # inside the last-resort handler has nowhere left to be caught.
+    with contextlib.suppress(Exception):
+        get_error_tracker().record(
+            category=ErrorCategory.UNHANDLED,
+            component=MonitoringComponent.API,
+            exception_type=type(exc).__name__,
+            message=str(exc),
+            location=_raise_location(exc),
+            operation=_route_template(request),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
     return _build_response(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         error_code="internal_error",

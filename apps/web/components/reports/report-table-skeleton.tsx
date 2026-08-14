@@ -1,3 +1,7 @@
+"use client";
+
+import { useTranslations } from "next-intl";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -22,22 +26,29 @@ export function ReportTableSkeleton({
   rows?: number;
   showCase?: boolean;
 }) {
+  const t = useTranslations("reports.table");
+  const tActions = useTranslations("common.actions");
+
   return (
     <div
       className="w-full overflow-x-auto rounded-lg border border-border"
       aria-busy="true"
-      aria-label="Loading reports"
+      aria-label={t("loading")}
     >
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Report</TableHead>
-            {showCase ? <TableHead className="hidden lg:table-cell">Case</TableHead> : null}
-            <TableHead>Status</TableHead>
-            <TableHead className="hidden xl:table-cell">Sections</TableHead>
-            <TableHead className="hidden xl:table-cell">Requested</TableHead>
+            <TableHead>{t("columns.report")}</TableHead>
+            {showCase ? (
+              <TableHead className="hidden lg:table-cell">{t("columns.case")}</TableHead>
+            ) : null}
+            <TableHead>{t("columns.status")}</TableHead>
+            <TableHead className="hidden xl:table-cell">{t("columns.sections")}</TableHead>
+            <TableHead className="hidden xl:table-cell">
+              {t("columns.requested")}
+            </TableHead>
             <TableHead className="w-12">
-              <span className="sr-only">Actions</span>
+              <span className="sr-only">{tActions("openMenu")}</span>
             </TableHead>
           </TableRow>
         </TableHeader>

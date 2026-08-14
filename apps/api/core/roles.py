@@ -52,11 +52,20 @@ __all__ = [
 #: case and document policies the caller is already subject to. A court
 #: representative connected with it receives exactly the updates for the cases
 #: they could already open, and nothing else.
+#: ``settings:update`` joins ``settings:view`` here for the reason the pair
+#: exists at all: they are *the caller's own* settings, and there is no endpoint
+#: that takes another user's identifier for either. A role that could read its
+#: preferences and not change them would be able to see the theme it is stuck
+#: with — which is not a policy anybody would write. ``settings:manage`` (the
+#: platform's own configuration) and ``settings:monitor`` (the metrics view) are
+#: deliberately **not** here: the first reaches every account on the platform and
+#: the second is administrative like every other ``*:monitor``.
 BASE_PERMISSIONS: frozenset[Permission] = frozenset(
     {
         Permission.NOTIFICATIONS_VIEW,
         Permission.REALTIME_CONNECT,
         Permission.SETTINGS_VIEW,
+        Permission.SETTINGS_UPDATE,
     }
 )
 

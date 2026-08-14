@@ -18,6 +18,7 @@ import {
   reindexDocument,
 } from "@/lib/api/indexing";
 import { ApiError, NetworkError } from "@/lib/api/errors";
+import { useErrorMessage, type ErrorCodeMap } from "@/hooks/use-error-message";
 import type { DocumentIndex, IndexMetrics } from "@/types/indexing";
 import type { DocumentIndexPage, IndexListQuery } from "@/types/indexing-management";
 
@@ -64,42 +65,27 @@ export const indexingKeys = {
 };
 
 /**
- * Translate a failure into a message safe to show the user.
+ * Translate a failure into a sentence in the reader's language.
  *
- * Branches on the API's machine-readable `code` rather than on message text,
- * which is localizable and may change. `indexing_not_ready` carries the server's
- * own message through verbatim, because only the server knows what state the
- * document's extraction is actually in.
+ * Branches on the API's machine-readable `code` rather than on message text —
+ * which the server writes in English, with no knowledge of who is reading it.
+ * `hooks/use-error-message.ts` records why that matters; the short version is
+ * that an interface which is Arabic everywhere except when something goes wrong
+ * is not localized. Codes with no entry here fall through to the shared
+ * `errors.*` sentences and then to a generic one.
  */
-export function indexingErrorMessage(error: unknown): string {
-  if (error instanceof NetworkError) return error.message;
+const INDEXING_ERRORS: ErrorCodeMap = {
+  document_index_not_found: "notIndexed",
+  indexing_not_ready: "notReady",
+  indexing_already_running: "alreadyRunning",
+  indexing_disabled: "disabled",
+  document_not_found: "documentNotFound",
+  document_version_not_found: "versionNotFound",
+  missing_token: "sessionExpired",
+};
 
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case "document_index_not_found":
-        return "This document has not been indexed for search.";
-      case "indexing_not_ready":
-        return error.message;
-      case "indexing_already_running":
-        return "This document is already being indexed.";
-      case "indexing_disabled":
-        return "Document indexing is currently disabled on this platform.";
-      case "document_not_found":
-        return "This document no longer exists. Refresh the page and try again.";
-      case "document_version_not_found":
-        return "That version of the document is no longer available.";
-      case "forbidden":
-        return "You do not have permission to perform this action.";
-      case "invalid_token":
-      case "token_expired":
-      case "missing_token":
-        return "Your session has expired. Sign in again to continue.";
-      default:
-        return error.message || "Something went wrong. Please try again.";
-    }
-  }
-
-  return "Something went wrong. Please try again.";
+export function useIndexingErrorMessage(): (error: unknown) => string {
+  return useErrorMessage("indexing.errors", INDEXING_ERRORS);
 }
 
 /** Whether a failure is the API saying "this document has no index record". */

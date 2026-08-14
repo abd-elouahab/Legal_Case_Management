@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { Check, Copy, ThumbsDown, ThumbsUp } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,8 @@ export function MessageFeedbackControls({
 }) {
   const submit = useSubmitFeedback();
   const withdraw = useWithdrawFeedback();
+  const t = useTranslations("assistant.feedback");
+  const tActions = useTranslations("common.actions");
   const [copied, setCopied] = React.useState(false);
 
   const current = message.feedback?.rating ?? null;
@@ -77,13 +80,13 @@ export function MessageFeedbackControls({
         onClick={() => rate("helpful")}
         disabled={busy}
         aria-pressed={current === "helpful"}
-        aria-label={current === "helpful" ? "Remove helpful rating" : "Rate this answer helpful"}
+        aria-label={current === "helpful" ? t("removeHelpful") : t("rateHelpful")}
       >
         <ThumbsUp
           className={`h-4 w-4 ${current === "helpful" ? "text-[var(--state-success)]" : ""}`}
           aria-hidden="true"
         />
-        Helpful
+        {t("helpful")}
       </Button>
 
       <Button
@@ -95,16 +98,14 @@ export function MessageFeedbackControls({
         disabled={busy}
         aria-pressed={current === "not_helpful"}
         aria-label={
-          current === "not_helpful"
-            ? "Remove not helpful rating"
-            : "Rate this answer not helpful"
+          current === "not_helpful" ? t("removeNotHelpful") : t("rateNotHelpful")
         }
       >
         <ThumbsDown
           className={`h-4 w-4 ${current === "not_helpful" ? "text-[var(--state-warning)]" : ""}`}
           aria-hidden="true"
         />
-        Not helpful
+        {t("notHelpful")}
       </Button>
 
       <Button
@@ -113,23 +114,23 @@ export function MessageFeedbackControls({
         size="sm"
         className="h-7 gap-1 px-2 text-xs"
         onClick={() => void copy()}
-        aria-label="Copy this answer"
+        aria-label={t("copyAnswer")}
       >
         {copied ? (
           <Check className="h-4 w-4 text-[var(--state-success)]" aria-hidden="true" />
         ) : (
           <Copy className="h-4 w-4" aria-hidden="true" />
         )}
-        {copied ? "Copied" : "Copy"}
+        {copied ? tActions("copied") : tActions("copy")}
       </Button>
 
       {/* Announced rather than only drawn, so the outcome of the click reaches a
           screen reader as well as an eye. */}
       <span aria-live="polite" className="sr-only">
         {current === "helpful"
-          ? "Rated helpful."
+          ? t("ratedHelpful")
           : current === "not_helpful"
-            ? "Rated not helpful."
+            ? t("ratedNotHelpful")
             : ""}
       </span>
     </div>

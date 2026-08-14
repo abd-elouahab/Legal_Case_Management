@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowDownWideNarrow, ArrowUpWideNarrow, Search, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,7 @@ import { useCaseAssignees } from "@/hooks/use-case-assignees";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { TimelineQueryState } from "@/hooks/use-timeline-query";
 import { PERMISSION } from "@/types/authorization";
-import { TIMELINE_EVENT_TYPES, TIMELINE_EVENT_TYPE_LABELS } from "@/types/timeline";
+import { TIMELINE_EVENT_TYPES } from "@/types/timeline";
 
 /**
  * Search, filter, and sort controls for a case timeline.
@@ -72,16 +73,20 @@ export function TimelineFilters({ list }: { list: TimelineQueryState }) {
   // repeated `key` in a React list is a defect whatever made it repeat.
   const actors = [...new Map([...lawyers.users, ...representatives.users].map((u) => [u.id, u])).values()];
 
+  const t = useTranslations("timeline.filters");
+  const tEvents = useTranslations("timeline.events");
+  const tActions = useTranslations("common.actions");
+
   const isNewestFirst = list.query.sortOrder === "desc";
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-border p-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
         <div className="flex flex-1 flex-col gap-2">
-          <Label htmlFor="timeline-search">Search activity</Label>
+          <Label htmlFor="timeline-search">{t("search")}</Label>
           <div className="relative">
             <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
               aria-hidden="true"
             />
             <Input
@@ -89,26 +94,26 @@ export function TimelineFilters({ list }: { list: TimelineQueryState }) {
               type="search"
               value={list.searchInput}
               onChange={(event) => list.setSearch(event.target.value)}
-              placeholder="Search by what happened"
-              className="pl-9"
+              placeholder={t("searchPlaceholder")}
+              className="ps-9"
             />
           </div>
         </div>
 
         <div className="flex flex-col gap-2 lg:w-64">
-          <Label htmlFor="timeline-type-filter">Activity type</Label>
+          <Label htmlFor="timeline-type-filter">{t("activityType")}</Label>
           <Select
             value={list.query.eventType ?? ANY}
             onValueChange={(value) => list.setEventType(value === ANY ? null : value)}
           >
             <SelectTrigger id="timeline-type-filter">
-              <SelectValue placeholder="All activity" />
+              <SelectValue placeholder={t("allActivity")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={ANY}>All activity</SelectItem>
+              <SelectItem value={ANY}>{t("allActivity")}</SelectItem>
               {TIMELINE_EVENT_TYPES.map((option) => (
                 <SelectItem key={option} value={option}>
-                  {TIMELINE_EVENT_TYPE_LABELS[option]}
+                  {tEvents(option)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -121,20 +126,20 @@ export function TimelineFilters({ list }: { list: TimelineQueryState }) {
           onClick={list.toggleSortOrder}
           // Says what pressing it *will do*, which is what a screen-reader user
           // needs — the visible label already says what is currently applied.
-          aria-label={isNewestFirst ? "Sort oldest first" : "Sort newest first"}
+          aria-label={isNewestFirst ? t("sortOldestFirst") : t("sortNewestFirst")}
         >
           {isNewestFirst ? (
             <ArrowDownWideNarrow className="h-4 w-4" />
           ) : (
             <ArrowUpWideNarrow className="h-4 w-4" />
           )}
-          {isNewestFirst ? "Newest first" : "Oldest first"}
+          {isNewestFirst ? t("newestFirst") : t("oldestFirst")}
         </Button>
 
         {list.isFiltered ? (
           <Button type="button" variant="ghost" onClick={list.reset}>
             <X className="h-4 w-4" />
-            Clear
+            {tActions("clear")}
           </Button>
         ) : null}
       </div>
@@ -142,16 +147,16 @@ export function TimelineFilters({ list }: { list: TimelineQueryState }) {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {canFilterByActor ? (
           <div className="flex flex-col gap-2">
-            <Label htmlFor="timeline-actor-filter">Performed by</Label>
+            <Label htmlFor="timeline-actor-filter">{t("performedBy")}</Label>
             <Select
               value={list.query.actorId ?? ANY}
               onValueChange={(value) => list.setActor(value === ANY ? null : value)}
             >
               <SelectTrigger id="timeline-actor-filter">
-                <SelectValue placeholder="Anyone" />
+                <SelectValue placeholder={t("anyone")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ANY}>Anyone</SelectItem>
+                <SelectItem value={ANY}>{t("anyone")}</SelectItem>
                 {actors.map((user) => (
                   <SelectItem key={user.id} value={user.id}>
                     {user.fullName}
@@ -164,13 +169,13 @@ export function TimelineFilters({ list }: { list: TimelineQueryState }) {
 
         <DateFilter
           id="timeline-date-from"
-          label="From"
+          label={t("from")}
           value={list.query.dateFrom}
           onChange={(value) => list.setDateRange(value, list.query.dateTo)}
         />
         <DateFilter
           id="timeline-date-to"
-          label="Until"
+          label={t("until")}
           value={list.query.dateTo}
           onChange={(value) => list.setDateRange(list.query.dateFrom, value)}
         />

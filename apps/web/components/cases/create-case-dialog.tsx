@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslations } from "next-intl";
 import { FilePlus2 } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
@@ -18,7 +19,8 @@ import {
 import { Spinner } from "@/components/shared/spinner";
 import { CaseFormFieldset } from "@/components/cases/case-form";
 import { usePermissions } from "@/hooks/use-permissions";
-import { caseErrorMessage, caseFieldErrors, useCreateCase } from "@/hooks/use-cases";
+import { caseFieldErrors, useCaseErrorMessage, useCreateCase } from "@/hooks/use-cases";
+import { useFieldError } from "@/hooks/use-field-error";
 import { createCaseFormSchema, type CreateCaseFormValues } from "@/lib/validation/case";
 import { PERMISSION } from "@/types/authorization";
 import { CASE_STATUSES } from "@/types/case";
@@ -28,7 +30,7 @@ import { CASE_STATUSES } from "@/types/case";
  *
  * Owns nothing but presentation and form state: the request, cache
  * invalidation, and error translation all live in `useCreateCase` /
- * `caseErrorMessage`, per the standard that components carry no business logic.
+ * `useCaseErrorMessage`, per the standard that components carry no business logic.
  *
  * Server-side validation failures are mapped back onto the offending fields
  * rather than shown only as a banner, so a rejected case number lands next to
@@ -66,6 +68,10 @@ export function CreateCaseDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const createCase = useCreateCase();
+  const t = useTranslations("cases.createDialog");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useCaseErrorMessage();
+  const fieldError = useFieldError();
   const { can } = usePermissions();
   const canAssign = can(PERMISSION.casesAssign);
   const [formError, setFormError] = React.useState<string | null>(null);
@@ -134,7 +140,7 @@ export function CreateCaseDialog({
         assignedCourtRepresentativeId: values.assignedCourtRepresentativeId || null,
       });
 
-      toast.success(`Case ${created.caseNumber} was created.`);
+      toast.success(t("created", { caseNumber: created.caseNumber }));
       onOpenChange(false);
     } catch (error) {
       const fields = caseFieldErrors(error);
@@ -143,7 +149,7 @@ export function CreateCaseDialog({
       }
       // Only surface the banner when nothing could be attached to a field —
       // otherwise the same complaint would appear twice.
-      if (Object.keys(fields).length === 0) setFormError(caseErrorMessage(error));
+      if (Object.keys(fields).length === 0) setFormError(errorMessage(error));
     }
   });
 
@@ -153,11 +159,8 @@ export function CreateCaseDialog({
     <Dialog open={open} onOpenChange={isPending ? undefined : onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>New case</DialogTitle>
-          <DialogDescription>
-            Open a case and, optionally, assign the lawyer and court representative
-            who will work on it.
-          </DialogDescription>
+          <DialogTitle>{t("title")}</DialogTitle>
+          <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
@@ -173,17 +176,17 @@ export function CreateCaseDialog({
               nextHearingDate: register("nextHearingDate"),
             }}
             errors={{
-              caseNumber: errors.caseNumber?.message,
-              title: errors.title?.message,
-              description: errors.description?.message,
-              category: errors.category?.message,
-              status: errors.status?.message,
-              priority: errors.priority?.message,
-              courtName: errors.courtName?.message,
-              filingDate: errors.filingDate?.message,
-              nextHearingDate: errors.nextHearingDate?.message,
-              assignedLawyerId: errors.assignedLawyerId?.message,
-              assignedCourtRepresentativeId: errors.assignedCourtRepresentativeId?.message,
+              caseNumber: fieldError(errors.caseNumber?.message),
+              title: fieldError(errors.title?.message),
+              description: fieldError(errors.description?.message),
+              category: fieldError(errors.category?.message),
+              status: fieldError(errors.status?.message),
+              priority: fieldError(errors.priority?.message),
+              courtName: fieldError(errors.courtName?.message),
+              filingDate: fieldError(errors.filingDate?.message),
+              nextHearingDate: fieldError(errors.nextHearingDate?.message),
+              assignedLawyerId: fieldError(errors.assignedLawyerId?.message),
+              assignedCourtRepresentativeId: fieldError(errors.assignedCourtRepresentativeId?.message),
             }}
             status={status}
             statusOptions={CREATABLE_STATUSES}
@@ -208,18 +211,18 @@ export function CreateCaseDialog({
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              {tActions("cancel")}
             </Button>
             <Button type="submit" disabled={isPending}>
               {isPending ? (
                 <>
                   <Spinner className="h-4 w-4 text-current" />
-                  Creating…
+                  {t("creating")}
                 </>
               ) : (
                 <>
                   <FilePlus2 className="h-4 w-4" />
-                  Create case
+                  {t("submit")}
                 </>
               )}
             </Button>

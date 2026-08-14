@@ -30,11 +30,8 @@ import { ROUTES } from "@/lib/routes";
 import { documentIndexSchema, indexMetricsSchema } from "@/lib/validation/indexing";
 import { useSessionStore } from "@/stores/session-store";
 import { DEFAULT_INDEX_LIST_QUERY } from "@/types/indexing-management";
-import {
-  INDEX_STATUSES,
-  indexFailureLabel,
-  indexLanguageLabel,
-} from "@/types/indexing";
+import { INDEX_FAILURE_CODES, INDEX_STATUSES } from "@/types/indexing";
+import en from "@/messages/en.json";
 import type { LegalDocument } from "@/types/document";
 import type { UserRole } from "@/types/user";
 import {
@@ -217,27 +214,30 @@ describe("indexing wire contract", () => {
   });
 });
 
+// Since `21-localization.md` these labels are catalogue entries rather than a
+// `Record` in `types/indexing.ts`, so the assertion moved with them: what is
+// checked is that the English catalogue names every failure cause the platform
+// can report, which is the property the old `indexFailureLabel` test was really
+// asserting. The *fallback* for an unrecognised code is the provider's
+// `getMessageFallback` and is covered once, in `tests/localization.test.tsx`.
 describe("labels", () => {
-  it("labels the known failure causes", () => {
-    expect(indexFailureLabel("vector_store_unavailable")).toBe("Search index unavailable");
+  it("names every failure cause the platform defines", () => {
+    for (const code of INDEX_FAILURE_CODES) {
+      expect(en.indexing.failures).toHaveProperty(code);
+      expect(en.indexing.failures[code as keyof typeof en.indexing.failures]).not.toBe("");
+    }
   });
 
-  it("falls back to a readable form of an unknown one", () => {
-    expect(indexFailureLabel("quota_exhausted")).toBe("Quota exhausted");
+  it("names the platform's languages in the shared vocabulary", () => {
+    expect(en.common.languages.ar).toBe("Arabic");
+    expect(en.common.languages.fr).toBe("French");
+    expect(en.common.languages.und).toBe("Undetermined");
   });
 
-  it("labels a failure with no code at all", () => {
-    expect(indexFailureLabel(null)).toBe("Failed");
-  });
-
-  it("names the platform's languages", () => {
-    expect(indexLanguageLabel("ar")).toBe("Arabic");
-    expect(indexLanguageLabel("fr")).toBe("French");
-    expect(indexLanguageLabel("und")).toBe("Undetermined");
-  });
-
-  it("passes an unknown language code through rather than hiding it", () => {
-    expect(indexLanguageLabel("es")).toBe("es");
+  it("names every indexing status", () => {
+    for (const status of INDEX_STATUSES) {
+      expect(en.indexing.statuses).toHaveProperty(status);
+    }
   });
 });
 

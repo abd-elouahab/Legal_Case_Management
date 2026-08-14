@@ -118,6 +118,19 @@ class UserRepository:
             user.updated_by = updated_by
         self._session.commit()
 
+    def bump_session_generation(self, user: User) -> None:
+        """Invalidate every token issued for this user, without changing anything else.
+
+        The revocation half of :meth:`set_password`, on its own — added by
+        ``20-settings.md``'s *"Logout Other Sessions"*, which needs exactly this
+        and must not touch the password. One durable write invalidates every
+        outstanding token, whatever device holds it and whether or not the session
+        registry ever heard of it; the caller then mints a replacement pair under
+        the new generation so the device making the request stays signed in.
+        """
+        user.session_generation += 1
+        self._session.commit()
+
     # ------------------------------------------------------------- helpers #
 
     @staticmethod

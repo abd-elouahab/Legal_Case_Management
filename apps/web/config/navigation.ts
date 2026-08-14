@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  Activity,
   Bell,
   Bot,
   FileBarChart,
@@ -28,20 +29,24 @@ import { PERMISSION, type AccessRule } from "@/types/authorization";
  * also an item they are never shown, because both read the same rule. Adding a
  * navigation destination therefore means declaring its permission once, here.
  *
- * `title` values are placeholder copy for now. When localization (next-intl)
- * lands they become translation keys — the structure below is designed so only
- * the `title` field needs to change.
+ * **Every label here is a translation key**, not a sentence. `21-localization.md`
+ * forbids hardcoded user-facing text, and a navigation item is the clearest case
+ * for it: the same destination appears in the sidebar, in a tooltip, and in the
+ * breadcrumb trail, so a label written three times would be three places to
+ * translate. The keys resolve against the `navigation` namespace in
+ * `messages/*.json`, and the components that render them are the only place a
+ * word appears.
  */
 
 export interface NavItem {
-  /** Human-readable label (future: i18n key). */
-  title: string;
+  /** Translation key under `navigation.items`. */
+  titleKey: string;
   /** Target path — always a {@link ROUTES} value. */
   href: string;
   /** Lucide icon rendered at `h-5 w-5` per the UI context. */
   icon: LucideIcon;
-  /** Optional short description for tooltips / collapsed states. */
-  description?: string;
+  /** Translation key under `navigation.descriptions`, for tooltips. */
+  descriptionKey?: string;
   /**
    * Permission requirement for this destination. Omitted means every
    * authenticated user may see it.
@@ -50,8 +55,8 @@ export interface NavItem {
 }
 
 export interface NavSection {
-  /** Section label (future: i18n key). May be omitted for the primary group. */
-  title?: string;
+  /** Translation key under `navigation.sections`. Omitted for the primary group. */
+  titleKey?: string;
   items: NavItem[];
 }
 
@@ -63,31 +68,31 @@ export const sidebarNavigation: NavSection[] = [
   {
     items: [
       {
-        title: "Dashboard",
+        titleKey: "dashboard",
         href: ROUTES.dashboard,
         icon: LayoutDashboard,
-        description: "Key case metrics at a glance",
+        descriptionKey: "dashboard",
         // The landing page for every role; its widgets gate themselves.
       },
       {
-        title: "Cases",
+        titleKey: "cases",
         href: ROUTES.cases,
         icon: Scale,
-        description: "Manage legal cases",
+        descriptionKey: "cases",
         access: { permission: PERMISSION.casesView },
       },
       {
-        title: "Documents",
+        titleKey: "documents",
         href: ROUTES.documents,
         icon: FileText,
-        description: "Legal documents and files",
+        descriptionKey: "documents",
         access: { permission: PERMISSION.documentsView },
       },
       {
-        title: "Search",
+        titleKey: "search",
         href: ROUTES.search,
         icon: Search,
-        description: "Find passages across indexed documents",
+        descriptionKey: "search",
         // Semantic search over the case file. Placed directly after Documents
         // because it searches exactly what that page lists — and gated on its
         // own capability rather than on `documents:view`, since retrieval has a
@@ -97,35 +102,35 @@ export const sidebarNavigation: NavSection[] = [
         access: { permission: PERMISSION.searchQuery },
       },
       {
-        title: "Users",
+        titleKey: "users",
         href: ROUTES.users,
         icon: UsersRound,
-        description: "Platform accounts and roles",
+        descriptionKey: "users",
         // User Management: administrators only, by capability rather than role.
         access: { permission: PERMISSION.usersView },
       },
       {
-        title: "Lawyers",
+        titleKey: "lawyers",
         href: ROUTES.lawyers,
         icon: Users,
-        description: "Assigned lawyers",
+        descriptionKey: "lawyers",
         // Case-facing view of lawyers and their assignments (a later feature).
         // Distinct from Users, which manages accounts across all three roles.
         access: { permission: PERMISSION.usersView },
       },
       {
-        title: "Court Updates",
+        titleKey: "courtUpdates",
         href: ROUTES.courtUpdates,
         icon: Gavel,
-        description: "Hearings and court decisions",
+        descriptionKey: "courtUpdates",
         // Court activity is part of the case record, so it follows case access.
         access: { permission: PERMISSION.casesView },
       },
       {
-        title: "Reports",
+        titleKey: "reports",
         href: ROUTES.reports,
         icon: FileBarChart,
-        description: "AI-generated legal reports",
+        descriptionKey: "reports",
         // Gated on `reports:view`, which is *reading your own history* rather
         // than a row grant — every read on the API is keyed by the requester, so
         // a lawyer holding this sees the reports they generated and nobody
@@ -138,28 +143,42 @@ export const sidebarNavigation: NavSection[] = [
     ],
   },
   {
-    title: "Workspace",
+    titleKey: "workspace",
     items: [
       {
-        title: "Notifications",
+        titleKey: "notifications",
         href: ROUTES.notifications,
         icon: Bell,
-        description: "Alerts and reminders",
+        descriptionKey: "notifications",
         access: { permission: PERMISSION.notificationsView },
       },
       {
-        title: "AI Assistant",
+        titleKey: "aiAssistant",
         href: ROUTES.aiAssistant,
         icon: Bot,
-        description: "Legal document Q&A and summaries",
+        descriptionKey: "aiAssistant",
         access: { permission: PERMISSION.aiChat },
       },
       {
-        title: "Settings",
+        titleKey: "settings",
         href: ROUTES.settings,
         icon: Settings,
-        description: "Workspace preferences",
+        descriptionKey: "settings",
         access: { permission: PERMISSION.settingsView },
+      },
+      {
+        titleKey: "monitoring",
+        href: ROUTES.monitoring,
+        icon: Activity,
+        descriptionKey: "monitoring",
+        // The platform's operational state, and the **only destination in this
+        // config that is not about the platform's subject matter**. It is gated
+        // on `monitoring:view`, which administrators alone hold — `22-monitoring.md`
+        // is explicit that regular users must never reach a monitoring endpoint —
+        // so for a lawyer or a court representative this item does not exist:
+        // the sidebar filter and the route guard read this same rule, and the API
+        // refuses independently of both.
+        access: { permission: PERMISSION.monitoringView },
       },
     ],
   },
@@ -188,12 +207,17 @@ export const routeAccessRules: ReadonlyArray<{ path: string; access: AccessRule 
     .map((item) => ({ path: item.href, access: item.access }));
 
 /**
- * Path → label lookup used by the breadcrumb helper. Includes every navigation
- * destination plus shell-only routes that never appear in the sidebar.
+ * Path → translation key, used by the breadcrumb helper.
+ *
+ * Includes every navigation destination plus the shell-only routes that never
+ * appear in the sidebar. **Keys rather than labels**, so a breadcrumb and the
+ * sidebar item it corresponds to cannot drift — and so `lib/breadcrumbs.ts` stays
+ * a pure function with no translator in it, which is what lets it be unit-tested
+ * without a provider.
  */
-export const routeLabels: Record<string, string> = {
-  [ROUTES.dashboard]: "Dashboard",
-  ...Object.fromEntries(navItems.map((item) => [item.href, item.title])),
-  [ROUTES.accessDenied]: "Access Denied",
-  [ROUTES.login]: "Sign In",
+export const routeLabelKeys: Record<string, string> = {
+  [ROUTES.dashboard]: "dashboard",
+  ...Object.fromEntries(navItems.map((item) => [item.href, item.titleKey])),
+  [ROUTES.accessDenied]: "accessDenied",
+  [ROUTES.login]: "signIn",
 };

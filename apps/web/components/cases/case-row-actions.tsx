@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { Archive, ArchiveRestore, Eye, MoreHorizontal, Pencil, UserCog } from "lucide-react";
 
 import { Protected } from "@/components/auth/protected";
@@ -38,6 +39,9 @@ export function CaseRowActions({
   onRestore: (legalCase: LegalCase) => void;
   onAssign: (legalCase: LegalCase) => void;
 }) {
+  const t = useTranslations("cases.actions");
+  const tActions = useTranslations("common.actions");
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -45,33 +49,33 @@ export function CaseRowActions({
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          aria-label={`Actions for ${legalCase.caseNumber}`}
+          aria-label={t("menuFor", { caseNumber: legalCase.caseNumber })}
         >
           <MoreHorizontal className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("label")}</DropdownMenuLabel>
 
         <DropdownMenuItem asChild>
           <Link href={caseRoute(legalCase.id)}>
             <Eye className="h-4 w-4" />
-            View details
+            {t("viewDetails")}
           </Link>
         </DropdownMenuItem>
 
         <Protected permission={PERMISSION.casesUpdate}>
           <DropdownMenuItem onSelect={() => onEdit(legalCase)}>
             <Pencil className="h-4 w-4" />
-            Edit
+            {tActions("edit")}
           </DropdownMenuItem>
         </Protected>
 
         <Protected permission={PERMISSION.casesAssign}>
           <DropdownMenuItem onSelect={() => onAssign(legalCase)}>
             <UserCog className="h-4 w-4" />
-            Manage assignments
+            {t("manageAssignments")}
           </DropdownMenuItem>
         </Protected>
 
@@ -84,14 +88,14 @@ export function CaseRowActions({
           <Protected permission={PERMISSION.casesUpdate}>
             <DropdownMenuItem onSelect={() => onRestore(legalCase)}>
               <ArchiveRestore className="h-4 w-4" />
-              Restore
+              {t("restore")}
             </DropdownMenuItem>
           </Protected>
         ) : (
           <Protected permission={PERMISSION.casesDelete}>
             <DropdownMenuItem variant="destructive" onSelect={() => onArchive(legalCase)}>
               <Archive className="h-4 w-4" />
-              Archive
+              {t("archive")}
             </DropdownMenuItem>
           </Protected>
         )}

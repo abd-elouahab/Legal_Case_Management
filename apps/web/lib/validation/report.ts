@@ -12,6 +12,8 @@
 
 import { z } from "zod";
 
+import { vm } from "@/lib/validation/messages";
+
 import { assistantCitationSchema } from "@/lib/validation/assistant";
 import { REPORT_SORT_FIELDS } from "@/types/report-management";
 import {
@@ -37,12 +39,12 @@ export const MAX_TITLE_LENGTH = 255;
  * in an export filename.
  */
 export const generateReportSchema = z.object({
-  caseId: z.string().min(1, "Choose the case this report is about."),
-  reportType: z.enum(REPORT_TYPES, { message: "Choose a report type." }),
+  caseId: z.string().min(1, vm("validation.report.caseRequired")),
+  reportType: z.enum(REPORT_TYPES, { message: vm("validation.report.typeRequired") }),
   language: z.enum(REPORT_LANGUAGES).nullable().default(null),
   title: z
     .string()
-    .max(MAX_TITLE_LENGTH, `Keep the title under ${MAX_TITLE_LENGTH} characters.`)
+    .max(MAX_TITLE_LENGTH, vm("validation.maxLengthTitle", { max: MAX_TITLE_LENGTH }))
     .nullable()
     .default(null),
 });

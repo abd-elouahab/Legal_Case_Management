@@ -53,7 +53,13 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     // there is no `notifications:view-all`. `notifications:manage` (addressing
     // the whole platform) and `notifications:monitor` are both withheld.
     "notifications:view",
+    // Their own settings, read and written: both are in the API's
+    // `BASE_PERMISSIONS`, because a role that could not change its own theme or
+    // language would be a role the platform is unusable in. `settings:manage`
+    // (the platform's own configuration) and `settings:monitor` are withheld,
+    // like every other administrative grant here.
     "settings:view",
+    "settings:update",
   ],
   court: [
     "cases:view",
@@ -76,6 +82,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     "timeline:create",
     "notifications:view",
     "settings:view",
+    "settings:update",
   ],
 };
 
@@ -796,14 +803,20 @@ export function notificationSummaryPayload(overrides: Record<string, unknown> = 
 /**
  * A complete preferences response.
  *
- * `overrides` is keyed by preference and sets **both channels**, which is the
+ * `overrides` is keyed by preference and sets **every channel**, which is the
  * common case a test wants ("this one is switched off"). A test that needs the
- * channels to differ — the setting the email channel exists for — passes
- * `emailOverrides` as well.
+ * channels to differ — the setting the outbound channels exist for — passes
+ * `channelOverrides`, keyed by preference then by channel.
+ *
+ * **Every channel the API sends must appear here**, because
+ * `lib/validation/notification.ts` parses the payload strictly: a fixture missing
+ * one turns every preference test into "the query failed" rather than into a
+ * useful assertion. `whatsapp` was the third channel to arrive and is the one
+ * that proved the point.
  */
 export function notificationPreferencesPayload(
   overrides: Record<string, boolean> = {},
-  emailOverrides: Record<string, boolean> = {},
+  channelOverrides: Record<string, Partial<Record<"inApp" | "email" | "whatsapp", boolean>>> = {},
 ) {
   const keys = [
     "case_updates",
@@ -816,12 +829,18 @@ export function notificationPreferencesPayload(
   ] as const;
 
   return {
-    preferences: keys.map((key) => ({
-      preference_key: key,
-      in_app: overrides[key] ?? true,
-      email: emailOverrides[key] ?? overrides[key] ?? true,
-      is_default: !(key in overrides) && !(key in emailOverrides),
-    })),
+    preferences: keys.map((key) => {
+      const perChannel = channelOverrides[key] ?? {};
+      const base = overrides[key] ?? true;
+
+      return {
+        preference_key: key,
+        in_app: perChannel.inApp ?? base,
+        email: perChannel.email ?? base,
+        whatsapp: perChannel.whatsapp ?? base,
+        is_default: !(key in overrides) && !(key in channelOverrides),
+      };
+    }),
   };
 }
 
@@ -1399,4 +1418,209 @@ export function mockUpload(responses: UploadResponse | UploadResponse[] = {}) {
   }
 
   return { uploads, release };
+}
+
+// --------------------------------------------------------------------------- //
+// Settings fixtures
+// --------------------------------------------------------------------------- //
+
+/**
+ * The user-settings registry, in the API's wire format.
+ *
+ * **Definitions travel with the values**, exactly as the API sends them: the
+ * client renders a control from the definition rather than from a table of its
+ * own, so a fixture that omitted them would exercise a code path production does
+ * not have.
+ */
+const SETTING_DEFINITIONS = [
+  {
+    key: "theme",
+    section: "appearance",
+    value_type: "enum",
+    choices: ["light", "dark", "system"],
+    max_length: null,
+    max_items: null,
+  },
+  {
+    key: "language",
+    section: "language",
+    value_type: "enum",
+    choices: ["fr", "ar", "en"],
+    max_length: null,
+    max_items: null,
+  },
+  {
+    key: "timezone",
+    section: "language",
+    value_type: "timezone",
+    choices: [],
+    max_length: null,
+    max_items: null,
+  },
+  {
+    key: "date_format",
+    section: "language",
+    value_type: "enum",
+    choices: ["day_month_year", "month_day_year", "year_month_day", "long"],
+    max_length: null,
+    max_items: null,
+  },
+  {
+    key: "time_format",
+    section: "language",
+    value_type: "enum",
+    choices: ["hour_24", "hour_12"],
+    max_length: null,
+    max_items: null,
+  },
+  {
+    key: "ai_response_length",
+    section: "ai",
+    value_type: "enum",
+    choices: ["concise", "balanced", "detailed"],
+    max_length: null,
+    max_items: null,
+  },
+  {
+    key: "ai_streaming",
+    section: "ai",
+    value_type: "boolean",
+    choices: [],
+    max_length: null,
+    max_items: null,
+  },
+  {
+    key: "ai_citations",
+    section: "ai",
+    value_type: "enum",
+    choices: ["inline", "list", "hidden"],
+    max_length: null,
+    max_items: null,
+  },
+  {
+    key: "dashboard_range",
+    section: "dashboard",
+    value_type: "enum",
+    choices: ["today", "last_7_days", "last_30_days"],
+    max_length: null,
+    max_items: null,
+  },
+  {
+    key: "dashboard_widgets",
+    section: "dashboard",
+    value_type: "string_list",
+    choices: ["my_cases", "recent_cases", "upcoming_hearings"],
+    max_length: null,
+    max_items: 3,
+  },
+] as const;
+
+const SETTING_DEFAULTS: Record<string, boolean | string | string[]> = {
+  theme: "dark",
+  language: "fr",
+  timezone: "UTC",
+  date_format: "day_month_year",
+  time_format: "hour_24",
+  ai_response_length: "balanced",
+  ai_streaming: true,
+  ai_citations: "list",
+  dashboard_range: "last_30_days",
+  dashboard_widgets: [],
+};
+
+/**
+ * A complete settings response.
+ *
+ * `overrides` is keyed by setting; anything absent comes back at its platform
+ * default with `is_default: true`, which is what an account that has never opened
+ * the page actually looks like.
+ */
+export function settingsCollectionPayload(
+  overrides: Record<string, boolean | string | string[]> = {},
+) {
+  return {
+    settings: SETTING_DEFINITIONS.map((definition) => ({
+      key: definition.key,
+      section: definition.section,
+      value: overrides[definition.key] ?? SETTING_DEFAULTS[definition.key],
+      is_default: !(definition.key in overrides),
+    })),
+    definitions: SETTING_DEFINITIONS.map((definition) => ({ ...definition })),
+  };
+}
+
+/** A profile in the API's wire format. */
+export function profilePayload(overrides: Record<string, unknown> = {}) {
+  return {
+    id: TEST_USER.id,
+    email: TEST_USER.email,
+    first_name: "Amina",
+    last_name: "Benali",
+    full_name: "Amina Benali",
+    phone: "+212 612345678",
+    profile_image: null,
+    job_title: null,
+    role: "administrator",
+    status: "active",
+    must_change_password: false,
+    last_login_at: "2026-08-10T08:30:00Z",
+    created_at: "2026-07-01T09:00:00Z",
+    updated_at: "2026-08-10T08:30:00Z",
+    ...overrides,
+  };
+}
+
+/** The section catalog, as the API orders it. */
+export function settingsSectionsPayload(includeAdministration = false) {
+  const sections = [
+    ["profile", "profile"],
+    ["security", "account"],
+    ["notifications", "notification_preferences"],
+    ["communication", "notification_preferences"],
+    ["ai", "user_settings"],
+    ["dashboard", "user_settings"],
+    ["appearance", "user_settings"],
+    ["language", "user_settings"],
+  ];
+  if (includeAdministration) sections.push(["administration", "platform_settings"]);
+
+  return sections.map(([section, storage]) => ({
+    section,
+    storage,
+    editable: true,
+    administrative: storage === "platform_settings",
+  }));
+}
+
+/** Everything `GET /settings` returns. */
+export function settingsOverviewPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    sections: settingsSectionsPayload(),
+    profile: profilePayload(),
+    settings: settingsCollectionPayload(),
+    maintenance: { maintenance_mode: false, message: null },
+    ...overrides,
+  };
+}
+
+/** A live sign-in in the API's wire format. */
+export function sessionPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    session_id: "session-1",
+    is_current: true,
+    created_at: "2026-08-11T08:00:00Z",
+    last_seen_at: "2026-08-11T09:30:00Z",
+    expires_at: "2026-08-18T08:00:00Z",
+    ip_address: "10.0.0.1",
+    user_agent: "Mozilla/5.0 (Windows NT 10.0)",
+    ...overrides,
+  };
+}
+
+/** The sessions list, with the availability flag the registry reports. */
+export function sessionListPayload(
+  sessions: Array<Record<string, unknown>> = [sessionPayload()],
+  available = true,
+) {
+  return { sessions, available };
 }

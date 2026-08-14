@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 
 import {
@@ -14,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { DocumentCategoryBadge, DocumentTypeIcon } from "@/components/documents/document-badges";
 import { DocumentRowActions } from "@/components/documents/document-row-actions";
-import { formatDateTime } from "@/lib/format";
+import { useDateFormat } from "@/hooks/use-date-format";
 import { caseRoute } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type { LegalDocument } from "@/types/document";
@@ -37,41 +38,48 @@ import type { DocumentSortField, SortOrder } from "@/types/document-management";
  * version below `lg` — so a phone still shows what identifies a document.
  */
 
-interface SortableColumn {
-  field: DocumentSortField;
-  label: string;
-}
-
+/**
+ * A sortable column heading.
+ *
+ * Takes the **field** and translates its own label rather than being handed a
+ * string — the same shape `components/cases/case-table.tsx` uses, and for the
+ * same reason: a caller passing `label="File name"` is a caller with a hardcoded
+ * sentence in it.
+ */
 function SortButton({
-  column,
+  field,
   sortBy,
   sortOrder,
   onToggle,
 }: {
-  column: SortableColumn;
+  field: DocumentSortField;
   sortBy: DocumentSortField;
   sortOrder: SortOrder;
   onToggle: (field: DocumentSortField) => void;
 }) {
-  const isActive = sortBy === column.field;
+  const t = useTranslations("documents.table");
+  const tSort = useTranslations("common.sort");
+
+  const isActive = sortBy === field;
   const Icon = !isActive ? ChevronsUpDown : sortOrder === "asc" ? ArrowUp : ArrowDown;
+  const label = t(`columns.${field}`);
 
   return (
     <Button
       variant="ghost"
       size="sm"
-      onClick={() => onToggle(column.field)}
+      onClick={() => onToggle(field)}
       className={cn(
-        "-ml-2 h-8 gap-1 px-2 font-medium",
+        "-ms-2 h-8 gap-1 px-2 font-medium",
         isActive ? "text-foreground" : "text-muted-foreground",
       )}
     >
-      {column.label}
+      {label}
       <Icon className="h-4 w-4" aria-hidden="true" />
       <span className="sr-only">
         {isActive
-          ? `Sorted ${sortOrder === "asc" ? "ascending" : "descending"}. Activate to reverse.`
-          : `Sort by ${column.label}`}
+          ? tSort(sortOrder === "asc" ? "sortedAscending" : "sortedDescending")
+          : tSort("sortBy", { column: label })}
       </span>
     </Button>
   );
@@ -113,6 +121,11 @@ export function DocumentTable({
   /** Dim the table while a new page or filter is loading. */
   isRefreshing?: boolean;
 }) {
+  const { formatDateTime } = useDateFormat();
+  const t = useTranslations("documents.table");
+  const tStates = useTranslations("common.states");
+  const tActions = useTranslations("common.actions");
+
   return (
     <div
       className={cn(
@@ -126,18 +139,20 @@ export function DocumentTable({
           <TableRow>
             <TableHead aria-sort={ariaSort("original_filename", sortBy, sortOrder)}>
               <SortButton
-                column={{ field: "original_filename", label: "File name" }}
+                field="original_filename"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onToggle={onToggleSort}
               />
             </TableHead>
 
-            {showCase ? <TableHead className="hidden lg:table-cell">Case</TableHead> : null}
+            {showCase ? (
+              <TableHead className="hidden lg:table-cell">{t("columns.case")}</TableHead>
+            ) : null}
 
             <TableHead aria-sort={ariaSort("category", sortBy, sortOrder)}>
               <SortButton
-                column={{ field: "category", label: "Category" }}
+                field="category"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onToggle={onToggleSort}
@@ -146,7 +161,7 @@ export function DocumentTable({
 
             <TableHead aria-sort={ariaSort("file_size", sortBy, sortOrder)}>
               <SortButton
-                column={{ field: "file_size", label: "Size" }}
+                field="file_size"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onToggle={onToggleSort}
@@ -158,29 +173,29 @@ export function DocumentTable({
               aria-sort={ariaSort("version", sortBy, sortOrder)}
             >
               <SortButton
-                column={{ field: "version", label: "Version" }}
+                field="version"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onToggle={onToggleSort}
               />
             </TableHead>
 
-            <TableHead className="hidden xl:table-cell">Uploaded by</TableHead>
+            <TableHead className="hidden xl:table-cell">{t("columns.uploadedBy")}</TableHead>
 
             <TableHead
               className="hidden xl:table-cell"
               aria-sort={ariaSort("created_at", sortBy, sortOrder)}
             >
               <SortButton
-                column={{ field: "created_at", label: "Upload date" }}
+                field="created_at"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onToggle={onToggleSort}
               />
             </TableHead>
 
-            <TableHead className="w-12 text-right">
-              <span className="sr-only">Actions</span>
+            <TableHead className="w-12 text-end">
+              <span className="sr-only">{tActions("openMenu")}</span>
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -194,13 +209,13 @@ export function DocumentTable({
                   <button
                     type="button"
                     onClick={() => onView(document)}
-                    className="truncate text-left font-medium text-foreground hover:underline"
+                    className="truncate text-start font-medium text-foreground hover:underline"
                   >
                     {document.originalFilename}
                   </button>
                 </div>
                 {document.description ? (
-                  <p className="truncate pl-6 text-xs text-muted-foreground">
+                  <p className="truncate ps-6 text-xs text-muted-foreground">
                     {document.description}
                   </p>
                 ) : null}
@@ -216,7 +231,9 @@ export function DocumentTable({
                       {document.case.caseNumber}
                     </Link>
                   ) : (
-                    <span className="text-muted-foreground">—</span>
+                    <span className="text-muted-foreground">
+                      {tStates("notAvailable")}
+                    </span>
                   )}
                 </TableCell>
               ) : null}
@@ -230,18 +247,18 @@ export function DocumentTable({
               </TableCell>
 
               <TableCell className="hidden text-muted-foreground lg:table-cell">
-                v{document.version}
+                {t("versionShort", { version: document.version })}
               </TableCell>
 
               <TableCell className="hidden text-muted-foreground xl:table-cell">
-                {document.uploader?.fullName ?? "—"}
+                {document.uploader?.fullName ?? tStates("notAvailable")}
               </TableCell>
 
               <TableCell className="hidden whitespace-nowrap text-muted-foreground xl:table-cell">
                 {formatDateTime(document.createdAt)}
               </TableCell>
 
-              <TableCell className="text-right">
+              <TableCell className="text-end">
                 <DocumentRowActions
                   document={document}
                   onView={onView}

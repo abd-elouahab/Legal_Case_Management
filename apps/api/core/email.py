@@ -62,6 +62,8 @@ from typing import Any, Final
 
 from core.events import DomainEventType
 from core.indexing import LANGUAGE_ARABIC, LANGUAGE_ENGLISH, LANGUAGE_FRENCH
+from core.localization import TEXT_DIRECTIONS as LOCALIZATION_TEXT_DIRECTIONS
+from core.localization import text_direction as localization_text_direction
 from core.notifications import (
     ANNOUNCEMENT_RULES,
     EVENT_RULES,
@@ -470,14 +472,17 @@ def sanitize_header_value(value: str, *, limit: int = 200) -> str:
 #: an email is the one surface where the application's own stylesheet is not
 #: available — a mail client renders the markup it is given, so the direction has
 #: to travel *in* the document.
-TEXT_DIRECTIONS: Mapping[str, str] = MappingProxyType(
-    {LANGUAGE_ARABIC: "rtl", LANGUAGE_FRENCH: "ltr", LANGUAGE_ENGLISH: "ltr"}
-)
+#:
+#: Re-exported from :mod:`core.localization` rather than restated, since
+#: ``21-localization.md`` shipped: the ``dir`` of an email and the ``dir`` of the
+#: web application's document element are the same fact about the same language,
+#: and two tables would be two chances to add a fourth language to one of them.
+TEXT_DIRECTIONS: Mapping[str, str] = LOCALIZATION_TEXT_DIRECTIONS
 
 
 def text_direction(language: str) -> str:
     """``"rtl"`` for Arabic, ``"ltr"`` otherwise."""
-    return TEXT_DIRECTIONS.get(language, "ltr")
+    return localization_text_direction(language)
 
 
 def resolve_email_language(requested: str | None) -> str:
@@ -487,11 +492,13 @@ def resolve_email_language(requested: str | None) -> str:
     email and the in-app notification it carries can never be rendered by two
     different resolvers.
 
-    **There is no per-user language column yet**, so ``requested`` is the
-    deployment's ``EMAIL_DEFAULT_LANGUAGE`` today rather than the recipient's own
-    choice. ``architecture.md`` lists *Language Preferences* under PostgreSQL and
-    nothing has built them; when they arrive, the one change here is the caller
-    passing the user's value instead of the setting's.
+    Since ``21-localization.md`` shipped, ``requested`` is the **recipient's own**
+    ``user_settings.language``, read by
+    :class:`~services.localization.SettingsLanguageDirectory` before the delivery
+    row is queued and snapshotted onto it. ``EMAIL_DEFAULT_LANGUAGE`` remains what
+    an account that has chosen nothing — or one whose settings could not be read —
+    falls back to, and that in turn resolves against the application's own
+    ``DEFAULT_LANGUAGE``.
     """
     return resolve_notification_language(requested)
 

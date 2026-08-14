@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { SendHorizontal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/shared/spinner";
+import { useFieldError } from "@/hooks/use-field-error";
 import { MAX_MESSAGE_LENGTH, messageFormSchema } from "@/lib/validation/assistant";
 
 /**
@@ -46,6 +48,8 @@ export function ChatComposer({
 }) {
   const [internal, setInternal] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
+  const t = useTranslations("assistant.composer");
+  const fieldError = useFieldError();
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
   // Controlled when the parent supplies a value (a suggestion was clicked),
@@ -71,7 +75,7 @@ export function ChatComposer({
   function submit() {
     const parsed = messageFormSchema.safeParse({ content });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "Enter a question.");
+      setError(fieldError(parsed.error.issues[0]?.message) ?? t("enterQuestion"));
       return;
     }
 
@@ -97,7 +101,7 @@ export function ChatComposer({
       }}
     >
       <label htmlFor="assistant-composer" className="sr-only">
-        Ask the assistant a question
+        {t("label")}
       </label>
 
       <div className="flex items-end gap-2 rounded-xl border border-border bg-card p-2">
@@ -110,10 +114,7 @@ export function ChatComposer({
           onChange={(event) => setContent(event.target.value)}
           onKeyDown={onKeyDown}
           disabled={disabled}
-          placeholder={
-            placeholder ??
-            "Ask about your documents — for example, when is the rent payable?"
-          }
+          placeholder={placeholder ?? t("placeholder")}
           className="max-h-52 min-h-10 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
           aria-invalid={error !== null}
           aria-describedby={error ? "assistant-composer-error" : "assistant-composer-hint"}
@@ -122,7 +123,7 @@ export function ChatComposer({
           type="submit"
           size="icon"
           disabled={disabled || isSending || content.trim().length === 0}
-          aria-label="Send question"
+          aria-label={t("send")}
         >
           {isSending ? (
             <Spinner className="h-4 w-4" />
@@ -141,10 +142,7 @@ export function ChatComposer({
           id="assistant-composer-hint"
           className="flex items-center justify-between gap-2 text-xs text-muted-foreground"
         >
-          <span>
-            Answers come from your case documents only, with a citation for every
-            statement. Enter sends · Shift+Enter for a new line.
-          </span>
+          <span>{t("hint")}</span>
           {/* Shown only when it starts to matter: a counter on an empty box is
               noise, and one at 40 characters remaining is information. */}
           {remaining <= 100 ? (

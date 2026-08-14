@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Download, Eye, FileUp, MoreHorizontal, ScanEye, Trash2 } from "lucide-react";
 
 import { Protected } from "@/components/auth/protected";
@@ -41,6 +42,9 @@ export function DocumentRowActions({
   onReplace: (document: LegalDocument) => void;
   onDelete: (document: LegalDocument) => void;
 }) {
+  const t = useTranslations("documents.actions");
+  const tActions = useTranslations("common.actions");
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -48,30 +52,30 @@ export function DocumentRowActions({
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          aria-label={`Actions for ${document.originalFilename}`}
+          aria-label={t("menuFor", { filename: document.originalFilename })}
         >
           <MoreHorizontal className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("label")}</DropdownMenuLabel>
 
         <DropdownMenuItem onSelect={() => onView(document)}>
           <Eye className="h-4 w-4" />
-          View details
+          {t("viewDetails")}
         </DropdownMenuItem>
 
         {document.isPreviewable ? (
           <DropdownMenuItem onSelect={() => onPreview(document)}>
             <ScanEye className="h-4 w-4" />
-            Preview
+            {t("preview")}
           </DropdownMenuItem>
         ) : null}
 
         <DropdownMenuItem onSelect={() => onDownload(document)}>
           <Download className="h-4 w-4" />
-          Download
+          {tActions("download")}
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
@@ -79,14 +83,14 @@ export function DocumentRowActions({
         <Protected permission={PERMISSION.documentsUpdate}>
           <DropdownMenuItem onSelect={() => onReplace(document)}>
             <FileUp className="h-4 w-4" />
-            Replace
+            {t("replace")}
           </DropdownMenuItem>
         </Protected>
 
         <Protected permission={PERMISSION.documentsDelete}>
           <DropdownMenuItem variant="destructive" onSelect={() => onDelete(document)}>
             <Trash2 className="h-4 w-4" />
-            Delete
+            {tActions("delete")}
           </DropdownMenuItem>
         </Protected>
       </DropdownMenuContent>

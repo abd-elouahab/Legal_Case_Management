@@ -19,6 +19,16 @@
  * That is also why the payloads on the wire are so thin (see
  * `apps/api/core/events.py`): the server is not trying to send you the new
  * state, it is telling you to go and read it.
+ *
+ * **The dashboard is deliberately absent from this table, and that is not an
+ * omission.** Every feature below owns its query keys *and* its staleness rules,
+ * so both live here. A dashboard owns neither: its widgets are decided by the
+ * server, and each one arrives carrying the event types that make *it* stale (see
+ * `WidgetDescriptor.refreshEvents`). A nineteen-row block here would have to be
+ * edited every time a widget was added — which is precisely the redesign
+ * `19-dashboard-analytics.md` says a new widget must not require. So
+ * `useDashboardRealtime` reads the rules the server sent instead, and this file
+ * stays the single place *this app* decides anything about staleness.
  */
 
 import type { QueryClient } from "@tanstack/react-query";

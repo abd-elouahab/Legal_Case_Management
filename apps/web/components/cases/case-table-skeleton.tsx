@@ -1,3 +1,7 @@
+"use client";
+
+import { useTranslations } from "next-intl";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -17,25 +21,37 @@ import {
  * it then changes.
  */
 export function CaseTableSkeleton({ rows = 5 }: { rows?: number }) {
+  const t = useTranslations("cases.table");
+
   return (
     <div
       className="w-full overflow-x-auto rounded-lg border border-border"
       aria-busy="true"
-      aria-label="Loading cases"
+      aria-label={t("loading")}
     >
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Case number</TableHead>
-            <TableHead>Title</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Priority</TableHead>
-            <TableHead className="hidden lg:table-cell">Court</TableHead>
-            <TableHead className="hidden xl:table-cell">Assigned lawyer</TableHead>
-            <TableHead className="hidden xl:table-cell">Assigned representative</TableHead>
-            <TableHead className="hidden lg:table-cell">Filing date</TableHead>
-            <TableHead className="hidden lg:table-cell">Next hearing</TableHead>
-            <TableHead className="hidden xl:table-cell">Last updated</TableHead>
+            <TableHead>{t("columns.case_number")}</TableHead>
+            <TableHead>{t("columns.title")}</TableHead>
+            <TableHead>{t("columns.status")}</TableHead>
+            <TableHead>{t("columns.priority")}</TableHead>
+            <TableHead className="hidden lg:table-cell">{t("columns.court")}</TableHead>
+            <TableHead className="hidden xl:table-cell">
+              {t("columns.assignedLawyer")}
+            </TableHead>
+            <TableHead className="hidden xl:table-cell">
+              {t("columns.assignedRepresentative")}
+            </TableHead>
+            <TableHead className="hidden lg:table-cell">
+              {t("columns.filing_date")}
+            </TableHead>
+            <TableHead className="hidden lg:table-cell">
+              {t("columns.next_hearing_date")}
+            </TableHead>
+            <TableHead className="hidden xl:table-cell">
+              {t("columns.updated_at")}
+            </TableHead>
             <TableHead className="w-12" />
           </TableRow>
         </TableHeader>

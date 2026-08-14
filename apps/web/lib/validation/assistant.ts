@@ -15,6 +15,8 @@
 
 import { z } from "zod";
 
+import { vm } from "@/lib/validation/messages";
+
 import {
   CONVERSATION_ROLES,
   CONVERSATION_STATUSES,
@@ -45,11 +47,11 @@ export const messageFormSchema = z.object({
   content: z
     .string()
     .trim()
-    .min(MIN_MESSAGE_LENGTH, `Enter at least ${MIN_MESSAGE_LENGTH} characters.`)
-    .max(MAX_MESSAGE_LENGTH, `Questions are limited to ${MAX_MESSAGE_LENGTH} characters.`)
+    .min(MIN_MESSAGE_LENGTH, vm("validation.minLength", { min: MIN_MESSAGE_LENGTH }))
+    .max(MAX_MESSAGE_LENGTH, vm("validation.assistant.questionTooLong", { max: MAX_MESSAGE_LENGTH }))
     .refine(
       (value) => /[\p{L}\p{N}]/u.test(value),
-      "Enter a word or a number to ask about.",
+      vm("validation.assistant.questionRequired"),
     ),
 });
 
@@ -60,8 +62,8 @@ export const conversationTitleFormSchema = z.object({
   title: z
     .string()
     .trim()
-    .min(1, "Enter a name for this conversation.")
-    .max(MAX_TITLE_LENGTH, `Names are limited to ${MAX_TITLE_LENGTH} characters.`),
+    .min(1, vm("validation.assistant.nameRequired"))
+    .max(MAX_TITLE_LENGTH, vm("validation.assistant.nameTooLong", { max: MAX_TITLE_LENGTH })),
 });
 
 export type ConversationTitleFormValues = z.infer<typeof conversationTitleFormSchema>;
@@ -72,7 +74,7 @@ export const feedbackFormSchema = z.object({
   comment: z
     .string()
     .trim()
-    .max(MAX_FEEDBACK_COMMENT_LENGTH, `Notes are limited to ${MAX_FEEDBACK_COMMENT_LENGTH} characters.`)
+    .max(MAX_FEEDBACK_COMMENT_LENGTH, vm("validation.assistant.noteTooLong", { max: MAX_FEEDBACK_COMMENT_LENGTH }))
     .optional(),
 });
 

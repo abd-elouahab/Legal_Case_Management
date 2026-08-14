@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import {
   Archive,
   ArchiveRestore,
@@ -73,6 +74,8 @@ export function ConversationList({
     ...(caseId ? { caseId } : {}),
   });
   const update = useUpdateConversation();
+  const t = useTranslations("assistant.conversations");
+  const tActions = useTranslations("common.actions");
 
   const conversations = data?.items ?? [];
 
@@ -81,22 +84,22 @@ export function ConversationList({
       <div className="flex items-center gap-2">
         <Button type="button" size="sm" onClick={onCreate} className="flex-1">
           <Plus className="h-4 w-4" aria-hidden="true" />
-          New conversation
+          {t("new")}
         </Button>
       </div>
 
       <div className="relative">
         <Search
-          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+          className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
           aria-hidden="true"
         />
         <Input
           type="search"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search conversations"
-          aria-label="Search conversations by name"
-          className="pl-9"
+          placeholder={t("searchPlaceholder")}
+          aria-label={t("searchLabel")}
+          className="ps-9"
         />
       </div>
 
@@ -109,7 +112,7 @@ export function ConversationList({
           aria-pressed={status === "active"}
           onClick={() => setStatus("active")}
         >
-          Active
+          {t("active")}
         </Button>
         <Button
           type="button"
@@ -119,7 +122,7 @@ export function ConversationList({
           aria-pressed={status === "archived"}
           onClick={() => setStatus("archived")}
         >
-          Archived
+          {t("archived")}
         </Button>
       </div>
 
@@ -131,7 +134,7 @@ export function ConversationList({
         </div>
       ) : isError ? (
         <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-          Your conversations could not be loaded.
+          {t("loadFailed")}
         </p>
       ) : conversations.length === 0 ? (
         <EmptyState
@@ -139,21 +142,21 @@ export function ConversationList({
           className="min-h-40 p-4"
           title={
             search.trim()
-              ? "No matching conversations"
+              ? t("emptySearchTitle")
               : status === "archived"
-                ? "Nothing archived"
-                : "No conversations yet"
+                ? t("emptyArchivedTitle")
+                : t("emptyTitle")
           }
           description={
             search.trim()
-              ? "No conversation name matches that."
+              ? t("emptySearchDescription")
               : status === "archived"
-                ? "Conversations you archive are kept here and stay readable."
-                : "Start one to ask questions about the documents on your cases."
+                ? t("emptyArchivedDescription")
+                : t("emptyDescription")
           }
         />
       ) : (
-        <ul className="flex flex-col gap-1" aria-label="Conversations">
+        <ul className="flex flex-col gap-1" aria-label={t("label")}>
           {conversations.map((conversation) => (
             <li key={conversation.id}>
               <div
@@ -168,7 +171,7 @@ export function ConversationList({
                   type="button"
                   onClick={() => onSelect(conversation.id)}
                   aria-current={conversation.id === selectedId ? "true" : undefined}
-                  className="min-w-0 flex-1 text-left"
+                  className="min-w-0 flex-1 text-start"
                 >
                   <span
                     dir="auto"
@@ -180,7 +183,7 @@ export function ConversationList({
                     dir="auto"
                     className="block truncate text-xs text-muted-foreground"
                   >
-                    {conversation.lastMessagePreview ?? "No messages yet"}
+                    {conversation.lastMessagePreview ?? t("noMessages")}
                   </span>
                 </button>
 
@@ -191,7 +194,7 @@ export function ConversationList({
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 shrink-0"
-                      aria-label={`Actions for ${conversation.title}`}
+                      aria-label={t("actionsFor", { title: conversation.title })}
                     >
                       <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
                     </Button>
@@ -199,7 +202,7 @@ export function ConversationList({
                   <DropdownMenuContent align="end" className="w-48">
                     <DropdownMenuItem onSelect={() => setRenaming(conversation)}>
                       <Pencil className="h-4 w-4" aria-hidden="true" />
-                      Rename
+                      {t("rename")}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onSelect={() =>
@@ -215,12 +218,12 @@ export function ConversationList({
                       {conversation.status === "archived" ? (
                         <>
                           <ArchiveRestore className="h-4 w-4" aria-hidden="true" />
-                          Restore
+                          {t("restore")}
                         </>
                       ) : (
                         <>
                           <Archive className="h-4 w-4" aria-hidden="true" />
-                          Archive
+                          {t("archive")}
                         </>
                       )}
                     </DropdownMenuItem>
@@ -229,7 +232,7 @@ export function ConversationList({
                       onSelect={() => setDeleting(conversation)}
                     >
                       <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      Delete
+                      {tActions("delete")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

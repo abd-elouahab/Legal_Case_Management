@@ -36,6 +36,7 @@ from fastapi import status
 from fastapi.testclient import TestClient
 
 from core.config import settings
+from core.localization import default_language
 from core.rag import INSUFFICIENT_EVIDENCE_MARKER, NO_EVIDENCE_MESSAGES, RagFailureCode
 from models.case import Case
 from models.document import Document, DocumentCategory
@@ -371,7 +372,7 @@ class TestNoEvidence:
     ) -> None:
         body = ask(api_client, token_for(api_client, lawyer.email)).json()
 
-        assert body["answer"] == NO_EVIDENCE_MESSAGES["fr"]
+        assert body["answer"] == NO_EVIDENCE_MESSAGES[default_language()]
 
     def test_the_model_declining_reaches_the_client_as_a_typed_flag(
         self,

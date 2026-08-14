@@ -28,6 +28,7 @@ export const ROUTES = {
   notifications: "/notifications",
   aiAssistant: "/ai",
   settings: "/settings",
+  monitoring: "/monitoring",
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;

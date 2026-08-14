@@ -18,6 +18,8 @@
 
 import { z } from "zod";
 
+import { vm } from "@/lib/validation/messages";
+
 import { CASE_PRIORITIES, CASE_STATUSES } from "@/types/case";
 import { CASE_SORT_FIELDS, SORT_ORDERS } from "@/types/case-management";
 import { USER_ROLES } from "@/types/user";
@@ -45,10 +47,10 @@ const collapse = (value: string) => value.replace(/\s+/g, " ").trim();
 const titleField = z
   .string()
   .transform(collapse)
-  .refine((value) => value.length > 0, "Title is required.")
+  .refine((value) => value.length > 0, vm("validation.case.titleRequired"))
   .refine(
     (value) => value.length <= MAX_TITLE_LENGTH,
-    `Title must be at most ${MAX_TITLE_LENGTH} characters.`,
+    vm("validation.maxLengthTitle", { max: MAX_TITLE_LENGTH }),
   );
 
 /**
@@ -60,21 +62,28 @@ const optionalCaseNumberField = z
   .transform((value) => value.replace(/\s+/g, "").trim().toUpperCase())
   .refine(
     (value) => value === "" || value.length <= MAX_CASE_NUMBER_LENGTH,
-    `Case number must be at most ${MAX_CASE_NUMBER_LENGTH} characters.`,
+    vm("validation.case.caseNumberTooLong", { max: MAX_CASE_NUMBER_LENGTH }),
   )
   .refine(
     (value) => value === "" || CASE_NUMBER_ALLOWED.test(value),
-    "Case number may contain only letters, digits, and the characters - _ . /",
+    vm("validation.case.caseNumberCharacters"),
   );
 
-const optionalLineField = (label: string, limit: number) =>
+/**
+ * A one-line optional field with a length ceiling.
+ *
+ * **The field's own name is no longer in the message.** It used to read
+ * "Category must be at most 100 characters", which needed the label as a
+ * parameter — and a label passed into a schema is an English word a translator
+ * cannot reach. The message renders directly beneath the input it belongs to, so
+ * naming the field there was always redundant; dropping it is what lets the
+ * sentence be one catalogue entry shared by every length-limited field.
+ */
+const optionalLineField = (limit: number) =>
   z
     .string()
     .transform(collapse)
-    .refine(
-      (value) => value.length <= limit,
-      `${label} must be at most ${limit} characters.`,
-    );
+    .refine((value) => value.length <= limit, vm("validation.maxLength", { max: limit }));
 
 /** A description is prose: trimmed, but its paragraphs are preserved. */
 const optionalDescriptionField = z
@@ -82,14 +91,14 @@ const optionalDescriptionField = z
   .transform((value) => value.trim())
   .refine(
     (value) => value.length <= MAX_DESCRIPTION_LENGTH,
-    `Description must be at most ${MAX_DESCRIPTION_LENGTH} characters.`,
+    vm("validation.maxLengthDescription", { max: MAX_DESCRIPTION_LENGTH }),
   );
 
 /** An optional calendar date. A blank field means "not recorded". */
 const optionalDateField = z
   .string()
   .transform((value) => value.trim())
-  .refine((value) => value === "" || ISO_DATE.test(value), "Enter a valid date.");
+  .refine((value) => value === "" || ISO_DATE.test(value), vm("validation.dateInvalid"));
 
 /**
  * An optional assignment. The Selects use a sentinel for "unassigned" and
@@ -113,10 +122,10 @@ const optionalAssigneeField = z.string();
 const sharedCaseFields = {
   title: titleField,
   description: optionalDescriptionField,
-  category: optionalLineField("Category", MAX_CATEGORY_LENGTH),
-  status: z.enum(CASE_STATUSES, { required_error: "Select a status." }),
-  priority: z.enum(CASE_PRIORITIES, { required_error: "Select a priority." }),
-  courtName: optionalLineField("Court name", MAX_COURT_NAME_LENGTH),
+  category: optionalLineField(MAX_CATEGORY_LENGTH),
+  status: z.enum(CASE_STATUSES, { required_error: vm("validation.case.statusRequired") }),
+  priority: z.enum(CASE_PRIORITIES, { required_error: vm("validation.case.priorityRequired") }),
+  courtName: optionalLineField(MAX_COURT_NAME_LENGTH),
   filingDate: optionalDateField,
   nextHearingDate: optionalDateField,
   assignedLawyerId: optionalAssigneeField,
@@ -143,7 +152,7 @@ function refineDateOrder(
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["nextHearingDate"],
-      message: "The next hearing date cannot be before the filing date.",
+      message: vm("validation.case.hearingBeforeFiling"),
     });
   }
 }

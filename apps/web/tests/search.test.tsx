@@ -27,12 +27,12 @@ import { searchFormSchema, searchResponseSchema } from "@/lib/validation/search"
 import { useSessionStore } from "@/stores/session-store";
 import {
   EMPTY_SEARCH_FILTERS,
+  SEARCH_FAILURE_CODES,
   hasActiveFilters,
   relevancePercent,
-  searchFailureLabel,
-  searchLanguageLabel,
   type SearchResult,
 } from "@/types/search";
+import en from "@/messages/en.json";
 import type { UserRole } from "@/types/user";
 import {
   casePagePayload,
@@ -126,18 +126,21 @@ describe("search domain helpers", () => {
   });
 
   it("labels the languages the indexer can produce", () => {
-    expect(searchLanguageLabel("ar")).toBe("Arabic");
-    expect(searchLanguageLabel("fr")).toBe("French");
-    expect(searchLanguageLabel("und")).toBe("Undetermined");
+    expect(en.common.languages.ar).toBe("Arabic");
+    expect(en.common.languages.fr).toBe("French");
+    expect(en.common.languages.und).toBe("Undetermined");
   });
 
   it("falls back for a language a later backend may report", () => {
-    expect(searchLanguageLabel("es")).toBe("ES");
+    // An unrecognised code renders through the provider's `getMessageFallback`,
+    // which humanizes the key — covered once, in `tests/localization.test.tsx`.
+    expect(en.common.languages).not.toHaveProperty("es");
   });
 
   it("falls back for a failure code this build has never heard of", () => {
-    expect(searchFailureLabel("reranker_unavailable")).toBe("Reranker unavailable");
-    expect(searchFailureLabel(null)).toBe("Search failed");
+    for (const code of SEARCH_FAILURE_CODES) {
+      expect(en.search.failures).toHaveProperty(code);
+    }
   });
 
   it("reports whether anything is filtered", () => {
@@ -409,7 +412,12 @@ describe("SemanticSearch", () => {
 
     await submitSearch();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/search index is unavailable/i);
+    // The platform's own sentence for the code, not the server's English one:
+    // both name the dependency, which is the property under test, and only one
+    // of them can be read in Arabic.
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /search index is unreachable/i,
+    );
   });
 
   it("explains a disabled deployment", async () => {

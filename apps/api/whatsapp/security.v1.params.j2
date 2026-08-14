@@ -1,0 +1,40 @@
+{#
+  The account-security message, as an ordered parameter list.
+
+  A separate descriptor rather than a flag on `notification`, and the difference
+  is one parameter that is deliberately absent: THERE IS NO LINK. There is nothing
+  to open — an account activation and a password reset both send the reader to
+  sign in, not to a resource — and a link in a WhatsApp message about a password
+  is precisely the shape of a phishing message. That matters more here than in an
+  email, because the sender is a phone number the reader may not recognise, so the
+  one thing this message must not do is ask them to tap something.
+
+  What it carries instead is the "if you did not do this" line, which is what makes
+  the notification actionable without a link.
+
+  See `notification.v1.params.j2` for the rendering rules; they are identical.
+
+  ---------------------------------------------------------------------------
+  THE APPROVED TEMPLATE THIS MATCHES
+  ---------------------------------------------------------------------------
+  Register a template named `security`, category UTILITY, in each language the
+  deployment sends (fr, ar, en_US), with a body of exactly four variables:
+
+      {{1}}
+
+      *{{2}}*
+      {{3}}
+
+      {{4}}
+
+  {{1}} greeting       — "Bonjour Amina"
+  {{2}} title          — the notification's heading, from core/notifications.py
+  {{3}} message        — the notification's sentence, same source
+  {{4}} security note  — "If you did not do this, contact your administrator"
+
+  The count and the order below ARE the contract with that template.
+#}
+{{ chrome.greeting }}
+{{ title }}
+{{ message }}
+{{ chrome.security_note }}

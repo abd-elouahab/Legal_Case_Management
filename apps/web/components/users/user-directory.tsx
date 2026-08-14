@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { SearchX, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 
@@ -18,7 +19,7 @@ import { UserTable } from "@/components/users/user-table";
 import { UserTableSkeleton } from "@/components/users/user-table-skeleton";
 import { useSession } from "@/hooks/use-session";
 import { useUserListQuery } from "@/hooks/use-user-list-query";
-import { useActivateUser, useUsers, userErrorMessage } from "@/hooks/use-users";
+import { useActivateUser, useUserErrorMessage, useUsers } from "@/hooks/use-users";
 import { PERMISSION } from "@/types/authorization";
 import type { ManagedUser } from "@/types/user";
 
@@ -45,6 +46,9 @@ export function UserDirectory() {
   const { data, isLoading, isFetching, isError, error, refetch } = useUsers(list.query);
   const activateUser = useActivateUser();
 
+  const t = useTranslations("users");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useUserErrorMessage();
   const [dialog, setDialog] = React.useState<DialogState>({ kind: "none" });
   const close = React.useCallback(() => setDialog({ kind: "none" }), []);
 
@@ -52,12 +56,12 @@ export function UserDirectory() {
     async (user: ManagedUser) => {
       try {
         await activateUser.mutateAsync(user.id);
-        toast.success(`${user.fullName} was activated.`);
+        toast.success(t("actions.activated", { name: user.fullName }));
       } catch (cause) {
-        toast.error(userErrorMessage(cause));
+        toast.error(errorMessage(cause));
       }
     },
-    [activateUser],
+    [activateUser, errorMessage, t],
   );
 
   const users = data?.items ?? [];
@@ -72,7 +76,7 @@ export function UserDirectory() {
           <Protected permission={PERMISSION.usersCreate}>
             <Button onClick={() => setDialog({ kind: "create" })}>
               <UserPlus className="h-4 w-4" />
-              Add user
+              {t("createDialog.title")}
             </Button>
           </Protected>
         </div>
@@ -93,8 +97,8 @@ export function UserDirectory() {
         <UserTableSkeleton />
       ) : isError ? (
         <ErrorState
-          title="Could not load users"
-          description={userErrorMessage(error)}
+          title={t("errors.listTitle")}
+          description={errorMessage(error)}
           onRetry={() => void refetch()}
         />
       ) : users.length === 0 ? (
@@ -103,24 +107,24 @@ export function UserDirectory() {
         list.isFiltered ? (
           <EmptyState
             icon={SearchX}
-            title="No users match your search"
-            description="Try a different name or email, or clear the filters to see everyone."
+            titleKey="users.empty.filteredTitle"
+            descriptionKey="users.empty.filteredDescription"
             action={
               <Button variant="outline" onClick={list.reset}>
-                Clear filters
+                {tActions("clearFilters")}
               </Button>
             }
           />
         ) : (
           <EmptyState
             icon={Users}
-            title="No users yet"
-            description="Add the first account to give someone access to the platform."
+            titleKey="users.empty.title"
+            descriptionKey="users.empty.description"
             action={
               <Protected permission={PERMISSION.usersCreate}>
                 <Button onClick={() => setDialog({ kind: "create" })}>
                   <UserPlus className="h-4 w-4" />
-                  Add user
+                  {t("createDialog.title")}
                 </Button>
               </Protected>
             }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import {
@@ -12,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { reportErrorMessage, useDeleteReport } from "@/hooks/use-reports";
+import { useDeleteReport, useReportErrorMessage } from "@/hooks/use-reports";
 import type { Report } from "@/types/report";
 
 /**
@@ -40,17 +41,20 @@ export function DeleteReportDialog({
   onDeleted?: () => void;
 }) {
   const remove = useDeleteReport();
+  const t = useTranslations("reports.deleteDialog");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useReportErrorMessage();
 
   async function onConfirm() {
     if (!report) return;
 
     try {
       await remove.mutateAsync(report.id);
-      toast.success("Report deleted.");
+      toast.success(t("deleted"));
       onOpenChange(false);
       onDeleted?.();
     } catch (error) {
-      toast.error(reportErrorMessage(error));
+      toast.error(errorMessage(error));
     }
   }
 
@@ -58,20 +62,21 @@ export function DeleteReportDialog({
     <AlertDialog open={open} onOpenChange={remove.isPending ? undefined : onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete this report?</AlertDialogTitle>
+          <AlertDialogTitle>{t("title")}</AlertDialogTitle>
           <AlertDialogDescription>
             {report ? (
               <>
-                <span dir="auto">{report.title}</span> leaves your history and can no
-                longer be opened or exported. The case, its documents, and its timeline
-                are untouched. Generating the report again is always possible.
+                {/* The title is a row's own data, so it stays a `dir="auto"`
+                    element of its own rather than an interpolation — an Arabic
+                    report title inside a French sentence needs its own direction. */}
+                <span dir="auto">{report.title}</span> {t("description")}
               </>
             ) : null}
           </AlertDialogDescription>
         </AlertDialogHeader>
 
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={remove.isPending}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={remove.isPending}>{tActions("cancel")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={(event) => {
               // The action closes the dialog by default; the mutation decides
@@ -82,7 +87,7 @@ export function DeleteReportDialog({
             }}
             disabled={remove.isPending}
           >
-            {remove.isPending ? "Deleting…" : "Delete report"}
+            {remove.isPending ? t("deleting") : t("confirm")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

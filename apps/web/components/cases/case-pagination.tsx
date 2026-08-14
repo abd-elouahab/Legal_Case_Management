@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -29,20 +30,25 @@ export function CasePagination({
   onPageChange: (page: number) => void;
   disabled?: boolean;
 }) {
+  const t = useTranslations("cases.pagination");
+  const tCommon = useTranslations("common.pagination");
+  const tActions = useTranslations("common.actions");
+
   const first = totalRecords === 0 ? 0 : (page - 1) * pageSize + 1;
   const last = Math.min(page * pageSize, totalRecords);
 
   return (
     <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
       <p className="text-sm text-muted-foreground" aria-live="polite">
-        {totalRecords === 0
-          ? "No cases"
-          : `Showing ${first}–${last} of ${totalRecords} case${totalRecords === 1 ? "" : "s"}`}
+        {/* One ICU message rather than a ternary plus a conditional "s": Arabic
+            has six plural categories and French pluralizes at a different
+            boundary, neither of which a suffix in a template literal can express. */}
+        {t("summary", { from: first, to: last, count: totalRecords })}
       </p>
 
       <div className="flex items-center gap-2">
         <span className="text-sm text-muted-foreground">
-          Page {page} of {totalPages}
+          {tCommon("pageOf", { page, total: totalPages })}
         </span>
 
         <Button
@@ -52,8 +58,8 @@ export function CasePagination({
           onClick={() => onPageChange(page - 1)}
           disabled={disabled || page <= 1}
         >
-          <ChevronLeft className="h-4 w-4" />
-          Previous
+          <ChevronLeft data-flip-rtl className="h-4 w-4" />
+          {tActions("previous")}
         </Button>
 
         <Button
@@ -63,8 +69,8 @@ export function CasePagination({
           onClick={() => onPageChange(page + 1)}
           disabled={disabled || page >= totalPages}
         >
-          Next
-          <ChevronRight className="h-4 w-4" />
+          {tActions("next")}
+          <ChevronRight data-flip-rtl className="h-4 w-4" />
         </Button>
       </div>
     </div>

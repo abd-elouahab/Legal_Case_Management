@@ -20,7 +20,7 @@ import { TimelineEntry } from "@/components/timeline/timeline-entry";
 import { TimelinePagination } from "@/components/timeline/timeline-pagination";
 import { TimelineSkeleton } from "@/components/timeline/timeline-skeleton";
 import { buildTimelineParams } from "@/lib/api/timeline";
-import { formatEventTime } from "@/lib/format";
+import { useDateFormat } from "@/hooks/use-date-format";
 import { ROUTES } from "@/lib/routes";
 import { timelineEventSchema, timelineQuerySchema } from "@/lib/validation/timeline";
 import { useSessionStore } from "@/stores/session-store";
@@ -28,12 +28,8 @@ import {
   DEFAULT_TIMELINE_QUERY,
   type TimelineQuery,
 } from "@/types/timeline-management";
-import {
-  TIMELINE_EVENT_TYPES,
-  TIMELINE_EVENT_TYPE_LABELS,
-  timelineEventLabel,
-  type TimelineEvent,
-} from "@/types/timeline";
+import { TIMELINE_EVENT_TYPES, type TimelineEvent } from "@/types/timeline";
+import en from "@/messages/en.json";
 import type { UserRole } from "@/types/user";
 import {
   errorEnvelope,
@@ -211,15 +207,21 @@ describe("timelineEventSchema", () => {
   });
 });
 
-describe("timelineEventLabel", () => {
+// Catalogue entries since `21-localization.md`: the labels moved out of
+// `types/timeline.ts` into `timeline.events`, so what is asserted is that every
+// type the platform records has a sentence. An event type this build has never
+// heard of renders through the provider's `getMessageFallback`, which is covered
+// once in `tests/localization.test.tsx`.
+describe("timeline event labels", () => {
   it("labels every type the platform records", () => {
     for (const type of TIMELINE_EVENT_TYPES) {
-      expect(timelineEventLabel(type)).toBe(TIMELINE_EVENT_TYPE_LABELS[type]);
+      expect(en.timeline.events).toHaveProperty(type);
+      expect(en.timeline.events[type as keyof typeof en.timeline.events]).not.toBe("");
     }
   });
 
-  it("renders an unknown type as English rather than as a database value", () => {
-    expect(timelineEventLabel("hearing_scheduled")).toBe("Hearing scheduled");
+  it("says “text extraction” rather than an acronym a lawyer would not read", () => {
+    expect(en.timeline.events.ocr_started).toMatch(/text extraction/i);
   });
 });
 
@@ -228,29 +230,46 @@ describe("timelineEventLabel", () => {
 // --------------------------------------------------------------------------- //
 
 describe("formatEventTime", () => {
+  // Now a member of `useDateFormat`, because how an instant reads depends on four
+  // settings — the reader's language, time zone, date style, and time style — and
+  // a module-level formatter cannot read a setting. Rendered through a probe
+  // component so the hook runs inside React, which is where it lives in the
+  // application.
   const now = new Date("2026-07-31T18:00:00Z");
 
+  function formatted(value: string | null): string {
+    function Probe() {
+      const { formatEventTime } = useDateFormat();
+      return <span data-testid="formatted">{formatEventTime(value, now)}</span>;
+    }
+
+    const { unmount } = render(<Probe />);
+    const text = screen.getByTestId("formatted").textContent ?? "";
+    unmount();
+    return text;
+  }
+
   it("says Today for the current day", () => {
-    expect(formatEventTime("2026-07-31T14:32:00Z", now)).toMatch(/^Today • /);
+    expect(formatted("2026-07-31T14:32:00Z")).toMatch(/^Today • /);
   });
 
   it("says Yesterday for the day before", () => {
-    expect(formatEventTime("2026-07-30T09:15:00Z", now)).toMatch(/^Yesterday • /);
+    expect(formatted("2026-07-30T09:15:00Z")).toMatch(/^Yesterday • /);
   });
 
   it("omits the year within the current year", () => {
-    const formatted = formatEventTime("2026-07-24T14:32:00Z", now);
+    const text = formatted("2026-07-24T14:32:00Z");
 
-    expect(formatted).toContain("July");
-    expect(formatted).not.toContain("2026");
+    expect(text).toContain("July");
+    expect(text).not.toContain("2026");
   });
 
   it("includes the year once it stops being obvious", () => {
-    expect(formatEventTime("2025-07-24T14:32:00Z", now)).toContain("2025");
+    expect(formatted("2025-07-24T14:32:00Z")).toContain("2025");
   });
 
   it("renders a missing timestamp as a dash rather than as Invalid Date", () => {
-    expect(formatEventTime(null, now)).toBe("—");
+    expect(formatted(null)).toBe("—");
   });
 });
 

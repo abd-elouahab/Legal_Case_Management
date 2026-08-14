@@ -22,8 +22,8 @@ export default function DocumentsPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Documents"
-        description="Upload, organize, version, and retrieve the files attached to your cases."
+        titleKey="documents.title"
+        descriptionKey="documents.description"
       />
       <DocumentList />
     </PageContainer>

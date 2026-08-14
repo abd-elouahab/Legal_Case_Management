@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Search } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,6 +23,7 @@ import { PERMISSION } from "@/types/authorization";
  */
 export function CaseSearch({ caseId }: { caseId: string }) {
   const { can, isLoading } = usePermissions();
+  const t = useTranslations("search.caseSection");
 
   if (isLoading || !can(PERMISSION.searchQuery)) return null;
 
@@ -30,12 +32,9 @@ export function CaseSearch({ caseId }: { caseId: string }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Search className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-          Search this case
+          {t("title")}
         </CardTitle>
-        <CardDescription>
-          Ask a question in your own words and find the passages that answer it, with
-          the file and page they came from.
-        </CardDescription>
+        <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <SemanticSearch caseId={caseId} compact />

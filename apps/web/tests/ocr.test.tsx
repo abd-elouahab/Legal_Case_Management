@@ -27,8 +27,9 @@ import { ocrMetricsSchema, ocrResultSchema, ocrTextSchema } from "@/lib/validati
 import { useSessionStore } from "@/stores/session-store";
 import { PERMISSIONS } from "@/types/authorization";
 import { DEFAULT_OCR_LIST_QUERY } from "@/types/ocr-management";
-import { OCR_STATUSES, isOcrSupported, ocrFailureLabel } from "@/types/ocr";
-import { TIMELINE_EVENT_TYPES, timelineEventLabel } from "@/types/timeline";
+import { OCR_FAILURE_CODES, OCR_STATUSES, isOcrSupported } from "@/types/ocr";
+import { TIMELINE_EVENT_TYPES } from "@/types/timeline";
+import en from "@/messages/en.json";
 import type { LegalDocument } from "@/types/document";
 import type { UserRole } from "@/types/user";
 import {
@@ -184,17 +185,18 @@ describe("format policy", () => {
   });
 });
 
+// Catalogue entries since `21-localization.md` — see the equivalent note in
+// `tests/indexing.test.tsx`. The fallback for an unrecognised code is the
+// provider's and is covered in `tests/localization.test.tsx`.
 describe("failure labels", () => {
-  it("labels the known causes", () => {
-    expect(ocrFailureLabel("timeout")).toBe("Took too long");
+  it("names every failure cause the platform defines", () => {
+    for (const code of OCR_FAILURE_CODES) {
+      expect(en.ocr.failures).toHaveProperty(code);
+    }
   });
 
-  it("falls back to a readable form of an unknown one", () => {
-    expect(ocrFailureLabel("handwriting_unsupported")).toBe("Handwriting unsupported");
-  });
-
-  it("labels a failure with no code at all", () => {
-    expect(ocrFailureLabel(null)).toBe("Failed");
+  it("says what went wrong rather than naming an error class", () => {
+    expect(en.ocr.failures.timeout).toBe("Took too long");
   });
 });
 
@@ -463,7 +465,9 @@ describe("permissions and timeline registry", () => {
   it("labels the four OCR timeline events without an acronym", () => {
     for (const eventType of ["ocr_started", "ocr_completed", "ocr_failed", "ocr_retried"]) {
       expect(TIMELINE_EVENT_TYPES).toContain(eventType);
-      expect(timelineEventLabel(eventType)).toMatch(/text extraction/i);
+      expect(
+        en.timeline.events[eventType as keyof typeof en.timeline.events],
+      ).toMatch(/text extraction/i);
     }
   });
 });

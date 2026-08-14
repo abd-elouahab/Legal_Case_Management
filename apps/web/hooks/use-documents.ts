@@ -20,7 +20,8 @@ import {
   uploadDocument,
 } from "@/lib/api/documents";
 import { timelineKeys } from "@/hooks/use-timeline";
-import { ApiError, NetworkError } from "@/lib/api/errors";
+import { ApiError } from "@/lib/api/errors";
+import { useErrorMessage, type ErrorCodeMap } from "@/hooks/use-error-message";
 import { saveFile, type FetchedFile } from "@/lib/api/upload";
 import type { LegalDocument } from "@/types/document";
 import type {
@@ -66,37 +67,18 @@ export const documentKeys = {
  * server's own message through verbatim, because only the server knows the
  * specifics — which limit was exceeded, which types are accepted here.
  */
-export function documentErrorMessage(error: unknown): string {
-  if (error instanceof NetworkError) return error.message;
+const DOCUMENT_ERRORS: ErrorCodeMap = {
+  document_not_found: "notFound",
+  document_version_not_found: "versionNotFound",
+  case_not_found: "caseNotFound",
+  invalid_document_file: "invalidFile",
+  preview_unavailable: "previewUnavailable",
+  document_storage_unavailable: "storageUnavailable",
+  missing_token: "sessionExpired",
+};
 
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case "document_not_found":
-        return "This document no longer exists. Refresh the list and try again.";
-      case "document_version_not_found":
-        return "That version of the document is no longer available.";
-      case "case_not_found":
-        return "That case no longer exists. Refresh the page and try again.";
-      case "invalid_document_file":
-        return error.details[0]?.message ?? error.message;
-      case "preview_unavailable":
-        return "This file type cannot be previewed. Download it instead.";
-      case "document_storage_unavailable":
-        return "Document storage is temporarily unavailable. Please try again.";
-      case "validation_error":
-        return error.details[0]?.message ?? "Check the details you entered.";
-      case "forbidden":
-        return "You do not have permission to perform this action.";
-      case "invalid_token":
-      case "token_expired":
-      case "missing_token":
-        return "Your session has expired. Sign in again to continue.";
-      default:
-        return error.message || "Something went wrong. Please try again.";
-    }
-  }
-
-  return "Something went wrong. Please try again.";
+export function useDocumentErrorMessage(): (error: unknown) => string {
+  return useErrorMessage("documents.errors", DOCUMENT_ERRORS);
 }
 
 /** Whether a failure is the preview endpoint saying "download this instead". */

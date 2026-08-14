@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { FilePlus2, Scale, SearchX } from "lucide-react";
 import { toast } from "sonner";
 
@@ -17,7 +18,7 @@ import { CaseTableSkeleton } from "@/components/cases/case-table-skeleton";
 import { CreateCaseDialog } from "@/components/cases/create-case-dialog";
 import { EditCaseDialog } from "@/components/cases/edit-case-dialog";
 import { useCaseListQuery } from "@/hooks/use-case-list-query";
-import { caseErrorMessage, useCases, useRestoreCase } from "@/hooks/use-cases";
+import { useCaseErrorMessage, useCases, useRestoreCase } from "@/hooks/use-cases";
 import { PERMISSION } from "@/types/authorization";
 import type { LegalCase } from "@/types/case";
 
@@ -46,6 +47,9 @@ export function CaseList() {
   const list = useCaseListQuery();
   const { data, isLoading, isFetching, isError, error, refetch } = useCases(list.query);
   const restoreCase = useRestoreCase();
+  const t = useTranslations("cases");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useCaseErrorMessage();
 
   const [dialog, setDialog] = React.useState<DialogState>({ kind: "none" });
   const close = React.useCallback(() => setDialog({ kind: "none" }), []);
@@ -54,12 +58,12 @@ export function CaseList() {
     async (legalCase: LegalCase) => {
       try {
         await restoreCase.mutateAsync(legalCase.id);
-        toast.success(`Case ${legalCase.caseNumber} was restored.`);
+        toast.success(t("restored", { caseNumber: legalCase.caseNumber }));
       } catch (cause) {
-        toast.error(caseErrorMessage(cause));
+        toast.error(errorMessage(cause));
       }
     },
-    [restoreCase],
+    [errorMessage, restoreCase, t],
   );
 
   const cases = data?.items ?? [];
@@ -74,7 +78,7 @@ export function CaseList() {
           <Protected permission={PERMISSION.casesCreate}>
             <Button onClick={() => setDialog({ kind: "create" })}>
               <FilePlus2 className="h-4 w-4" />
-              New case
+              {t("createDialog.title")}
             </Button>
           </Protected>
         </div>
@@ -86,8 +90,8 @@ export function CaseList() {
         <CaseTableSkeleton />
       ) : isError ? (
         <ErrorState
-          title="Could not load cases"
-          description={caseErrorMessage(error)}
+          title={t("errors.listTitle")}
+          description={errorMessage(error)}
           onRetry={() => void refetch()}
         />
       ) : cases.length === 0 ? (
@@ -96,24 +100,24 @@ export function CaseList() {
         list.isFiltered ? (
           <EmptyState
             icon={SearchX}
-            title="No cases match your filters"
-            description="Try a different search term or date range, or clear the filters to see everything."
+            titleKey="cases.empty.filteredTitle"
+            descriptionKey="cases.empty.filteredDescription"
             action={
               <Button variant="outline" onClick={list.reset}>
-                Clear filters
+                {tActions("clearFilters")}
               </Button>
             }
           />
         ) : (
           <EmptyState
             icon={Scale}
-            title="No cases yet"
-            description="Open the first case to start tracking a matter through its lifecycle."
+            titleKey="cases.empty.title"
+            descriptionKey="cases.empty.description"
             action={
               <Protected permission={PERMISSION.casesCreate}>
                 <Button onClick={() => setDialog({ kind: "create" })}>
                   <FilePlus2 className="h-4 w-4" />
-                  New case
+                  {t("createDialog.title")}
                 </Button>
               </Protected>
             }

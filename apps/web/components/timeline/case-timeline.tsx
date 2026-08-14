@@ -1,6 +1,7 @@
 "use client";
 
 import { History, SearchX } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorState } from "@/components/shared/error-state";
@@ -10,7 +11,7 @@ import { TimelineFilters } from "@/components/timeline/timeline-filters";
 import { TimelinePagination } from "@/components/timeline/timeline-pagination";
 import { TimelineSkeleton } from "@/components/timeline/timeline-skeleton";
 import { useTimelineQuery } from "@/hooks/use-timeline-query";
-import { timelineErrorMessage, useCaseTimeline } from "@/hooks/use-timeline";
+import { useCaseTimeline, useTimelineErrorMessage } from "@/hooks/use-timeline";
 import type { TimelineEvent } from "@/types/timeline";
 
 /**
@@ -28,6 +29,9 @@ import type { TimelineEvent } from "@/types/timeline";
  * while the module was unbuilt.
  */
 export function CaseTimeline({ caseId }: { caseId: string }) {
+  const t = useTranslations("timeline");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useTimelineErrorMessage();
   const list = useTimelineQuery();
   const { data, isLoading, isFetching, isError, error, refetch } = useCaseTimeline(
     caseId,
@@ -46,7 +50,7 @@ export function CaseTimeline({ caseId }: { caseId: string }) {
         className="flex items-center gap-2 text-sm font-medium text-foreground"
       >
         <History className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-        Timeline
+        {t("title")}
       </h3>
 
       <TimelineFilters list={list} />
@@ -55,8 +59,8 @@ export function CaseTimeline({ caseId }: { caseId: string }) {
         <TimelineSkeleton />
       ) : isError ? (
         <ErrorState
-          title="Could not load this case's activity"
-          description={timelineErrorMessage(error)}
+          title={t("errors.loadTitle")}
+          description={errorMessage(error)}
           onRetry={() => void refetch()}
         />
       ) : events.length === 0 ? (
@@ -65,19 +69,19 @@ export function CaseTimeline({ caseId }: { caseId: string }) {
         list.isFiltered ? (
           <EmptyState
             icon={SearchX}
-            title="No activity matches your filters"
-            description="Try a different search term, activity type, or date range, or clear the filters to see the whole history."
+            titleKey="timeline.empty.filteredTitle"
+            descriptionKey="timeline.empty.filteredDescription"
             action={
               <Button variant="outline" onClick={list.reset}>
-                Clear filters
+                {tActions("clearFilters")}
               </Button>
             }
           />
         ) : (
           <EmptyState
             icon={History}
-            title="No activity yet"
-            description="Everything that happens to this case — updates, assignments, and documents — will be recorded here automatically."
+            titleKey="timeline.empty.title"
+            descriptionKey="timeline.empty.description"
           />
         )
       ) : (

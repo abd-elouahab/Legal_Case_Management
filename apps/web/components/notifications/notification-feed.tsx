@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { Bell, Loader2 } from "lucide-react";
 
 import { NotificationFilters } from "@/components/notifications/notification-filters";
@@ -10,7 +11,7 @@ import { ErrorState } from "@/components/shared/error-state";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
-  notificationErrorMessage,
+  useNotificationErrorMessage,
   useMarkAllNotificationsRead,
   useMarkNotificationsRead,
   useNotifications,
@@ -41,6 +42,11 @@ import {
  */
 
 export function NotificationFeed() {
+  const t = useTranslations("notifications.feed");
+  const tPanel = useTranslations("notifications.panel");
+  const tActions = useTranslations("common.actions");
+  const tPagination = useTranslations("common.pagination");
+  const errorMessage = useNotificationErrorMessage();
   const [query, setQuery] = React.useState<NotificationListQuery>(
     DEFAULT_NOTIFICATION_QUERY,
   );
@@ -71,32 +77,32 @@ export function NotificationFeed() {
           disabled={!hasUnread || markAllRead.isPending}
         >
           {markAllRead.isPending
-            ? "Marking…"
+            ? tPanel("marking")
             : query.category
-              ? "Mark this category as read"
-              : "Mark all as read"}
+              ? t("markCategoryRead")
+              : tPanel("markAllRead")}
         </Button>
       </div>
 
       {isPending ? (
         <Card className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-          Loading notifications…
+          {tPanel("loading")}
         </Card>
       ) : isError ? (
         <ErrorState
-          title="Could not load your notifications"
-          description={notificationErrorMessage(error)}
+          title={t("loadFailed")}
+          description={errorMessage(error)}
           onRetry={() => void refetch()}
         />
       ) : items.length === 0 ? (
         <EmptyState
           icon={Bell}
-          title="Nothing here"
+          title={t("emptyTitle")}
           description={
             query.unreadOnly || query.category || query.notificationType || query.priority
-              ? "No notifications match these filters."
-              : "Case updates, document activity, hearings, and AI results will appear here."
+              ? t("emptyFiltered")
+              : t("emptyDescription")
           }
         />
       ) : (
@@ -116,8 +122,8 @@ export function NotificationFeed() {
       {totalPages > 1 ? (
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
-            Page {data?.page ?? 1} of {totalPages}
-            {data ? ` • ${data.totalRecords} notification${data.totalRecords === 1 ? "" : "s"}` : ""}
+            {tPagination("pageOf", { page: data?.page ?? 1, total: totalPages })}
+            {data ? ` • ${t("totalCount", { count: data.totalRecords })}` : ""}
           </p>
           <div className="flex gap-2">
             <Button
@@ -126,7 +132,7 @@ export function NotificationFeed() {
               onClick={() => patch({ page: Math.max(1, query.page - 1) })}
               disabled={query.page <= 1 || isFetching}
             >
-              Previous
+              {tActions("previous")}
             </Button>
             <Button
               variant="outline"
@@ -134,7 +140,7 @@ export function NotificationFeed() {
               onClick={() => patch({ page: Math.min(totalPages, query.page + 1) })}
               disabled={query.page >= totalPages || isFetching}
             >
-              Next
+              {tActions("next")}
             </Button>
           </div>
         </div>

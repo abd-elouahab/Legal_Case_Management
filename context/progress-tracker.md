@@ -5,12 +5,55 @@ change.
 
 ## Current Phase
 
+- **Monitoring & Observability complete (spec `22-monitoring.md`).**
+  `ai-workflow-rules.md`'s step 16 and the last on its list. The platform's first
+  feature that is **entirely cross-cutting**: no business rule, no entity, no
+  table, no migration, and — the number worth recording — **no business module
+  changed**. Its defining constraint was the spec's own, *"business modules should
+  not contain monitoring-specific logic beyond emitting logs, metrics, and
+  traces"*, and the shape that satisfied it is that every observation is taken at
+  an edge the platform already had. See the entry at the top of *Completed*.
+- **Localization (Internationalization) complete, interface included (spec
+  `21-localization.md`).** `ai-workflow-rules.md`'s step 15. English, French, and
+  Arabic across **every** surface — the shell, all twelve feature modules, form
+  validation, error messages, notifications, email, WhatsApp, AI answers, and AI
+  reports — with RTL for Arabic and locale-aware dates, times, and numbers. The
+  platform's **language seam** — the open question the email channel recorded when
+  it shipped — is closed, and the ~590 English literals the previous entry here
+  enumerated are gone: the catalogues carry **1,449 keys in three languages**, and
+  a parity test fails the build if one language gains a key another lacks. See
+  *Interface localization* and *Localization* at the top of *Completed*.
+- **Settings complete (spec `20-settings.md`).** The platform's first feature
+  that is *a unified interface over other features' configuration* rather than a
+  module that owns one. Its governing rule is the spec's own: **each feature owns
+  its configuration, and Settings only presents and manages it** — so Notification
+  and Communication preferences are read and written through the Notification
+  Service's existing endpoint, password change goes through `AuthService`, and
+  Profile writes the `users` row User Management already owns. What Settings
+  genuinely owns is the configuration **no feature had a home for**: Appearance,
+  Language & Region, AI presentation, Dashboard preferences, and the
+  administrator's platform settings. See the entry at the top of *Completed*.
+- **Dashboard & Analytics complete (spec `19-dashboard-analytics.md`).** The
+  platform's landing page, and the first feature that reads *across* every module
+  rather than owning one — which is why it ships with **no model, no migration, no
+  event, and no worker**, and why its most interesting property is that adding a
+  widget touches one table in `core/dashboard.py` and nothing else, including in
+  the browser. See the entry at the top of *Completed*.
+- **WhatsApp Delivery Channel complete (spec `18-whatsapp-delivery-channel.md`).**
+  The third delivery channel for the notifications the platform already creates,
+  and — like email — a **consumer of notifications rather than of domain events**.
+  Its most interesting property is how *little* of it is new: it reuses the
+  `NotificationDispatcher` protocol, the persisted delivery lifecycle, the
+  conditional-`UPDATE` claim, the retry schedule and its sweeper, and the
+  two-source metrics split, all unchanged. Everything that *is* new is a property
+  of the medium rather than a decision this feature got to make. See the entry at
+  the top of *Completed*.
 - **Email Delivery Channel complete (spec `17-email-delivery-channel.md`).** The
   second delivery channel for the notifications the platform already creates, and
   deliberately a **consumer of notifications rather than of domain events**:
   business modules and the Notification Service keep deciding *what* is worth
   telling somebody, and this feature decides only *how* one of those
-  notifications reaches them. See the entry at the top of *Completed*.
+  notifications reaches them. See the entry in *Completed*.
 - **Notifications (In-App) complete (spec `16-notifications.md`).** See the entry
   in *Completed*.
 - **Real-Time Events & Synchronization complete (spec
@@ -20,19 +63,125 @@ change.
 
 ## Current Goal
 
-- **Next: WhatsApp Notifications** (`ai-workflow-rules.md`'s step 14). The seam
-  is now built and proven rather than predicted: a delivery channel implements
-  the one-method `NotificationDispatcher` protocol, is added to one list in
-  `api/deps.py` and one in `services/notification_events.py`, and gets a `whatsapp`
-  boolean beside `in_app` and `email` on `notification_preferences` — no new
-  table, no new key, no backfill, and no business module touched. Everything the
-  email channel had to invent is reusable as it stands: the persisted delivery
-  lifecycle, the conditional-`UPDATE` claim, the retry schedule and its sweeper,
-  the two-source metrics split, and the rule table keyed by notification rather
-  than by event. What WhatsApp brings of its own is a provider (the Business API
-  is HTTP rather than SMTP, so `EmailProvider`'s shape applies but its protocol
-  does not) and a **template approval process**, which is a product constraint
-  rather than a code one and is the part worth scoping carefully.
+- **Done: Monitoring & Observability** (`ai-workflow-rules.md`'s step 16, spec
+  `22-monitoring.md`). The three pillars, plus health, readiness, error tracking,
+  security monitoring, background-job monitoring, an operator's page, and a
+  Prometheus exposition endpoint. The design question the whole feature turned on
+  was *where an observation is allowed to be taken*, and the spec answers it:
+  nowhere inside a business module. So:
+  - the **HTTP middleware** became the one HTTP observation point — correlation
+    id, W3C trace, log context, request counts, and latency, labelled by the
+    **route template**;
+  - the **exception handlers** became where security monitoring lives, because
+    every failed sign-in, invalid token, permission denial, and rate limit is
+    *already* an exception handled there. `AuthService`,
+    `AuthorizationService`, and every access policy are untouched;
+  - the **SQLAlchemy engine** got a listener, which covers the lazy loads, the
+    flushes, and the background workers' own sessions — none of which a
+    repository decorator would have reached;
+  - the **lifespan** attaches all of it and logs *configuration loaded* as which
+    switches are on, never what any of them is set to.
+
+  Four things were **not** predicted and are worth recording.
+
+  *First: `scope["route"].path` is the wrong route label on this FastAPI.* Under
+  the newer lazy `_IncludedRouter`, a router registered under a prefix reports its
+  **own** path (`/jobs`) rather than the path the client asked for
+  (`/api/v1/monitoring/jobs`) — so labelling from it would collapse two different
+  endpoints that end in the same segment into one series. The template is now
+  rebuilt from the request path with its parameters substituted back out, per
+  segment, which cannot disagree with the URL that was actually served.
+
+  *Second: a coarse system clock puts children above their parents.* `datetime`
+  resolves to roughly 15 ms on Windows, so three spans opened inside one request
+  carry the same timestamp and a stable sort falls back to the order they
+  **finished** in. Both the trace buffer and the error list now order by a
+  monotonic key that is deliberately not part of what a reader is served.
+
+  *Third: ICU plurals are unusable in this repo's catalogues.* The localization
+  test extracts placeholders with `/\{[^}]+\}/g`, which pulls the translated text
+  out of a plural's branches and then requires it to match across languages —
+  which is impossible by construction. The two counted strings use plain `{count}`
+  interpolation instead. That is a **latent constraint on every future feature**,
+  not a monitoring decision, and it is recorded under *Open Questions*.
+
+  *Fourth: `psutil` was not added, and the figures it would have brought are not
+  missed.* Resident memory and CPU share are reported far more accurately by a
+  container runtime than by a process about itself, and the spec's Performance
+  section asks for *application* measurements. What ships comes from `os`, `sys`,
+  `platform`, and `threading`, plus the SQLAlchemy pool's own occupancy.
+- **Done: Settings** (spec `20-settings.md`). Nine sections behind one page, and
+  the design question the whole feature turned on was *which of them this module
+  is allowed to own*. The spec answers it: **each feature owns its
+  configuration**. So:
+  - **Profile** writes the `users` row User Management owns, through a
+    *self-scoped* service method — never `users:update`, which is an
+    administrator capability over other people's accounts. One new column,
+    `users.job_title`, because the spec names it and nothing had it.
+  - **Account & Security** delegates to `AuthService.change_password`, which
+    already clears `must_change_password` and revokes every other session. What
+    is genuinely new is **active sessions**: JWTs are stateless here, so the
+    platform could say *"every session is revoked"* but could not say *which*.
+    A `sid` claim plus a Redis-backed `SessionRegistry` makes the list real; the
+    **authoritative** revocation stays the PostgreSQL `session_generation`
+    counter, so the registry fails **soft** where `TokenRevocationStore` fails
+    closed — it is a view, not a boundary.
+  - **Notifications** and **Communication** are two presentations of one stored
+    thing: `notification_preferences`, read and written through
+    `/notifications/preferences`. The Settings module stores nothing for them and
+    the split is a UI axis — *what you are told about* (the keys) versus *how it
+    reaches you* (the channels).
+  - **Appearance, Language & Region, AI, Dashboard** are what no feature owned,
+    so Settings owns them — as **one row per `(user, key)`**, the shape
+    `notification_preferences` already proved twice: an untouched account has no
+    rows and follows the platform defaults, and a new setting is one registry
+    entry with **no migration**.
+  - **Administration** is a separate table, a separate registry, and a separate
+    permission, which is the spec's *"administrator settings should remain
+    isolated from regular user settings"* made structural rather than promised.
+
+  Three things were **not** predicted and are worth recording. *"View active
+  sessions"* needed a **token claim**: the platform could revoke every session
+  and could not name one, so a `sid` — minted at sign-in, preserved across every
+  refresh rotation, granting nothing — was added beside `sgen`, and the registry
+  behind it deliberately **fails soft** where the revocation denylist fails
+  closed. *"Light theme"* turned out to be a **design-system** change rather than
+  a settings one: `00-design-system.md` had shipped the platform dark-only, so
+  Appearance could not be honoured until `globals.css` grew a second palette and
+  one new token (`--text-on-accent`) that a dark-only palette could do without.
+  And **maintenance mode announces rather than closes the platform** — see the
+  first open question below.
+- **Done: Dashboard & Analytics** (spec `19-dashboard-analytics.md`). The first
+  feature that *reads across* every module rather than owning one, which made its
+  authorization the interesting part: a widget must never widen what its own
+  feature already decided, so every query reuses the access policy that owns the
+  rows (`services/case_access.py` for cases and everything hanging off them,
+  recipient equality for notifications, author equality for reports and
+  conversations) instead of re-deriving one — `services/dashboard_access.py`
+  contains no rules at all. Nothing is stored: no dashboard table, no saved
+  layout, no materialized metric. Two things were **not** predicted and are worth
+  recording: *"handle timeout"* became a wall-clock **budget between widgets**
+  rather than a per-query cancel, because cancelling a statement behaves
+  differently on PostgreSQL and SQLite while a budget behaves identically
+  everywhere; and *"active dashboard users"* needed a real answer, since counting
+  distinct people means remembering who was seen — resolved by folding each
+  identity into a **salted digest** whose cardinality is the only readable output.
+- **Done: WhatsApp Notifications** (`ai-workflow-rules.md`'s step 14, spec
+  `18-whatsapp-delivery-channel.md`). Every prediction the email channel made
+  about a third channel held, to the line: one `NotificationDispatcher`
+  implementation, one entry in `api/deps.py`'s channel list and one in
+  `services/notification_events.py`'s, and a `whatsapp` boolean beside `in_app`
+  and `email` — no new table, no new preference key, no backfill, and **no
+  business module touched**. The two things predicted to be its own also were:
+  the provider is HTTP rather than SMTP (so `EmailProvider`'s *shape* applied and
+  its protocol did not), and the **template approval process** turned out to be
+  the design constraint rather than a footnote — it is why what ships in
+  `apps/api/whatsapp/` is a *descriptor* of an approved template's parameters
+  rather than a message, and why the platform's wording stays in
+  `core/notifications.py` where it can be reviewed. One thing was **not**
+  predicted and is worth recording: `users.phone` is optional, so "this account
+  has no number" is the ordinary outcome on this channel rather than a fault, and
+  it is reported as a skip reason instead of counted as a failure.
 - **Done: Email Notifications** (`ai-workflow-rules.md`'s step 13, spec
   `17-email-delivery-channel.md`). Both seams the previous feature left were used
   exactly as predicted, and neither needed widening.
@@ -50,14 +199,184 @@ change.
   the spec's "graceful degradation" a property of the application rather than a
   claim, and it is what every screen falls back to when the socket is
   unavailable.
-- **Still not built, and still out of scope:** WhatsApp delivery,
-  push notifications, SMS, scheduled reminders, notification *archiving* (the
+- **Settings left five things out because `20-settings.md` puts them out of
+  scope, and two more as decisions:** multi-factor authentication, third-party
+  integrations, organization management, billing, and subscription management are
+  the spec's own list. The two decisions are **maintenance-mode enforcement** (the
+  announcement ships; refusing traffic does not) and **avatar upload** (the
+  profile picture is a reference, as `users.profile_image` has always been) —
+  both recorded under *Open Questions*.
+- **Still not built, and still out of scope:** push notifications, SMS,
+  scheduled reminders, WhatsApp **delivery-receipt webhooks** and inbound
+  messages, notification *archiving* (the
   column and the read filters exist; no endpoint writes it), notification
-  grouping, dashboard analytics, scheduled jobs, collaborative editing, presence
-  *visualization*, summarization as a distinct capability, information
-  extraction, compliance analysis, translation, and the voice assistant.
+  grouping, **dashboard customization** (saved layouts, drag-and-drop, analytics
+  export, and predictive analytics — all explicitly out of scope for spec `19`,
+  though the widget catalog is shaped to receive them), scheduled jobs,
+  collaborative editing, presence *visualization*, summarization as a distinct
+  capability, information extraction, compliance analysis, translation, and the
+  voice assistant.
 
 ## Open Questions
+
+- **ICU plural syntax cannot be used in `apps/web/messages/*.json`, and the
+  constraint is in the test rather than in the library.** `tests/localization.test.tsx`
+  checks placeholder parity by extracting `/\{[^}]+\}/g` from each string and
+  requiring the sets to match across languages — which, for a plural, pulls the
+  *translated words inside its branches* out as if they were placeholders and then
+  requires English and Arabic to have written the same ones. That is impossible by
+  construction, so every counted string on this platform must use plain `{count}`
+  interpolation and accept the grammatical imprecision at *n* = 1. Monitoring's two
+  counted strings do.
+
+  It is worth a decision rather than a workaround, because Arabic has six plural
+  forms and the platform will eventually want them. The fix is to teach the
+  placeholder extractor about ICU — parse the argument *names* rather than every
+  brace pair — at which point every catalogue can use plurals and the parity check
+  gets stronger rather than weaker. Recorded here rather than fixed, because
+  changing a localization test is a Localization change and this feature had no
+  business making one.
+
+- **The engine instrumentation is invisible to the integration harness, and the
+  test suite says so honestly.** `tests/conftest.py`'s `api_client` overrides
+  `get_db` with a SQLite session bound to its own engine, while the listeners are
+  attached at startup to `db.session.engine` — so a database span never appears in
+  an API-level test. The claim is asserted at the level where it is real
+  (`tests/unit/test_database_metrics.py`, against a throwaway engine) rather than
+  weakened into something the harness can see. Worth revisiting if the harness ever
+  instruments the engine it substitutes, which would also make several other
+  cross-cutting behaviours testable end to end.
+
+- **Localization raised four, and three of them are decisions somebody should
+  make on purpose rather than gaps.**
+
+  *First: the platform's default language moved from French to English, because
+  the spec says so.* `21-localization.md` lists the supported set as *"English
+  (default), French, Arabic"*, and every fallback on this platform had been
+  French — a choice `core/rag.py` argued for explicitly, on the grounds that
+  `detect_language` reads accent-free French as English and that English was not
+  an interface language. It is now. The change was made **configurable** rather
+  than swapped (`DEFAULT_LANGUAGE`), so a deployment serving a French-speaking
+  practice sets one environment variable and is exactly where it was. Recorded
+  rather than buried because it is the one change in this feature that alters
+  what an existing deployment does without anybody touching a setting.
+
+  *Second: roughly 590 user-facing strings in feature components are still
+  English literals.* The infrastructure, the shell, the shared states, and every
+  server-side sentence are done; the case, document, user, report, AI, search,
+  settings, notification, OCR, indexing, timeline, dashboard, and auth components
+  are not. This is stated with a count in *In Progress* rather than described as
+  finished, because *"no user-facing text should be hardcoded"* is a checklist
+  item this feature does not yet satisfy in full. Nothing about it is a design
+  question — the pattern is established and the domain label maps' translations
+  are already in the catalogues.
+
+  *Third: the interface catalogues are one file per language, not one per
+  namespace.* *"Load only required translations"* is honoured at the **locale**
+  granularity: a browser downloads the language it is rendering in and not the
+  other two. It is not honoured per *screen* — opening `/cases` loads the
+  settings copy too. At the current size (a few hundred keys, tens of kilobytes
+  gzipped) splitting further would cost a request per screen to save a few
+  kilobytes, which is the wrong trade; the loader is shaped so that
+  `messages/{locale}/{namespace}.json` is a change to one function when it stops
+  being. Worth revisiting when the catalogue passes a few thousand keys.
+
+  *Fourth: the language a person reads in is now visible to three more code
+  paths, and one of them leaves the platform.* A WhatsApp message names its
+  language to Meta, which is unavoidable — the approved template *is*
+  per-language. Nothing else exports it: the metrics view reports counts per
+  language and never an account, the logs carry a language code and never a
+  recipient, and there is deliberately no method anywhere that answers *"who
+  reads in Arabic?"*. Stated because the obvious next feature request — "let an
+  administrator see which lawyers need Arabic training materials" — is a
+  per-account breakdown of a preference, and it should be declined for the same
+  reason `notifications:monitor` declines one.
+
+- **Settings raised four, and three of them are about how far a *setting* is
+  allowed to reach into a feature that owns its own behaviour.**
+
+  *First: maintenance mode announces; it does not close the platform.* Turning it
+  on puts a notice on every authenticated client and refuses no request. Making
+  it enforce would mean a middleware answering 503 for non-administrators on
+  every route except authentication and settings, plus a cached read of the flag
+  so a page load does not cost a query — which is a platform-wide behaviour
+  change owned by no feature in this spec, and one where getting the exemption
+  list wrong locks the administrator out of the switch. It is deliberate rather
+  than forgotten, an integration test asserts the current behaviour so the scope
+  is explicit, and the honest status is that the *announcement* half is complete
+  and the *enforcement* half is a decision somebody should make on purpose.
+
+  *Second: "Default Notification Policies" is on the spec's Administration list
+  and is not implemented.* Every other `default_*` platform setting is consumed
+  by `core/settings.default_user_value`, which the Settings module owns. A
+  notification default is consumed by `core.notifications.default_preference` —
+  a **pure** function in the notification module, called on the path that decides
+  who gets told what. Making it read the database would give a pure vocabulary
+  module an I/O dependency and put notification policy in this feature's hands,
+  which `20-settings.md`'s own Out of Scope forbids. The clean shape is for the
+  Notification Service to take a defaults provider it can be *given*, which is a
+  change to that module rather than to this one. Recorded rather than improvised.
+
+  *Third: the Language setting does not yet reach email or WhatsApp.* It reaches
+  the interface and the in-app feed (which renders per request in whatever
+  language it is asked for), and `EMAIL_DEFAULT_LANGUAGE` is still the whole of
+  the answer for outbound mail — which is the email channel's own first open
+  question, below, now with a stored per-user answer sitting one injection away.
+  `resolve_email_language` already takes a recipient; what it lacks is a settings
+  lookup, and giving a delivery worker a settings repository is the decision to
+  make deliberately rather than in passing.
+
+  *Fourth: a profile picture is a reference, not an upload.* `users.profile_image`
+  has been a URL or object-storage key since User Management, and the Settings
+  form edits it as one. A real avatar upload needs an endpoint, image validation,
+  a size and type policy, a storage bucket, and a retention story — a subsystem,
+  and one the spec does not describe. Worth deciding before somebody assumes the
+  field accepts a file.
+
+- **The WhatsApp Delivery Channel raised four, and every one of them is a
+  decision somebody outside this repository has to make.**
+
+  *First, and the one that blocks the feature from doing anything: the message
+  templates have to be submitted to and approved by Meta.* The platform's half of
+  that contract ships and is testable — `apps/api/whatsapp/*.params.j2` say
+  exactly which values fill which slot, the tests assert their count and order,
+  and `apps/api/whatsapp/README.md` documents the body each approved template must
+  have. The other half is a console this repository cannot read. Until two
+  templates (`notification`, `security`) are approved in **every language the
+  deployment sends**, every message fails with `template_rejected` — visible in
+  the metrics, one delivery at a time, harming nothing else. This is a product and
+  operations task rather than an engineering one, and it is why the channel is off
+  by default.
+
+  *Second: most accounts have no phone number, and nothing collects one.*
+  `users.phone` was added by User Management as an optional display field, and no
+  screen asks for it, validates it, or explains what it is for. So the honest
+  status of this channel today is that it works and reaches almost nobody. Three
+  things would change that and none of them belongs to this feature: a field on
+  the user form that says the number is used for WhatsApp alerts, a validation
+  that stores it in an international format, and — the real question — a decision
+  about whether a lawyer's personal number is something the platform should hold
+  at all. `WHATSAPP_DEFAULT_COUNTRY_CODE` is the interim answer for a
+  single-country deployment; it is not an answer for a multi-country one.
+
+  *Third: "Hearing Reminder" is on the spec's supported list and the platform
+  cannot produce one.* `18-whatsapp-delivery-channel.md` names it; the platform's
+  two hearing notifications are *"the court fields changed"* and *"this case is
+  now waiting for a hearing"*, and neither is *"your hearing is tomorrow"*. A real
+  reminder needs the **scheduled reminders** `16-notifications.md` left out of
+  scope, and building one here would be notification policy, which this spec's Out
+  of Scope forbids. When that arrives as a notification rule, the WhatsApp side is
+  one entry in `WHATSAPP_RULES`. It is the same feature the email channel's third
+  question is waiting on, and it now has **two** retry sweepers to fold into it.
+
+  *Fourth: "delivered" means "the provider accepted it".* WhatsApp publishes real
+  sent/delivered/read receipts and the platform does not consume them, because
+  doing so needs a public webhook endpoint, Meta's signature verification, and an
+  inbound-message surface the spec does not ask for. Every delivery row records
+  its `wamid` so that feature has something to correlate on, so the work is
+  additive rather than a rewrite. Worth deciding deliberately: a *read* receipt on
+  a hearing update is genuinely useful to a firm, and it is also a record of when
+  a specific person looked at their phone.
 
 - **The Email Delivery Channel raised three, and all three are genuinely open
   rather than decided-and-recorded.**
@@ -237,6 +556,655 @@ change.
   the whole run.
 
 ## Completed
+
+### Interface localization — completing spec `21-localization.md`
+
+The second half of Localization, and the one a user actually sees. The feature
+shipped with its infrastructure complete and roughly **590 user-facing strings
+still hardcoded in English** inside the twelve feature modules — so switching to
+Arabic translated the sidebar and left every page behind it in English. This
+entry is that gap closed.
+
+**The shape of the change**
+
+- **Every feature module is now translated**: `components/cases`,
+  `components/documents`, `components/ocr`, `components/indexing`,
+  `components/search`, `components/ai`, `components/reports`, `components/users`,
+  `components/notifications`, `components/settings`, `components/timeline`,
+  `components/dashboard`, `components/auth`, plus the fourteen pages under
+  `app/(protected)` and the login page.
+- **The catalogues grew from 239 keys to 1,449**, in all three languages. A test
+  asserts key-for-key parity, another asserts that every interpolated **argument
+  name** survives translation, and a third asserts that an ICU plural is still a
+  plural in every language.
+- `messages/ar.json` and `messages/fr.json` are complete translations rather than
+  partial ones: there is no key that falls back to English.
+
+**Six patterns did most of the work, and each removed a *category* of hardcoded
+string rather than a list of them**
+
+1. **The `*_LABELS` maps are gone.** `CASE_STATUS_LABELS`,
+   `DOCUMENT_CATEGORY_LABELS`, `REPORT_TYPE_LABELS`, `OCR_STATUS_LABELS`,
+   `INDEX_STATUS_LABELS`, `NOTIFICATION_*_LABELS`, `TIMELINE_EVENT_TYPE_LABELS`,
+   `ROLE_LABELS`, `STATUS_LABELS`, and the six `*FailureLabel` functions were all
+   `Record<Enum, string>` constants in `types/*.ts` carrying a
+   `(future: i18n keys)` note. A module constant cannot read a setting, so each
+   became a **namespace** (`cases.statuses`, `ocr.failures`, …) and each call site
+   became `t(value)`. The *values* stayed in `types/` — a lifecycle is a fact
+   about the platform — and only the sentences moved.
+2. **The `*ErrorMessage(error)` helpers became hooks.** Twelve of them mapped an
+   API error code to an English literal, and several passed the **server's own
+   message** through verbatim. That message is written in English by a Python
+   process that has never seen the reader's language preference, so an Arabic
+   screen was Arabic everywhere except when something went wrong.
+   `useErrorMessage` (`hooks/use-error-message.ts`) takes a namespace and a
+   code→key map, falls back through a shared `errors.*` vocabulary, and never
+   displays a server sentence.
+3. **Zod validation messages travel as keys.** A schema is a module-level constant
+   built at import, long before React exists — so it cannot call
+   `useTranslations`. `lib/validation/messages.ts` emits an opaque
+   `vm(key, values)` marker that travels through Zod and React Hook Form, and
+   `hooks/use-field-error.ts` decodes it at the input. Anything it does not
+   recognise passes through unchanged, which is what keeps a server-supplied 422
+   detail rendering.
+4. **`PageHeader` became a Client Component taking `titleKey`.** Every page under
+   `(protected)` stays a Server Component; only this three-element block crosses
+   into the client, which is the smallest boundary that lets a page title be
+   Arabic. (There is **no locale in the URL** by design, so the server rendering
+   `<html>` cannot know one — which is also why `metadata` stays in the default
+   language.)
+5. **`EmptyState` gained `titleKey` / `descriptionKey`**, resolved against
+   *fully-qualified* keys, because a dozen modules use it and it can have no
+   namespace of its own.
+6. **Numbers stopped being formatted by hand.** `components/dashboard/format.ts`
+   was calling `Number.prototype.toLocaleString()` with no argument — which
+   formats in *the browser's* locale, so a French lawyer on an English OS still
+   read `1,024`. It is now a hook over `useNumberFormat`.
+
+**Two real defects surfaced while doing it, and both are fixed**
+
+- **OCR's `detectedLanguage` is not an ISO 639-1 code.** Tesseract answers with
+  its own model names joined by `+` (`eng+fra+ara`). Routing it through
+  `common.languages` humanized it into "Eng+fra+ara" and claimed it was a word; it
+  is now shown as the engine reported it. Indexing's `detectedLanguage` **is** a
+  language code and is still translated.
+- **`t.has()` rather than `??` for a fallback chain.** A missing key does not
+  return `undefined` — it returns the provider's humanized fallback — so
+  `tValues(v) ?? tWidgets(v)` never reached the second namespace, and every
+  dashboard widget in the Settings picker rendered as "Recent Cases" instead of
+  "Recent cases".
+
+**Three exceptions, each structural rather than an omission**
+
+- **`app/global-error.tsx` is not translated.** It is the boundary that catches a
+  failure of the root layout — the layout that mounts `LocaleProvider` — so by the
+  time it renders there is no catalogue and no locale. Reaching for
+  `useTranslations` there would replace a legible English sentence with a second
+  crash. `app/not-found.tsx` is *inside* that layout and **is** translated; the
+  difference between the two files is exactly this.
+- **`createMetadata` (the `<title>` tag) stays in the default language**, for the
+  reason `page-header.tsx` records: no locale in the URL means the server
+  rendering `<head>` does not know one.
+- **Language names, format symbols, and product names are never translated.**
+  `Français` / `العربية` (a selector that translated its options would show an
+  Arabic reader the word "French" in Arabic), `MB` / `ms` / `s` / `d` (symbols,
+  identical in all three languages), and `PDF` / `Markdown` / `WhatsApp`.
+
+**One regression caught by a test, and it was a real one.** Mapping the filter
+bars' compact *Clear* button onto `common.actions.clearFilters` put two buttons
+named "Clear filters" on the same screen — the filter bar's and the empty state's.
+`common.actions.clear` restores the distinction.
+
+**A test was loosened, and deliberately.** `tests/localization.test.tsx`'s
+placeholder-parity check used a naive brace-group regex, which also matches the
+*branch bodies* of an ICU plural — and those are translated text that **must**
+differ between languages, since French pluralizes at a different boundary from
+English and Arabic has six categories. It now extracts argument **names**,
+deduplicated, and a new sibling test asserts that a plural is still a plural in
+every language.
+
+**Verification:** `tsc --noEmit` clean, `eslint .` clean, **711/711 tests
+passing**, `next build` succeeds and prerenders all 16 routes.
+
+**Files:** `hooks/use-error-message.ts`, `hooks/use-field-error.ts`,
+`lib/validation/messages.ts`, `components/shared/upcoming-feature.tsx` (new);
+`messages/{en,fr,ar}.json` and ~120 components, hooks, types, and validation
+modules (changed).
+
+**Also shipped alongside**, both new and both under `docs/`:
+
+- `docs/manual-test-checklist.md` — a human pass over the whole platform,
+  sections 1–15 by feature and section 16 for the three languages and RTL. It
+  exists because every one of the 711 automated tests runs against a mock: none
+  has watched a real scan travel through Tesseract into Qdrant, and none has read
+  an Arabic screen right-to-left.
+- `docs/ai-features-report.md` — the implementation report for specs 09–14: the
+  pipeline's shape, the seam pattern all eight boundaries follow, each feature's
+  code, and a technology-choice table recording what each decision was made
+  *against* — including why Qdrant rather than ChromaDB (filtering must happen
+  inside the ANN search, because the case scope is a security boundary), why
+  bge-m3 rather than OpenAI embeddings, and why Tesseract rather than a cloud OCR
+  API.
+
+
+### Monitoring & Observability — spec `22-monitoring.md`
+
+`ai-workflow-rules.md`'s step 16, the last on its list, and the first feature on
+this platform that is **entirely cross-cutting**. Its most interesting property is
+a number: **zero business modules changed.** Not one service, repository, access
+policy, or worker learned that monitoring exists — the two lines added to a router
+are the *successful* sign-in and the password change, which are recorded because
+they are the denominator a failure count cannot be read without and because
+neither is an exception.
+
+**Backend — the vocabulary and the recorders**
+
+- `core/observability.py` — everything monitoring names, named once: the
+  components an observation attributes to, the metric catalog (name, type, unit,
+  labels), the error categories, the security events and their severities, the log
+  event names, the alert rules, and the **redaction rules that are the Logging
+  Policy**. Pure data and pure functions, so `core/exceptions.py` and
+  `core/middleware.py` can import it with no risk of a cycle.
+- `core/tracing.py` — W3C Trace Context: identifiers, `traceparent` parsing and
+  formatting, and the context variable that makes the current span reachable from
+  a SQLAlchemy event handler nobody calls directly.
+- `services/metrics_registry.py` — counters, gauges, and histograms behind a
+  protocol, with an in-memory implementation, a null one, and a frozen snapshot.
+  Cardinality is bounded three ways: declared labels only, bounded label values,
+  and a series ceiling whose refusals are **counted**.
+- `services/tracer.py` — spans, their nesting, and a bounded ring of recent
+  traces. `record_completed` exists because SQLAlchemy reports a statement through
+  two callbacks, so the work happens between two function calls and a context
+  manager has nowhere to go.
+- `services/error_tracker.py` — failures grouped by type and location, evicting by
+  staleness, holding no traceback.
+- `services/security_monitor.py` — counters, three windowed rates, and a feed that
+  names nobody: a source is a per-process salted digest whose only readable
+  property is its cardinality.
+- `services/system_metrics.py` — process figures and worker-pool liveness, with no
+  new dependency.
+- `services/database_metrics.py` — engine listeners timing every statement by
+  **verb**, never by text.
+- `services/metrics_export.py` — the Prometheus text exposition format as a
+  renderer over a snapshot, converting milliseconds to seconds at the boundary.
+- `services/monitoring.py` — the view: health, performance, jobs, errors,
+  security, traces, and alerts, each assembled inside its own `try`.
+
+**Backend — the four edges**
+
+`core/middleware.py` (rewritten as `ObservabilityMiddleware`, with the old name
+kept as an alias), `core/exceptions.py` (handled errors plus the whole of security
+classification), `core/logging.py` (trace correlation and redaction as
+processors), and `core/lifespan.py` (instrumentation, *monitoring started*, and
+*configuration loaded*). Plus `core/readiness.py`, which gained
+configuration-only external-service probes, and `api/health.py`, which reports
+them without ever letting one decide readiness.
+
+**API** — `api/v1/monitoring/`: nine reads, all `monitoring:view`, plus
+`/monitoring/export` on `monitoring:export` so a scraper's credential can read
+counters without reading the security feed, the error list, or the traces. No
+write path exists.
+
+**Frontend** — `app/(protected)/monitoring/`, `components/monitoring/`,
+`hooks/use-monitoring.ts`, `lib/api/monitoring.ts`, `lib/validation/monitoring.ts`,
+`types/monitoring.ts`, one navigation entry gated on `monitoring:view`, and 96
+translation keys in all three languages. The page **polls rather than
+subscribing**, and the reason is specific: nothing publishes a domain event when a
+queue backs up, and the channel is itself one of the things this page watches.
+
+**What it deliberately did not do**
+
+- **It did not read `services/event_metrics.py`.** Its snapshot needs the live
+  connection count, which only `websocket/manager.py` holds, and
+  `code-standards.md` says nothing outside that package, the lifespan, and the
+  endpoint may import it. Real-time metrics stay on `GET /realtime/metrics`, and
+  the monitoring router says so rather than duplicating them.
+- **It added no monitoring dependency.** No `prometheus_client` (a second global
+  registry beside the declarations that already are one), no `psutil` (figures a
+  container runtime reports better), no OpenTelemetry SDK (the wire format is
+  already W3C, so one dropped in front of this platform finds its header already
+  propagated).
+- **It stored nothing.** Fourth module with no model, after Dashboard, Real-Time
+  Synchronization, and Localization — and for a fourth distinct reason: a metric
+  in PostgreSQL would make the database a dependency of the thing that watches it.
+
+**Validation** — 82 new backend tests (`tests/unit/test_observability_utils.py`,
+`test_tracing.py`, `test_metrics_registry.py`, `test_error_tracker.py`,
+`test_security_monitor.py`, `test_database_metrics.py`, and
+`tests/integration/test_monitoring.py`) and 12 new frontend tests
+(`apps/web/tests/monitoring.test.tsx`), all passing; the full web suite is 713
+passing; `tsc --noEmit` and ESLint are clean and the production build succeeds.
+The integration suite asserts the two properties that would be invisible if they
+broke: that the platform keeps serving with monitoring switched off, and that no
+account, address, or credential reaches a monitoring response.
+
+### Localization (Internationalization) — spec `21-localization.md`
+
+`ai-workflow-rules.md`'s step 15, and the feature whose most interesting property
+is how much of it was already built. **Almost every surface was already
+language-parameterized and none of them had a source.** A notification has stored
+no prose since Notifications shipped; `core/email.py` has carried chrome per
+language since the email channel; `apps/api/whatsapp/*.params.j2` carries a
+descriptor per language; `core/reports.py` holds its section titles per language;
+and the RAG pipeline, the assistant, and the report agent have all taken a
+`language` on every request. What none of them had was an answer to *whose*
+language — which is the open question `progress-tracker.md` had been carrying
+since the email channel shipped, and which this feature closes.
+
+**What shipped, server side:**
+
+- `core/localization.py` — the platform's one language vocabulary: the three
+  languages in the spec's order, their directions, their BCP-47 formatting tags,
+  `resolve_language(*candidates)`, and `parse_accept_language`. Every resolver on
+  the platform now delegates to it, so the selection chain and the fallback
+  strategy are one function rather than six agreements.
+- `repositories/localization.py` + `services/localization.py` — the **language
+  directory**: *which language does this account read in?* and nothing else. One
+  method wide, read-only, and handed to a delivery channel instead of a settings
+  repository — the deliberate answer to the question the email channel recorded.
+  `chosen_language_for` is deliberately separate from `language_for`, because an
+  AI surface that asked for a resolved default would have made language detection
+  dead code the day this shipped.
+- `services/localization_metrics.py` + `api/v1/localization/` — the catalogue
+  endpoint, the client report path, and the metrics view. One new permission,
+  `localization:monitor`, and it is administrative like every other `*:monitor`.
+- Wiring: both delivery channels resolve and **snapshot** the recipient's language
+  before queueing; the notification feed defaults to the reader's own; the
+  assistant and the RAG endpoint default to the asker's *chosen* language; the
+  report agent settles the requester's language before the row is written.
+- `DEFAULT_LANGUAGE` as a deployment setting, with `user_settings.language` and
+  `platform_settings.default_language` both taking its value as their default.
+
+**What shipped, browser side:**
+
+- `lib/i18n/` — the mirrored vocabulary, the catalogue loader (dynamic import,
+  per-locale cache, deep-merge onto the default language), and the humanized
+  last-resort fallback.
+- `messages/{en,fr,ar}.json` — the catalogues, asserted by a test to have the same
+  keys, the same interpolation placeholders, and no empty values.
+- `components/i18n/locale-provider.tsx` — resolution (settings → browser on first
+  sign-in → default), the `localStorage` copy that lets the login screen render in
+  the right language, `lang`/`dir` on the document element, and the batched
+  missing-key report.
+- `components/layout/language-switcher.tsx` in the top bar, with every option
+  written in its own language.
+- RTL: logical spacing utilities across every non-generated component, a test that
+  asserts no physical edge is named, and the handful of rules in `globals.css` a
+  logical property cannot express.
+- `hooks/use-number-format.ts` and the date half of `hooks/use-date-format.ts`;
+  `lib/format.ts` is now only `initials`.
+
+**Three things were not predicted and are worth recording.**
+
+*First: the spec moved the platform's default language.* `21-localization.md`
+names **English** as the default where every fallback on the platform had been
+French — deliberately, with reasoning recorded in `core/rag.py` about accent-free
+French questions. Honouring the spec meant making the default a **deployment
+setting** rather than swapping one literal for another, and it moved a handful of
+assertions that had encoded French. Any deployment that was relying on the French
+fallback should set `DEFAULT_LANGUAGE=fr`.
+
+*Second: `language_for` and `chosen_language_for` had to be different questions.*
+The first design gave every caller the resolved language, which is right for an
+email and wrong for a question: an account that has chosen nothing would have had
+its Arabic question answered in English, silently disabling the detection
+`core/rag.py` had argued for. A test now asserts the distinction, because nothing
+else would have noticed it.
+
+*Third: RTL needed almost no CSS and one sweep of class names.* The expensive
+part was not a stylesheet — it was that ~40 components named physical edges
+(`ml-`, `pl-`, `text-right`, `border-r`). Converting them to logical utilities is
+what made one layout serve both directions, and a test on the shipped source is
+what keeps the next component from reintroducing the problem.
+
+
+- **Settings (spec `20-settings.md`)** — the platform's configuration in one
+  place, and the first feature whose defining property is how much of it
+  deliberately **belongs to somebody else**.
+
+  **Four of its nine sections store nothing**, and that is the delivery rather
+  than a gap in it. `20-settings.md`'s rule is *"each feature should own its
+  configuration; the Settings module simply presents and manages those
+  configurations"*, and taken literally it decided the module:
+
+  - **Profile** writes the `users` row through `UserRepository` — the same
+    repository User Management uses, and deliberately **not**
+    `UserService.update_user`, which is an administrator editing somebody else's
+    account (it takes a user id, checks `users:update`, can change a role, a
+    status, and an email, and publishes an event about a third party). Reuse
+    happens at the layer where reuse is safe. One new column, `users.job_title`,
+    because the spec names it and nothing had it.
+  - **Account & Security** delegates to `AuthService` whole. The Password Change
+    Policy the spec states — clear `must_change_password`, invalidate every other
+    session, keep this device signed in — has held since Authentication shipped
+    and was not re-implemented; the service calls one method and records that it
+    happened.
+  - **Notifications** and **Communication** are two projections of one stored
+    thing, `notification_preferences`, read and written through
+    `/notifications/preferences`. There is **no `/settings/notifications`**, and
+    an integration test asserts no route under `/settings` names one.
+  - **Appearance, Language & Region, AI, and Dashboard** are what no feature
+    owned, so this module owns them — and that is the whole of what it owns.
+
+  **The storage shape is `notification_preferences`' own, reused rather than
+  reinvented**: one row per `(user, key)` over an open registry in
+  `core/settings.py`, so a tenth setting is one entry and **no migration**, and an
+  untouched account has **no rows** and follows the platform defaults. The
+  migration therefore seeds nothing — a seeded default says what its absence
+  already says, and would need a data migration every time a default changed.
+
+  **Administrator settings are isolated three times over** — a separate table with
+  no `user_id` column at all, a separate registry sharing no key with the user one
+  (asserted by a test), and `settings:manage`, which is **not** a wider
+  `settings:update`. Every `default_*` platform setting is the fallback an account
+  with no stored row follows, which is what makes them *do* something: changing
+  one reaches every such account at once, with no backfill, because there is
+  nothing stored to back-fill.
+
+  **Validation is applied to the whole batch before anything is written**, so a
+  save with one bad time zone leaves every other field exactly as it was — the
+  spec's *"invalid configuration should never corrupt stored preferences"* as a
+  property of ordering rather than of care. Every offending key is reported at
+  once, so a form marks all its bad fields in one round trip; and a value equal to
+  what is stored produces **no write**, which keeps `updated_at` meaning *when
+  this setting changed*.
+
+  **Two things were genuinely new work rather than presentation.** *Active
+  sessions* needed a **`sid` token claim** — minted at sign-in, preserved across
+  every refresh rotation, granting nothing — plus a Redis-backed
+  `SessionRegistry`, because a stateless-JWT platform could revoke every session
+  and could not name one. It is keyed by **sign-in** rather than credential (a
+  `jti` rotates every fifteen minutes), it is a **view rather than a boundary** so
+  it fails *soft* where `TokenRevocationStore` fails closed, and the API reports
+  *"unavailable"* separately from *"empty"* because those deserve different
+  sentences on screen. *"Sign out everywhere else"* reuses the password change's
+  own mechanism — one write to `users.session_generation` — so a device the
+  registry never heard of is signed out exactly like one it did. And **light
+  mode** turned out to be a design-system change: `globals.css` grew a second
+  palette declared as platform tokens only, plus `--text-on-accent`, which is what
+  a two-theme palette needs and a dark-only one could do without.
+
+  **The page is server-described**, in the shape the dashboard's widget catalog
+  established: the API serves an ordered section list *and* a definition per
+  setting, so the browser renders a control for a setting it has never heard of
+  and a tenth section reaches a client nobody redeployed. Labels are never in a
+  response. An administrative section is **omitted** rather than served disabled.
+
+  **Four permissions**, two of them in `BASE_PERMISSIONS` — `settings:view` and
+  `settings:update` are the caller's *own* preferences, and a role that could read
+  the theme it was stuck with and not change it is not a policy anybody would
+  write. There is deliberately no `settings_access.py`: *"users may modify only
+  their own settings"* is enforced by the **absence of a parameter**, since no
+  method and no route takes a user identifier.
+
+  **96 tests** cover it — 25 on the vocabulary and its validation, 24 on the
+  service against the real repository over SQLite, 46 end to end through the real
+  router and role policy, and 25 in the browser. Five **pre-existing** frontend
+  failures were fixed on the way: the WhatsApp channel had added a required
+  `whatsapp` field to the notification-preferences schema without updating the
+  fixtures, which turned every preference test into "the query failed".
+
+- **Dashboard & Analytics (spec `19-dashboard-analytics.md`)** — the platform's
+  landing page, and the **first feature that reads across every module rather
+  than owning one**. That single fact decided almost everything in it.
+
+  **It owns no data**, and the shape of the delivery says so: no model, no
+  migration, no table, no domain event, no worker, no queue, no provider, and no
+  background job. Every figure is read, per request, from the module that owns the
+  rows — under that module's own authorization. Switching `DASHBOARD_ENABLED` off
+  removes a page and changes nothing else, which an integration test asserts by
+  loading `/cases` with the dashboard disabled. **No business module was
+  touched.** Exactly one permission was added, `dashboard:monitor`, for the
+  feature's own metrics view — like every other `*:monitor` — and there is
+  deliberately **no `dashboard:view`**: every authenticated role has a dashboard,
+  so a permission on the page would be one every role holds.
+
+  **A widget is a function of a context, registered by key**, and the spec's four
+  hardest requirements are consequences of that shape rather than features built
+  on top of it:
+  - *"widgets should not depend on one another"* — a loader receives a context and
+    returns a payload. It is never given another widget's result, and it does not
+    know it is on a page;
+  - *"every widget must enforce authorization independently"* — the context
+    carries the **answers** `DashboardAccessPolicy` already computed (a case scope
+    and an owner id) and no `User`, no permission set, and no way to widen either.
+    The check runs **before** the loader, so an unauthorized widget is not
+    computed and filtered — it is never computed, which a unit test asserts
+    against the repository double;
+  - *"one failing widget must not prevent the dashboard from loading"* — each
+    loader runs inside its own `try`; a failure marks that widget `unavailable`
+    with a **code**, is counted, is logged with its traceback server-side, and the
+    response is still 200. It is not a behaviour to remember: it is the only
+    behaviour the loop can have;
+  - *"refreshing one widget should not reload the entire dashboard"* —
+    `GET /dashboard/widgets/{key}` calls the **same loader** the aggregated
+    endpoint calls, so a refreshed tile cannot drift from the one beside it.
+
+  **"Handle timeout" became a budget rather than a per-query cancel**, and that
+  was a real decision. Cancelling a running statement is a driver-and-database
+  concern that differs between PostgreSQL and the SQLite test database; a
+  wall-clock budget checked *between* widgets behaves identically everywhere. Past
+  it the widgets not yet reached come back `budget_exhausted` — counted separately
+  from `query_failed`, so a rising number reads as *"this dashboard is too big"*
+  rather than *"the database is broken"*.
+
+  **The most load-bearing consequence is in the browser, not the server.** A
+  widget declares the domain events that make it stale, and **the API serves that
+  list to the client** — so `apps/web` has no widget-to-event table. A widget added
+  to `WIDGETS` appears, authorizes itself, and starts updating live in a browser
+  nobody redeployed. This is the one sanctioned exception to `lib/realtime/sync.ts`
+  being the single place the frontend decides what an event invalidates, and the
+  reason is recorded in that file: a nineteen-row block there would have to be
+  edited every time a widget was added, which is precisely the redesign the spec
+  forbids. **Adding a widget is one entry in `WIDGETS` and one loader** — nothing
+  in the router, the schemas, the access policy, or the frontend changes.
+
+  **Authorization is delegated, never re-derived**, and this feature is where that
+  discipline matters most: a dashboard shows a *number*, so a wrong scope is
+  invisible in a way a wrong document read never is — nobody notices that a total
+  is four instead of three. `services/dashboard_access.py` therefore contains **no
+  rules at all**. It asks `CaseAccessPolicy.visibility_scope` (the same call the
+  case list, document list, timeline, and semantic search make) and uses identity
+  equality for the private histories. Every query in `repositories/dashboard.py`
+  takes `visible_to` with **no default** and no unscoped variant, and the predicate
+  is `assigned_case_scope` imported rather than re-written. The notifications
+  widget goes one further and reads through `NotificationRepository` itself,
+  because every read there is keyed by recipient.
+
+  Three decisions inside that worth recording:
+  - **an aggregate widget requires *all* its capabilities, not any** — offered on
+    "any", `document_analytics` would report the two features somebody lacks as
+    **zero**, and a zero is information. *"Aggregated metrics must never leak
+    unauthorized information"* fails through arithmetic, not through rows;
+  - **"my cases" means assigned to me, even for an administrator** — `cases:view-all`
+    decides what `recent_cases` counts and must not decide what *"what requires my
+    attention?"* answers, or an administrator's dashboard becomes the entire
+    caseload;
+  - **the platform-wide cache is safe by construction** — eligibility is the
+    `platform_wide` flag rather than cost, because those are the only widgets whose
+    answer does not depend on who asked. Nothing user-scoped has a cache key, and
+    no setting can give it one. A unit test asserts a user-scoped widget is
+    re-queried on every load.
+
+  **Analytics are descriptive and real.** Every figure is a `COUNT`, a `SUM`, or a
+  bounded `SELECT` over rows that exist; no data is a measured zero, no
+  observations is `null` (rendered as an em dash, never as `0`). There are no
+  trends, projections, or smoothed series and nowhere for one to come from. Queue
+  depths come from **persisted lifecycle rows** rather than the in-process thread
+  pools, because a pool's depth is one API instance's opinion and is zero on the
+  instance that happens to serve the dashboard.
+
+  **One design problem needed an actual answer: "active dashboard users".** The
+  spec asks for distinct people, and every other recorder on this platform is
+  built so an identity has nowhere to go. The resolution is that identities are
+  **not kept**: a user is folded in as a `blake2b` digest under a per-process
+  random salt, and only the *cardinality* is readable. The recorder can answer
+  "seventeen people opened a dashboard" and cannot answer "was Amina one of them",
+  because the answer was destroyed on the way in. The set is capped and says so
+  when it is. Tests assert that no form of the identifier survives and that two
+  processes produce different digests for the same person.
+
+  **Nine payload shapes serve nineteen widgets**, discriminated on `kind`, so the
+  frontend has a renderer per shape rather than per widget — the twentieth widget
+  is free in the browser too. Labels are **never** in a response: widgets, metrics,
+  and buckets carry stable keys and the words live in
+  `components/dashboard/labels.ts`, for the same reason a notification stores no
+  sentence.
+
+  **Delivered:** `core/dashboard.py` (19 widgets, 3 role layouts, 5 quick actions,
+  4 time filters), `repositories/dashboard.py`, `services/dashboard.py`,
+  `services/dashboard_access.py`, `services/dashboard_metrics.py`,
+  `schemas/dashboard.py`, `api/v1/dashboard/router.py` (4 endpoints), the
+  `dashboard:monitor` permission, 9 settings, 2 exceptions; on the web,
+  `types/dashboard.ts`, `lib/validation/dashboard.ts`, `lib/api/dashboard.ts`,
+  `hooks/use-dashboard.ts`, `components/dashboard/` (view, filters, quick actions,
+  card, 9 renderers, metrics panel, labels, formatters), and the real
+  `/dashboard` page replacing its placeholder.
+
+  **Validation passed:** 58 integration tests and 104 unit tests green; the full
+  backend suite green apart from three pre-existing failures caused by the local
+  `.env` (`EMAIL_ENABLED=true`, `SMTP_HOST=localhost`) contradicting the
+  "off by default" assertions — unrelated to this feature. `ruff check` clean,
+  `tsc --noEmit` clean, ESLint clean, `next build` succeeds.
+
+  **One implementation trap worth recording, because it will recur.** FastAPI
+  expands a Pydantic query model into individual parameters **only when it is the
+  endpoint's sole query parameter**. A `language` declared beside
+  `Annotated[DashboardQuery, Query()]` silently turned the whole model into one
+  required parameter named `query`, so every unqualified `GET /dashboard` answered
+  422 — and the OpenAPI schema showed it plainly (`["query", "language"]` instead
+  of the expanded field list). The fix is that **every query field lives on the
+  model**; it is noted in `schemas/dashboard.py` and in the router.
+
+- **WhatsApp Delivery Channel (spec `18-whatsapp-delivery-channel.md`)** — the
+  third delivery channel for the notifications the platform already creates, and
+  the second feature in a row that adds **no business rule at all**. Business
+  modules publish domain events as they already did; the Notification Service
+  turns the ones that matter into notifications as it already did; this feature
+  delivers the subset marked for WhatsApp and decides nothing else. **No new
+  dependency** — the Cloud API is one JSON `POST` and `urllib.request` sends it —
+  and **no business module changed**.
+
+  **What it reused, unchanged.** This is the headline, because it is the test of
+  whether the email channel generalized or merely worked:
+  - the one-method `NotificationDispatcher` protocol, implemented a second time
+    with no amendment to it;
+  - the persisted delivery lifecycle, the **conditional-`UPDATE` claim**, the
+    unique index that makes *one notification, one message* an invariant, the
+    **retry schedule on the row** with a timer-thread sweeper, and the
+    transient/permanent split as a partition of a closed vocabulary;
+  - the two-source metrics split (SQL aggregates for row counts, in-process
+    counters for latency and retries, `since` on the second);
+  - preferences per key *and* per channel — **one boolean column**, no new table,
+    no new preference key, no backfill, exactly as `models/notification.py`
+    predicted when the table shipped with one channel and the email channel
+    cashed once;
+  - the existing `notifications:monitor` permission, with **no new one added**,
+    and no endpoint that lists deliveries.
+
+  **What is genuinely its own**, all of it forced by the medium:
+  - **The provider is HTTP.** `WhatsAppProvider` is a separate protocol rather
+    than a generalization of `EmailProvider`: an SMTP send takes an addressed
+    document, a Cloud API send takes a template name, a language tag, and an
+    ordered parameter list, and a common supertype would be the union of the two
+    — a type describing neither. `services/whatsapp_provider.py` is the only
+    module that knows Meta's URL shape, its JSON, or its error codes; it
+    classifies **Meta's numeric code before the HTTP status**, because a `400`
+    carrying `132001` (unapproved template) and one carrying `131009` (bad
+    parameter) send an operator to two different consoles. Twilio or Vonage is one
+    class plus one registry entry.
+  - **The template lives on the provider's side, so what ships here is a
+    descriptor.** A WhatsApp template is submitted to and approved by Meta, and
+    the platform supplies its *parameters*. The tempting design — put the
+    sentences in the approved template — puts the platform's wording somewhere no
+    test asserts on and nothing keeps in step with the in-app feed. So the
+    approved template is a **thin envelope** (greeting slot, heading slot, body
+    slot), the sentences stay in `core/notifications.py` where every channel gets
+    them, and `apps/api/whatsapp/*.params.j2` says which value fills which slot.
+    A descriptor's **parameter count and order are the contract** with the
+    registered template, which is why `template_rejected` is its own failure code:
+    it is the one failure fixed in Business Manager rather than in this
+    repository.
+  - **The recipient is optional, which changes what a skip means.** `users.phone`
+    is nullable and most accounts are created without one, so
+    `no_phone_number` is the *expected* outcome for much of the platform rather
+    than a rare fault — a deployment watching it sit at the size of its user base
+    is being told to collect phone numbers, not that something is broken.
+    `normalize_phone` refuses what it cannot be sure about rather than guessing: a
+    nationally-formatted number is messaged only when
+    `WHATSAPP_DEFAULT_COUNTRY_CODE` is set, because one message not sent is a
+    failure this channel may have and a legal notification delivered to a stranger
+    is not. **No phone-number library was added**, and that is recorded as the
+    trade it is.
+  - **"Delivered" is the spec's word, and the platform is honest about it.** The
+    status means *the provider accepted the message and issued a `wamid`* — the
+    same claim `sent` makes one channel over. WhatsApp's real sent/delivered/read
+    receipts arrive on an inbound webhook, which is a public endpoint, a signature
+    scheme, and an inbound message surface the spec does not ask for;
+    `provider_message_id` is recorded on every row so that feature has something
+    to correlate on.
+  - **Its own worker pool**, and a fifth is not extravagance: the Cloud API
+    rate-limits per business phone number while a relay greylists per sender, so
+    sharing would make a throttled WhatsApp number slow down password-reset mail
+    and a greylisting relay occupy the threads that carry hearing updates. Its
+    backoff **ceiling is half the email channel's**, because this is the urgent
+    channel and a hearing update arriving after the hearing is worse than one that
+    never arrives — the reader will act on it.
+
+  **Two smaller decisions worth keeping.** `sanitize_parameter` **collapses**
+  whitespace rather than refusing it, which is the opposite of what
+  `sanitize_header_value` does with a line break: a newline in a mail header is an
+  injection, while a newline in a template parameter is a formatting rule of
+  Meta's, and an administrator who pressed Enter in an announcement has not
+  attacked anything. And rate limits are **prepared for rather than modelled** —
+  a small bounded pool, five Meta codes plus HTTP `429` classified as `throttled`,
+  and an exponential backoff — because a token bucket here would be a fourth
+  mechanism guessing at a limit the provider publishes per account and changes
+  without notice.
+
+  **What never leaves.** No message content, no case number, and **no phone
+  number** reaches a log, a metric, or a response body — not even at debug and not
+  even hashed, since a number hashed unsalted is reversible by anyone holding a
+  user list. The Cloud API's own error text never leaves the provider module,
+  because it quotes the request. The one non-count the metrics endpoint returns is
+  `configuration_errors`: setting **names**, never values, which is the spec's
+  *"provide meaningful error messages"* without the meaningful message being a
+  credential.
+
+  **Off by default** (`WHATSAPP_ENABLED=false`), making it the second such switch
+  on the platform after email — and it additionally cannot work until templates
+  are approved by Meta, which `apps/api/whatsapp/README.md` documents as a
+  process rather than a setting.
+
+  **Tested**: `tests/unit/test_whatsapp_utils.py` (the rule table, including that
+  every forbidden event is absent; the failure partition; phone normalization),
+  `tests/unit/test_whatsapp_provider.py` (the composed request, and every
+  classification path, against a patched transport rather than a fake class),
+  `tests/unit/test_whatsapp_templates.py` (the renderer, **and the shipped
+  descriptors' parameter count and order** — the only half of the approved-template
+  contract this repository can check), `tests/unit/test_whatsapp_delivery_service.py`
+  (eligibility, preferences, recipients, duplicates, retry, sweep, wiring), and
+  `tests/integration/test_whatsapp_delivery.py` (event → notification → message,
+  end to end, plus preferences over the API and the monitoring view's
+  authorization).
+
+  **Validation run:** `ruff` clean, `mypy --strict` clean over 179 modules, the
+  web app's `tsc --noEmit` and `eslint` clean, and the full `tests/unit` +
+  `tests/integration` suite green apart from **three pre-existing failures that
+  this feature did not cause and did not fix**:
+  `test_the_email_channel_is_off_by_default` and the two
+  `test_email_provider.py::TestAvailability` cases. All three are the local
+  `.env` — it sets `EMAIL_ENABLED=true` and `SMTP_HOST=localhost`, and
+  `Settings` reads that file for any field a test does not pass explicitly, so
+  the tests assert the *code's* default and get the *developer's*. Running them
+  with `EMAIL_ENABLED=false SMTP_HOST=` passes all three. **Worth fixing
+  separately**, because it will fail the same way on any machine with a
+  configured `.env` and the fix belongs to the test setup rather than to a
+  feature: `_base_kwargs` should pass the delivery-channel defaults explicitly,
+  or the settings fixture should build with `_env_file=None`. The WhatsApp
+  equivalents pass today only because nothing sets `WHATSAPP_*` locally yet, so
+  they will acquire the same problem the first time somebody configures the
+  channel.
 
 - **Email Delivery Channel (spec `17-email-delivery-channel.md`)** — the second
   delivery channel for the notifications the platform already creates, and the
@@ -3355,7 +4323,9 @@ change.
 
 ## In Progress
 
-- None.
+- Nothing. The interface-copy work the previous entry here enumerated is
+  complete — see *Interface localization* at the top of *Completed*.
+
 
 ## Next Up
 
@@ -3377,6 +4347,38 @@ change.
   initials, which is what nearly every row shows.
 
 ## Open Questions
+
+- **"Cases closed in this period" is measured from `updated_at`, which is the
+  wrong column and the only one there is.** A case carries no *closed-at*
+  timestamp, so the dashboard's `closed_in_window` counts cases that are currently
+  closed and were touched inside the window — which means a case closed in June
+  and edited in August counts as August's. It is stated in
+  `repositories/dashboard.py` rather than hidden, and it is the one figure on the
+  dashboard that is an approximation. **The fix is a `closed_at` column on
+  `cases`,** written by `CaseService` when the status transition happens; that is
+  a Case Management change with a migration behind it, and a read-only dashboard
+  had no business inventing one. Flagged rather than fixed for the same reason
+  `timeline:create` was flagged rather than removed.
+
+- **The dashboard's platform-wide cache is per API process, and two instances will
+  disagree for up to `DASHBOARD_CACHE_SECONDS`.** Storage, accounts, and queue
+  depths are cached in memory, so two administrators hitting different instances
+  can see figures thirty seconds apart. That is acceptable for the three
+  administrative widgets it applies to — none of them is a number anybody acts on
+  to the second — and the alternative, Redis, would make a *cache* a dependency of
+  a page that currently degrades to "one more query". **Worth revisiting only if
+  the platform grows an operational view where the disagreement is visible**, and
+  worth stating now because the setting looks like a shared cache and is not.
+
+- **A dashboard load runs up to nineteen queries, and nothing measures the
+  database's share of that.** The metrics view reports wall time per widget, which
+  is enough to find *which* widget is slow and not enough to say whether it is the
+  query, the connection pool, or the loop. In practice the per-widget breakdown has
+  been sufficient; the honest position is that this feature added a page that can
+  become the busiest read on the platform and instrumented it at the widget rather
+  than the statement. **The budget bounds the damage** — a slow dashboard sheds
+  widgets instead of holding a connection — so this is an observability gap rather
+  than a stability one.
 
 - **Every download appends a timeline entry, and a busy document will dominate a
   case's history.** `08-timeline.md` lists `DOCUMENT_DOWNLOADED` as a document
@@ -3561,6 +4563,164 @@ change.
   reconcile `ui-context.md` down to dark-only or plan a future light theme.
 
 ## Architecture Decisions
+
+### Dashboard & Analytics (spec `19`)
+
+- **A widget is a function of a context, registered by key — not a class, not a
+  subclass, not a route.** The alternatives were considered and each loses one of
+  the spec's requirements. A widget *class* per widget makes nineteen files where
+  a table of nineteen entries reads better, and invites shared base-class state
+  that would let one widget see another's. A widget *endpoint* per widget gives up
+  the aggregated response the spec explicitly asks for. A `match` statement inside
+  the service gives up the construction-time exhaustiveness check, so a widget
+  added without a loader would fail the first time somebody with the right role
+  opened the page rather than in every test. The registry keeps independence,
+  aggregation, and exhaustiveness at once.
+
+- **The catalog serves `refresh_events` to the client, so the browser has no widget
+  table.** This is the decision the feature is really built around. The obvious
+  alternative — extend `lib/realtime/sync.ts` with nineteen cases — would have
+  worked and would have made "add a widget" a two-repository change forever, which
+  is exactly the redesign `19-dashboard-analytics.md` says a new widget must not
+  require. Serving the staleness rules as data costs one array per widget in the
+  response and buys the property that a widget added on the server updates live in
+  a browser nobody redeployed. The cost is stated: `sync.ts` is no longer the
+  *only* place the frontend decides what an event invalidates, and that exception
+  is documented in `sync.ts` itself so the next reader finds it there.
+
+- **`services/dashboard_access.py` owns no rules, and that emptiness is the
+  design.** A dashboard reads across nine modules, so it is precisely where a
+  second, subtly different copy of "may this person see this" would appear — and it
+  would be the copy nobody notices is wrong, because a dashboard shows a *number*.
+  Nobody reviews a total of four and thinks "that should be three". So the module
+  has three delegations and no logic: `CaseAccessPolicy.visibility_scope` for
+  cases, identity equality for private histories, and the widget catalog's declared
+  permissions for visibility. A test asserts the case scope equals
+  `CaseAccessPolicy`'s answer for every role, so a refinement there cannot leave a
+  dashboard behind.
+
+- **An aggregate widget requires *every* capability it draws on.** The tempting
+  rule is "any", so a lawyer holding `documents:view` still gets a documents tile.
+  It is wrong in a way that is specific to analytics: the tile would report
+  extraction and indexing as **zero**, and a zero is a claim about the platform. A
+  reader cannot distinguish "you may not see this" from "there is none of it", so
+  "any" turns an authorization boundary into misinformation. This is the one place
+  the spec's *"aggregated metrics must never leak unauthorized information"* fails
+  through arithmetic rather than through rows.
+
+- **"Handle timeout" became a wall-clock budget checked between widgets, not a
+  per-query cancel.** A statement timeout is the textbook answer and is
+  database-specific: PostgreSQL has `statement_timeout`, the SQLite test database
+  has nothing comparable, and a rule that only works in production is a rule no
+  test can hold. The budget sheds the widgets it has not reached, reports them as
+  `budget_exhausted` (counted separately from a fault, so the metric reads as
+  "this dashboard is too big" rather than "the database is broken"), and behaves
+  identically everywhere. The honest limitation: it cannot interrupt a widget
+  already running, so one pathological query can still exceed the budget by its own
+  duration.
+
+- **Only `platform_wide` widgets are cacheable — eligibility is the *shape* of the
+  answer, never its cost.** The expensive widgets and the shareable ones happen to
+  coincide today, which is exactly why the flag had to be about sharing: a future
+  widget that is expensive *and* user-scoped would otherwise be cached by whoever
+  noticed it was slow, and a per-caller figure in a shared cache shows one person
+  another's numbers. `_cache_key` returns `None` for anything with a case scope, so
+  there is no setting that permits it and no code path that forgets.
+
+- **"Active dashboard users" keeps salted digests, not identities.** The spec asks
+  for distinct people, and counting distinct anything requires remembering what has
+  been seen — which contradicts the rule every other recorder on this platform
+  follows, that there is nowhere for an identity to go. Three options: drop the
+  figure (the spec names it), keep user ids (a live index of who is working), or
+  destroy the identity on the way in. The third: `blake2b` under a per-process
+  random salt, truncated, with only the set's cardinality exposed and a cap that
+  says when it is reached. The recorder can answer "seventeen people" and cannot
+  answer "was Amina one of them". Tests assert both halves.
+
+- **Nine payload kinds rather than nineteen response models.** The type-safe
+  instinct is a model per widget; it produces nineteen shapes for a client to
+  learn and a twentieth for every widget added. Discriminating on `kind` means the
+  frontend has a renderer per *shape*, and the reuse is real: three widgets return
+  `cases`, three return `breakdown`, seven return `metrics`. The trade is that a
+  widget's payload is not self-describing — `metrics` says nothing about *which*
+  metrics — which is why every metric carries a stable key and a unit rather than a
+  position.
+
+- **Queue depths come from persisted rows, not from the thread pools.** The pools
+  are right there and expose no depth, which was the initial nuisance and turned
+  out to be the right constraint: a pool's depth is one API instance's opinion, is
+  zero on the instance that happens to serve the dashboard, and resets on deploy. A
+  row in `pending` is the platform's own record of work it owes and reads the same
+  from everywhere.
+
+### WhatsApp Delivery Channel (spec `18`)
+
+- **The approved template is a thin envelope; the sentences stay in
+  `core/notifications.py`.** A WhatsApp template is submitted to Meta and approved
+  in a console this repository cannot read, so the obvious design — put the
+  wording in the template and send a case number — was rejected: it moves the
+  platform's user-facing text somewhere no test asserts on, no reviewer can diff,
+  and nothing keeps in step with the in-app feed, so the first wording improvement
+  silently leaves WhatsApp saying the old thing. What ships in
+  `apps/api/whatsapp/` is therefore a **descriptor** — an ordered list of the
+  values that fill the approved template's slots — and `services/whatsapp_templates.py`
+  renders it one parameter per line. The **parameter count and order are the
+  contract** with the registered template; a test asserts both for every shipped
+  descriptor, because that is the only half of the contract this repository can
+  check.
+- **`WhatsAppProvider` is a separate protocol, not a generalization of
+  `EmailProvider`.** An SMTP send takes an addressed document; a Cloud API send
+  takes a template name, a language tag, and an ordered parameter list. A common
+  supertype would have to be the union of the two, which describes neither — and
+  the delivery services do not share code either, because what they share is a
+  *shape* (queue, claim, render, send, classify, retry) rather than a behaviour.
+  Two files that look alike and can be changed independently beat one file with a
+  channel discriminator in it.
+- **No HTTP dependency was added.** The Cloud API is one JSON `POST` with a bearer
+  token, and `urllib.request` sends it — the same outcome `smtplib` gave the email
+  channel and Markdown gave the report exporter. `httpx` exists in the tree but is
+  declared under development and testing, and promoting it to a runtime dependency
+  to save a dozen lines in one module was not worth the change to what a
+  production image is asserted to need.
+- **Meta's numeric error code is classified before the HTTP status.** A `400`
+  carrying `132001` is an unapproved template and a `400` carrying `131009` is a
+  malformed parameter: the first is fixed in Business Manager and the second in
+  this repository, so collapsing them into one `message_refused` would send an
+  operator to the wrong console. That is also why `template_rejected` is its own
+  failure code rather than a flavour of `message_refused`.
+- **A phone-number library was deliberately not added.** Validating a national
+  number properly means knowing every country's numbering plan, which is what
+  `libphonenumber` is for and is a large dependency to add in order to decide
+  whether to send a message. `normalize_phone` instead **refuses what it cannot be
+  sure about**: `+`/`00` prefixed numbers are normalized, bare E.164 is accepted,
+  and a nationally-formatted number is used only when
+  `WHATSAPP_DEFAULT_COUNTRY_CODE` is configured. One message not sent is a failure
+  this channel is allowed to have; a legal notification delivered to a stranger is
+  not.
+- **`sanitize_parameter` collapses whitespace where `sanitize_header_value`
+  refuses it**, and the asymmetry is intentional. A newline in a mail header ends
+  the header and starts another — an injection, so refusing is the only safe
+  answer. A newline in a template parameter is a *formatting rule of Meta's*, and
+  an administrator who pressed Enter in an announcement has not attacked anything;
+  refusing would drop their message, while collapsing delivers it with its
+  paragraph breaks flattened into a layout the approved template owns anyway.
+- **The status is called `delivered` because the spec calls it that, and the
+  platform documents what it actually means.** It is "the provider accepted the
+  message and issued a `wamid`" — the same claim `sent` makes on the email
+  channel. Real receipts arrive on an inbound webhook that is out of scope;
+  `provider_message_id` is stored on every row so that feature is additive.
+- **Its own worker pool, and a backoff ceiling half the email channel's.** The
+  Cloud API rate-limits per business phone number while a relay greylists per
+  sender, so a shared pool would make each channel's backlog the other's latency.
+  The shorter ceiling is because this is the platform's *urgent* channel: a
+  hearing update delivered four hours late is worse than one never delivered,
+  because the reader will act on it.
+- **`TARGET_PATHS` is duplicated in `core/whatsapp.py` rather than imported from
+  `core/email.py`.** Importing it would make one delivery channel depend on
+  another, and two channels that import each other are one channel with two exits.
+  The paths belong to the *web application*, which neither channel owns; if a
+  third consumer appears, the honest move is to lift them into
+  `core/notifications.py` beside the targets they are keyed by.
 
 ### User Management (spec `05`)
 
@@ -4198,6 +5358,27 @@ blocking its validation):
 
 ## Session Notes
 
+- **A local `.env` leaks into `tests/unit/test_config.py` and
+  `tests/unit/test_email_provider.py`.** Three tests assert the *shipped
+  defaults* — `EMAIL_ENABLED` is false, an SMTP provider with no host is
+  unavailable — and `pydantic-settings` reads the repository's `.env` when it
+  constructs `Settings(**_base_kwargs())`, so a machine whose `.env` carries
+  `EMAIL_ENABLED=true` and `SMTP_HOST=localhost` (as this one does, for Mailpit)
+  fails all three with nothing wrong in the code. Verified by removing those two
+  lines and re-running: green. `.env` is not committed, so CI is unaffected. The
+  real fix is for those tests to build their `Settings` with
+  `_env_file=None`; recorded here rather than done, because it belongs to the
+  email channel's tests rather than to the feature being worked on.
+- **Settings test strategy:** the same no-Docker approach as everything above —
+  `tests/unit/test_settings_service.py` runs the *real* repository against SQLite
+  in memory, so the upsert, the partial write, and the skip-if-unchanged
+  behaviour are exercised as SQL rather than as a mock's recollection.
+  `tests/integration/test_settings.py` drives the endpoints over HTTP through
+  `api_client`. Two new fixtures: `settings_metrics` (per test, like every other
+  recorder) and **`session_registry`**, which matters more than it looks —
+  `SessionRegistry` is Redis-backed and *fails soft*, so without the double the
+  active-sessions tests would pass by reporting an empty list, which is
+  indistinguishable from the feature being broken.
 - **Creating users.** Day to day, use the **Users** page (`/users`) or
   `POST /api/v1/users` — there is no self-registration. `scripts/create_user.py`
   is the **bootstrap** path, for the first administrator (before any account

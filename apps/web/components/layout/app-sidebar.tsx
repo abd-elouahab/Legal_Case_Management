@@ -1,6 +1,7 @@
 "use client";
 
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { AppBrand } from "@/components/layout/app-brand";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
@@ -12,6 +13,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useLocale } from "@/components/i18n/locale-provider";
 import { useSidebarStore } from "@/stores/sidebar-store";
 import { cn } from "@/lib/utils";
 
@@ -30,16 +32,19 @@ export function AppSidebar() {
   const toggleCollapsed = useSidebarStore((s) => s.toggleCollapsed);
   const mobileOpen = useSidebarStore((s) => s.mobileOpen);
   const setMobileOpen = useSidebarStore((s) => s.setMobileOpen);
+  const t = useTranslations("common.a11y");
+  const tShell = useTranslations("shell.sidebar");
+  const { direction } = useLocale();
 
   return (
     <>
       {/* Desktop rail */}
       <aside
         className={cn(
-          "sticky top-0 hidden h-svh shrink-0 border-r border-sidebar-border bg-sidebar lg:flex lg:flex-col",
+          "sticky top-0 hidden h-svh shrink-0 border-e border-sidebar-border bg-sidebar lg:flex lg:flex-col",
           collapsed ? "w-[4.5rem]" : "w-64",
         )}
-        aria-label="Sidebar"
+        aria-label={t("sidebar")}
       >
         <div
           className={cn(
@@ -66,7 +71,7 @@ export function AppSidebar() {
             variant="ghost"
             size={collapsed ? "icon" : "sm"}
             onClick={toggleCollapsed}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}
             className={cn(
               "text-muted-foreground",
               collapsed ? "mx-auto" : "w-full justify-start",
@@ -77,7 +82,7 @@ export function AppSidebar() {
             ) : (
               <>
                 <PanelLeftClose className="h-5 w-5" />
-                <span>Collapse</span>
+                <span>{tShell("collapse")}</span>
               </>
             )}
           </Button>
@@ -86,8 +91,12 @@ export function AppSidebar() {
 
       {/* Mobile drawer */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        {/* The drawer opens from the writing mode's *start* edge, so an Arabic
+            reader gets it on the right where their eye already is. `side` is a
+            physical value in the primitive, which is why the direction is read
+            rather than assumed. */}
         <SheetContent
-          side="left"
+          side={direction === "rtl" ? "right" : "left"}
           className="w-72 border-sidebar-border bg-sidebar p-0"
         >
           <SheetHeader className="h-16 flex-row items-center border-b border-sidebar-border px-4">

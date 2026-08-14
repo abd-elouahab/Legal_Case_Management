@@ -70,6 +70,7 @@ from core.exceptions import (
     InvalidFeedbackTargetError,
     RagUnavailableError,
 )
+from core.localization import resolve_language
 from core.rag import RagFailureCode, question_fingerprint, resolve_answer_language
 from models.conversation import (
     Conversation,
@@ -93,6 +94,7 @@ from services.assistant_metrics import (
     AssistantMetricsSnapshot,
     NullAssistantMetrics,
 )
+from services.localization import LanguageDirectory, chosen_language
 from services.rag import RagOutcome, RagService, RagStreamEvent, RagStreamEventKind
 from services.suggestions import FollowUpSuggester, NullFollowUpSuggester
 
@@ -157,6 +159,7 @@ class AssistantService:
         *,
         suggester: FollowUpSuggester | None = None,
         metrics: AssistantMetricsRecorder | None = None,
+        languages: LanguageDirectory | None = None,
     ) -> None:
         self._conversations = conversations
         self._rag = rag
@@ -166,6 +169,14 @@ class AssistantService:
         # application wires the real ones in `api.deps.get_assistant_service`.
         self._suggester = suggester or NullFollowUpSuggester()
         self._metrics: AssistantMetricsRecorder = metrics or NullAssistantMetrics()
+        # ``21-localization.md``: *"the AI Assistant should respond in the user's
+        # preferred language by default"*. This is the only collaborator that can
+        # answer what that preference **is** — and it is the one-method
+        # `LanguageDirectory` rather than a settings service, so the assistant can
+        # ask which language somebody reads in and nothing else about them.
+        # ``None`` leaves the pre-Localization behaviour intact: detection from the
+        # question, then the application default.
+        self._languages = languages
 
     # -------------------------------------------------------- conversations #
 
@@ -191,9 +202,20 @@ class AssistantService:
         self._require_enabled(actor=actor)
 
         language = payload.language
+        # The **stored** language stays exactly what the request said — ``None``
+        # when it said nothing — so a conversation opened today is not frozen to
+        # the preference somebody held today. What the reader actually gets is
+        # resolved per message by `_build_request`, which is what makes changing
+        # the Language setting take effect on threads that already exist.
+        #
+        # The placeholder title is the one thing that has to be written *now*, so
+        # it uses the caller's current preference.
         conversation = Conversation(
             owner_id=actor.id,
-            title=payload.title or untitled_conversation(language or "fr"),
+            title=payload.title
+            or untitled_conversation(
+                resolve_language(language, self._preferred_language(actor))
+            ),
             title_is_custom=payload.title is not None,
             status=ConversationStatus.ACTIVE,
             language=language,
@@ -366,7 +388,7 @@ class AssistantService:
         conversation = self._open_conversation(conversation_id, actor=actor)
 
         started = time.monotonic()
-        request, turns = self._build_request(conversation, payload)
+        request, turns = self._build_request(conversation, payload, actor=actor)
 
         logger.info(
             "assistant_message_received",
@@ -434,7 +456,7 @@ class AssistantService:
         conversation = self._open_conversation(conversation_id, actor=actor)
 
         started = time.monotonic()
-        request, turns = self._build_request(conversation, payload)
+        request, turns = self._build_request(conversation, payload, actor=actor)
 
         logger.info(
             "assistant_message_received",
@@ -653,7 +675,7 @@ class AssistantService:
     # ------------------------------------------------------------ the request #
 
     def _build_request(
-        self, conversation: Conversation, payload: MessageCreate
+        self, conversation: Conversation, payload: MessageCreate, *, actor: User
     ) -> tuple[RagRequest, int]:
         """Turn one message into a pipeline request, and say how much history it carries.
 
@@ -665,7 +687,7 @@ class AssistantService:
           French or Arabic label to it, and detecting the language of *that*
           would let the platform's own preamble decide what language a user is
           answered in. Precedence is the request's, then the conversation's, then
-          the question's own;
+          **the asker's own stored preference**, then the question's;
         * **the history budget is reserved out of the pipeline's question
           limit**, so a resolved follow-up can never be refused by the endpoint
           that built it;
@@ -674,8 +696,18 @@ class AssistantService:
           caller's own case scope underneath regardless, and refuses a case they
           are not party to.
         """
+        # ``21-localization.md``: respond in the user's preferred language by
+        # default, and *"if the user explicitly requests another language during a
+        # conversation, that request should override the default for that
+        # interaction only"*. Both halves fall out of this one expression and of
+        # what is **not** written anywhere near it: ``payload.language`` is a
+        # parameter and nothing here persists it, so asking one question in English
+        # cannot make a lawyer's account English — or even this thread English.
         language = resolve_answer_language(
-            payload.content, payload.language or conversation.language
+            payload.content,
+            payload.language
+            or conversation.language
+            or self._preferred_language(actor),
         )
 
         budget = min(
@@ -710,6 +742,28 @@ class AssistantService:
             ),
             resolved.turns,
         )
+
+    def _preferred_language(self, actor: User) -> str | None:
+        """The language this person **chose**, or ``None``.
+
+        Deliberately the *choice* rather than the resolved default, and the
+        difference is the whole reason
+        :meth:`~services.localization.LanguageDirectory.chosen_language_for`
+        exists. An account that has never opened the Settings page has expressed
+        no opinion, and the assistant has something better than a platform default
+        to fall back on: the question itself, which
+        :func:`~core.rag.resolve_answer_language` reads. Returning a resolved
+        default here would make that detection dead code the day this feature
+        shipped — an Arabic question from an account with no stored preference
+        would be answered in English.
+
+        **Never raises and never blocks a question.** A settings lookup that failed
+        resolves to ``None``, so the answer language is decided from the question
+        as it was before Localization; the assistant's whole error vocabulary is
+        about retrieval and the model, and localization has no business adding to
+        it.
+        """
+        return chosen_language(self._languages, actor.id)
 
     # ---------------------------------------------------------- persistence #
 
@@ -880,7 +934,8 @@ class AssistantService:
 
         if not conversation.title_is_custom and conversation.message_count <= added:
             conversation.title = derive_title(
-                question, language=conversation.language or last.language or "fr"
+                question,
+                language=resolve_language(conversation.language, last.language),
             )
 
         return self._conversations.save(conversation)

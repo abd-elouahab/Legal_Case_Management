@@ -1,3 +1,6 @@
+"use client";
+
+import { useTranslations } from "next-intl";
 import type { LucideIcon } from "lucide-react";
 import { StickyNote } from "lucide-react";
 
@@ -26,41 +29,38 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
  * "Coming to this case" with nothing under it is worse than no section.
  */
 
-interface PlaceholderSection {
-  key: string;
-  title: string;
-  description: string;
-  icon: LucideIcon;
-}
-
-const SECTIONS: PlaceholderSection[] = [
-  {
-    key: "notes",
-    title: "Notes",
-    description: "Working notes shared between the administrator and the assigned team.",
-    icon: StickyNote,
-  },
+/**
+ * The sections that do not exist yet, by key.
+ *
+ * Their words live in `cases.upcoming.<key>` — a placeholder that stayed English
+ * on an Arabic screen would read as a rendering fault rather than as a feature
+ * nobody has built.
+ */
+const SECTIONS: { key: string; icon: LucideIcon }[] = [
+  { key: "notes", icon: StickyNote },
 ];
 
 export function CasePlaceholderSections() {
+  const t = useTranslations("cases.upcoming");
+
   return (
     <section className="flex flex-col gap-4" aria-labelledby="case-upcoming-modules">
       <h3 id="case-upcoming-modules" className="text-sm font-medium text-muted-foreground">
-        Coming to this case
+        {t("heading")}
       </h3>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {SECTIONS.map(({ key, title, description, icon: Icon }) => (
+        {SECTIONS.map(({ key, icon: Icon }) => (
           <Card key={key} className="border-dashed">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                {title}
+                {t(`${key}.title`)}
               </CardTitle>
-              <CardDescription>{description}</CardDescription>
+              <CardDescription>{t(`${key}.description`)}</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-xs text-muted-foreground">Available in an upcoming release.</p>
+              <p className="text-xs text-muted-foreground">{t("availability")}</p>
             </CardContent>
           </Card>
         ))}

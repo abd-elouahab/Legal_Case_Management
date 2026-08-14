@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -10,9 +12,7 @@ import {
 } from "@/components/ui/select";
 import {
   NOTIFICATION_CATEGORIES,
-  NOTIFICATION_CATEGORY_LABELS,
   NOTIFICATION_PRIORITIES,
-  NOTIFICATION_PRIORITY_LABELS,
   NOTIFICATION_TYPES,
   type NotificationListQuery,
   type NotificationPriority,
@@ -47,6 +47,12 @@ export function NotificationFilters({
   onChange: (patch: Partial<NotificationListQuery>) => void;
   onReset: () => void;
 }) {
+  const t = useTranslations("notifications.filters");
+  const tCategories = useTranslations("notifications.categories");
+  const tPriorities = useTranslations("notifications.priorities");
+  const tTypes = useTranslations("notifications.types");
+  const tActions = useTranslations("common.actions");
+
   const isFiltered =
     query.unreadOnly ||
     query.category !== null ||
@@ -61,7 +67,7 @@ export function NotificationFilters({
         onClick={() => onChange({ unreadOnly: !query.unreadOnly, page: 1 })}
         aria-pressed={query.unreadOnly}
       >
-        Unread only
+        {t("unreadOnly")}
       </Button>
 
       <Select
@@ -70,14 +76,14 @@ export function NotificationFilters({
           onChange({ category: value === ANY ? null : value, page: 1 })
         }
       >
-        <SelectTrigger className="w-[11rem]" aria-label="Filter by category">
-          <SelectValue placeholder="All categories" />
+        <SelectTrigger className="w-[11rem]" aria-label={t("byCategory")}>
+          <SelectValue placeholder={t("allCategories")} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={ANY}>All categories</SelectItem>
+          <SelectItem value={ANY}>{t("allCategories")}</SelectItem>
           {NOTIFICATION_CATEGORIES.map((category) => (
             <SelectItem key={category} value={category}>
-              {NOTIFICATION_CATEGORY_LABELS[category]}
+              {tCategories(category)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -92,14 +98,14 @@ export function NotificationFilters({
           })
         }
       >
-        <SelectTrigger className="w-[9.5rem]" aria-label="Filter by type">
-          <SelectValue placeholder="All types" />
+        <SelectTrigger className="w-[9.5rem]" aria-label={t("byType")}>
+          <SelectValue placeholder={t("allTypes")} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={ANY}>All types</SelectItem>
+          <SelectItem value={ANY}>{t("allTypes")}</SelectItem>
           {NOTIFICATION_TYPES.map((type) => (
             <SelectItem key={type} value={type}>
-              {type.charAt(0).toUpperCase() + type.slice(1)}
+              {tTypes(type)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -114,14 +120,14 @@ export function NotificationFilters({
           })
         }
       >
-        <SelectTrigger className="w-[9.5rem]" aria-label="Filter by priority">
-          <SelectValue placeholder="All priorities" />
+        <SelectTrigger className="w-[9.5rem]" aria-label={t("byPriority")}>
+          <SelectValue placeholder={t("allPriorities")} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={ANY}>All priorities</SelectItem>
+          <SelectItem value={ANY}>{t("allPriorities")}</SelectItem>
           {NOTIFICATION_PRIORITIES.map((priority) => (
             <SelectItem key={priority} value={priority}>
-              {NOTIFICATION_PRIORITY_LABELS[priority]}
+              {tPriorities(priority)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -129,7 +135,7 @@ export function NotificationFilters({
 
       {isFiltered ? (
         <Button variant="ghost" size="sm" onClick={onReset}>
-          Clear filters
+          {tActions("clearFilters")}
         </Button>
       ) : null}
     </div>

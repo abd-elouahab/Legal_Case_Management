@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/lib/routes";
@@ -18,14 +21,17 @@ import { cn } from "@/lib/utils";
  * page the user can reach.
  */
 export function AccessDenied({
-  title = "Access denied",
-  description = "You don’t have permission to view this page. If you believe this is a mistake, contact an administrator.",
+  title,
+  description,
   className,
 }: {
+  /** Overrides the default copy. Both fall back to the shared refusal wording. */
   title?: string;
   description?: string;
   className?: string;
 }) {
+  const t = useTranslations("shared.accessDenied");
+
   return (
     <div
       className={cn(
@@ -37,11 +43,15 @@ export function AccessDenied({
         <ShieldAlert className="h-10 w-10" aria-hidden="true" />
       </span>
       <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold text-foreground">{title}</h1>
-        <p className="max-w-md text-sm text-muted-foreground">{description}</p>
+        <h1 className="text-xl font-semibold text-foreground">
+          {title ?? t("title")}
+        </h1>
+        <p className="max-w-md text-sm text-muted-foreground">
+          {description ?? t("description")}
+        </p>
       </div>
       <Button asChild>
-        <Link href={ROUTES.dashboard}>Back to Dashboard</Link>
+        <Link href={ROUTES.dashboard}>{t("backToDashboard")}</Link>
       </Button>
     </div>
   );

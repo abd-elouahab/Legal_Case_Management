@@ -419,13 +419,17 @@ class NotificationRepository:
                 NotificationPreference.preference_key,
                 NotificationPreference.in_app,
                 NotificationPreference.email,
+                NotificationPreference.whatsapp,
             ).where(NotificationPreference.user_id == user_id)
         ).all()
         return {
             str(key): ChannelPreference(
-                in_app=bool(in_app), email=bool(email), is_default=False
+                in_app=bool(in_app),
+                email=bool(email),
+                whatsapp=bool(whatsapp),
+                is_default=False,
             )
-            for key, in_app, email in rows
+            for key, in_app, email, whatsapp in rows
         }
 
     def preferences_for_many(
@@ -438,17 +442,18 @@ class NotificationRepository:
         """One preference's value on one channel, for a whole batch, in one query.
 
         The query the subscriber runs per event — it has a rule, therefore one
-        preference key, and a list of candidate recipients — and the query the
-        email dispatcher runs per batch, with ``channel=EMAIL``. Asking per person
-        would make the cost of an event proportional to the size of the team it
-        fans out to, which is exactly what the spec's Performance section rules
-        out.
+        preference key, and a list of candidate recipients — and the query each
+        delivery channel runs per batch, with ``channel=EMAIL`` or
+        ``channel=WHATSAPP``. Asking per person would make the cost of an event
+        proportional to the size of the team it fans out to, which is exactly what
+        the spec's Performance section rules out.
 
-        The channel selects a **column**, chosen from
-        :class:`~core.notifications.NotificationChannel` rather than from a
-        caller-supplied string — so this stays one method as channels are added
-        instead of one method per channel, and there is still no path from a
-        request to a column name.
+        The channel selects a **column**, and it selects it *by the enum member's
+        own value* — which is the column name on
+        :class:`~models.notification.NotificationPreference` and is not a string a
+        request can supply. That is what let the WhatsApp channel arrive without
+        touching this method at all: a fourth channel is an enum member and a
+        column, and the lookup below already resolves it.
 
         Absent entries mean "no opinion expressed" and are the caller's to
         default, not this method's to invent.
@@ -456,10 +461,8 @@ class NotificationRepository:
         if not user_ids:
             return {}
 
-        column = (
-            NotificationPreference.email
-            if channel is NotificationChannel.EMAIL
-            else NotificationPreference.in_app
+        column = getattr(
+            NotificationPreference, channel.value, NotificationPreference.in_app
         )
         rows = self._session.execute(
             select(NotificationPreference.user_id, column).where(
@@ -475,10 +478,12 @@ class NotificationRepository:
         """Store this user's answers, creating or updating one row per key.
 
         **Partial per channel, not only per key.** A change carrying only
-        ``email`` leaves ``in_app`` exactly as it was, which is what lets a
-        settings page with two switches per row save one of them without
-        rewriting the other — and what stops an older client that has never heard
-        of a channel from turning it off by omission.
+        ``whatsapp`` leaves ``in_app`` and ``email`` exactly as they were, which
+        is what lets a settings page with three switches per row save one of them
+        without rewriting the others — and what stops an older client that has
+        never heard of a channel from turning it off by omission. That protection
+        was written for the email channel and cost nothing when the WhatsApp one
+        arrived, which is the whole point of it.
 
         A key with no stored row takes the platform default for whichever channel
         the change does not mention, so the row that gets written says what the
@@ -517,27 +522,40 @@ class NotificationRepository:
 
             row = existing.get(key)
             if row is None:
+                # Every channel the platform knows about, each taking the change's
+                # value when it names one and **that channel's own default**
+                # otherwise. Built by iterating the enum rather than as one
+                # argument per channel, so a fourth channel is a member and a
+                # column and this statement keeps working — and so the default is
+                # asked for *per channel*, which is the seam
+                # `default_preference` exists to keep open.
                 resolved = preference_from_value(key)
-                fallback = (
-                    default_preference(resolved, NotificationChannel.IN_APP)
-                    if resolved is not None
-                    else True
-                )
+                columns: dict[str, Any] = {}
+                for channel in NotificationChannel:
+                    supplied = getattr(change, channel.value)
+                    columns[channel.value] = (
+                        supplied
+                        if supplied is not None
+                        else (
+                            default_preference(resolved, channel)
+                            if resolved is not None
+                            else True
+                        )
+                    )
                 self._session.add(
                     NotificationPreference(
                         id=uuid.uuid4(),
                         user_id=user_id,
                         preference_key=key,
-                        in_app=change.in_app if change.in_app is not None else fallback,
-                        email=change.email if change.email is not None else fallback,
+                        **columns,
                     )
                 )
                 continue
 
-            if change.in_app is not None and row.in_app != change.in_app:
-                row.in_app = change.in_app
-            if change.email is not None and row.email != change.email:
-                row.email = change.email
+            for channel in NotificationChannel:
+                wanted = getattr(change, channel.value)
+                if wanted is not None and getattr(row, channel.value) != wanted:
+                    setattr(row, channel.value, wanted)
 
         self._session.commit()
         return self.preferences_for(user_id)

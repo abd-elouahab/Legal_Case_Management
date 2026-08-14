@@ -16,13 +16,15 @@
 export const OCR_STATUSES = ["pending", "processing", "completed", "failed"] as const;
 export type OcrStatus = (typeof OCR_STATUSES)[number];
 
-/** Human-readable status labels (future: i18n keys). */
-export const OCR_STATUS_LABELS: Record<OcrStatus, string> = {
-  pending: "Queued",
-  processing: "Extracting",
-  completed: "Completed",
-  failed: "Failed",
-};
+/**
+ * Where the words for a status live: `ocr.statuses` in the message catalogues.
+ *
+ * Not here, since `21-localization.md`: a module constant cannot read the
+ * reader's language, so a badge built from one stayed English on an Arabic
+ * screen. The *values* stay here because a lifecycle is a fact about the
+ * platform; the catalogue is what each one says.
+ */
+export const OCR_STATUS_NAMESPACE = "ocr.statuses";
 
 /**
  * File types text extraction applies to.
@@ -62,26 +64,18 @@ export const OCR_FAILURE_CODES = [
 ] as const;
 export type KnownOcrFailureCode = (typeof OCR_FAILURE_CODES)[number];
 
-const OCR_FAILURE_LABELS: Record<KnownOcrFailureCode, string> = {
-  corrupted_document: "File could not be read",
-  unreadable_document: "Nothing readable found",
-  timeout: "Took too long",
-  unsupported_format: "Unsupported file type",
-  engine_failure: "Extraction service failed",
-  storage_failure: "Stored file unavailable",
-  unknown: "Did not complete",
-};
+/**
+ * Where the words for a failure cause live: `ocr.failures` in the catalogues.
+ *
+ * `ocrFailureLabel` used to be a function here that mapped a code to an English
+ * phrase and humanized anything it did not recognise. Both halves moved: the
+ * mapping is now catalogue keys, and the humanizing is
+ * `components/i18n/locale-provider.tsx`'s `getMessageFallback`, which already
+ * does exactly that for every missing key on the platform. So a cause a later
+ * engine invents still renders as readable words, in one place rather than six.
+ */
+export const OCR_FAILURE_NAMESPACE = "ocr.failures";
 
-/** A short label for a failure cause, falling back to a readable identifier. */
-export function ocrFailureLabel(code: string | null): string {
-  if (!code) return "Failed";
-
-  const known = OCR_FAILURE_LABELS[code as KnownOcrFailureCode];
-  if (known) return known;
-
-  const words = code.replace(/_/g, " ").trim();
-  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "Failed";
-}
 
 /** The document an extraction run belongs to, as shown beside the run. */
 export interface OcrDocumentSummary {

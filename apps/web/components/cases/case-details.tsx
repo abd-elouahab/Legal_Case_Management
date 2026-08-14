@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
   Archive,
   ArchiveRestore,
@@ -31,9 +32,9 @@ import { CaseDocuments } from "@/components/documents/case-documents";
 import { CaseReports } from "@/components/reports/case-reports";
 import { CaseSearch } from "@/components/search/case-search";
 import { CaseTimeline } from "@/components/timeline/case-timeline";
-import { caseErrorMessage, useCase, useRestoreCase } from "@/hooks/use-cases";
+import { useCase, useCaseErrorMessage, useRestoreCase } from "@/hooks/use-cases";
 import { useRealtimeResource } from "@/hooks/use-realtime";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { useDateFormat } from "@/hooks/use-date-format";
 import { ROUTES } from "@/lib/routes";
 import { PERMISSION } from "@/types/authorization";
 import type { CaseUserSummary, LegalCase } from "@/types/case";
@@ -65,7 +66,7 @@ function DetailRow({
         {Icon ? <Icon className="h-4 w-4" /> : null}
         {label}
       </dt>
-      <dd className="text-sm text-foreground sm:max-w-[60%] sm:text-right">{value}</dd>
+      <dd className="text-sm text-foreground sm:max-w-[60%] sm:text-end">{value}</dd>
     </div>
   );
 }
@@ -85,29 +86,37 @@ function DetailsCard({ title, children }: { title: string; children: React.React
 
 /** An audit actor, or a plain statement that none was recorded. */
 function AuditActor({ user }: { user: CaseUserSummary | null }) {
-  if (!user) return <span className="text-muted-foreground">Not recorded</span>;
+  const t = useTranslations("cases.details");
+  if (!user) return <span className="text-muted-foreground">{t("notRecorded")}</span>;
   return <span>{user.fullName}</span>;
 }
 
 function CaseDetailsContent({ legalCase }: { legalCase: LegalCase }) {
+  const { formatDate, formatDateTime } = useDateFormat();
   const restoreCase = useRestoreCase();
+  const t = useTranslations("cases.details");
+  const tCases = useTranslations("cases");
+  const tForm = useTranslations("cases.form");
+  const tActionLabels = useTranslations("cases.actions");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useCaseErrorMessage();
   const [dialog, setDialog] = React.useState<DialogKind>("none");
 
   async function restore() {
     try {
       await restoreCase.mutateAsync(legalCase.id);
-      toast.success(`Case ${legalCase.caseNumber} was restored.`);
+      toast.success(tCases("restored", { caseNumber: legalCase.caseNumber }));
     } catch (error) {
-      toast.error(caseErrorMessage(error));
+      toast.error(errorMessage(error));
     }
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <Button asChild variant="ghost" size="sm" className="-ml-2 w-fit">
+      <Button asChild variant="ghost" size="sm" className="-ms-2 w-fit">
         <Link href={ROUTES.cases}>
-          <ArrowLeft className="h-4 w-4" />
-          Back to cases
+          <ArrowLeft data-flip-rtl className="h-4 w-4" />
+          {t("backToCases")}
         </Link>
       </Button>
 
@@ -127,14 +136,14 @@ function CaseDetailsContent({ legalCase }: { legalCase: LegalCase }) {
           <Protected permission={PERMISSION.casesUpdate}>
             <Button variant="outline" onClick={() => setDialog("edit")}>
               <Pencil className="h-4 w-4" />
-              Edit
+              {tActions("edit")}
             </Button>
           </Protected>
 
           <Protected permission={PERMISSION.casesAssign}>
             <Button variant="outline" onClick={() => setDialog("assign")}>
               <UserCog className="h-4 w-4" />
-              Assignments
+              {t("assignments")}
             </Button>
           </Protected>
 
@@ -142,14 +151,14 @@ function CaseDetailsContent({ legalCase }: { legalCase: LegalCase }) {
             <Protected permission={PERMISSION.casesUpdate}>
               <Button onClick={restore} disabled={restoreCase.isPending}>
                 <ArchiveRestore className="h-4 w-4" />
-                Restore
+                {tActionLabels("restore")}
               </Button>
             </Protected>
           ) : (
             <Protected permission={PERMISSION.casesDelete}>
               <Button variant="destructive" onClick={() => setDialog("archive")}>
                 <Archive className="h-4 w-4" />
-                Archive
+                {tActionLabels("archive")}
               </Button>
             </Protected>
           )}
@@ -159,41 +168,46 @@ function CaseDetailsContent({ legalCase }: { legalCase: LegalCase }) {
       <Separator />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <DetailsCard title="General information">
-          <DetailRow label="Case number" value={legalCase.caseNumber} />
-          <DetailRow label="Title" value={legalCase.title} />
+        <DetailsCard title={t("generalInformation")}>
+          <DetailRow label={tForm("caseNumber")} value={legalCase.caseNumber} />
+          <DetailRow label={tForm("title")} value={legalCase.title} />
           <DetailRow
-            label="Description"
+            label={tForm("description")}
             value={
               legalCase.description ? (
                 // `whitespace-pre-line` keeps the author's paragraphs, which the
                 // API deliberately preserves rather than collapsing.
                 <span className="whitespace-pre-line">{legalCase.description}</span>
               ) : (
-                <span className="text-muted-foreground">Not provided</span>
+                <span className="text-muted-foreground">{t("notProvided")}</span>
               )
             }
           />
           <DetailRow
-            label="Category"
+            label={tForm("category")}
             value={
-              legalCase.category ?? <span className="text-muted-foreground">Not set</span>
+              legalCase.category ?? (
+                <span className="text-muted-foreground">{t("notSet")}</span>
+              )
             }
           />
-          <DetailRow label="Status" value={<CaseStatusBadge status={legalCase.status} />} />
           <DetailRow
-            label="Priority"
+            label={tForm("status")}
+            value={<CaseStatusBadge status={legalCase.status} />}
+          />
+          <DetailRow
+            label={tForm("priority")}
             value={<CasePriorityBadge priority={legalCase.priority} />}
           />
         </DetailsCard>
 
-        <DetailsCard title="Assignment">
+        <DetailsCard title={t("assignment")}>
           <DetailRow
-            label="Assigned lawyer"
+            label={tForm("assignedLawyer")}
             value={<CaseAssignee user={legalCase.assignedLawyer} className="sm:justify-end" />}
           />
           <DetailRow
-            label="Assigned court representative"
+            label={tForm("assignedRepresentative")}
             value={
               <CaseAssignee
                 user={legalCase.assignedCourtRepresentative}
@@ -203,33 +217,39 @@ function CaseDetailsContent({ legalCase }: { legalCase: LegalCase }) {
           />
         </DetailsCard>
 
-        <DetailsCard title="Court information">
+        <DetailsCard title={t("courtInformation")}>
           <DetailRow
-            label="Court"
+            label={tForm("court")}
             icon={Building2}
             value={
               legalCase.courtName ?? (
-                <span className="text-muted-foreground">Not recorded</span>
+                <span className="text-muted-foreground">{t("notRecorded")}</span>
               )
             }
           />
           <DetailRow
-            label="Filing date"
+            label={tForm("filingDate")}
             icon={CalendarDays}
-            value={formatDate(legalCase.filingDate, "Not recorded")}
+            value={formatDate(legalCase.filingDate, t("notRecorded"))}
           />
           <DetailRow
-            label="Next hearing"
+            label={tForm("nextHearing")}
             icon={CalendarClock}
-            value={formatDate(legalCase.nextHearingDate, "Not scheduled")}
+            value={formatDate(legalCase.nextHearingDate, t("notScheduled"))}
           />
         </DetailsCard>
 
-        <DetailsCard title="Audit information">
-          <DetailRow label="Created by" value={<AuditActor user={legalCase.creator} />} />
-          <DetailRow label="Updated by" value={<AuditActor user={legalCase.updater} />} />
-          <DetailRow label="Created at" value={formatDateTime(legalCase.createdAt)} />
-          <DetailRow label="Updated at" value={formatDateTime(legalCase.updatedAt)} />
+        <DetailsCard title={t("auditInformation")}>
+          <DetailRow
+            label={t("createdBy")}
+            value={<AuditActor user={legalCase.creator} />}
+          />
+          <DetailRow
+            label={t("updatedBy")}
+            value={<AuditActor user={legalCase.updater} />}
+          />
+          <DetailRow label={t("createdAt")} value={formatDateTime(legalCase.createdAt)} />
+          <DetailRow label={t("updatedAt")} value={formatDateTime(legalCase.updatedAt)} />
         </DetailsCard>
       </div>
 
@@ -308,6 +328,8 @@ function CaseDetailsContent({ legalCase }: { legalCase: LegalCase }) {
 
 export function CaseDetails({ caseId }: { caseId: string }) {
   const { data, isLoading, isError, error, refetch } = useCase(caseId);
+  const t = useTranslations("cases");
+  const errorMessage = useCaseErrorMessage();
 
   // **One subscription for the whole workspace.** Following the case delivers
   // everything that happens inside it — the case itself, every document on it,
@@ -325,13 +347,13 @@ export function CaseDetails({ caseId }: { caseId: string }) {
   // decline rather than something the view depends on.
   useRealtimeResource("case", caseId);
 
-  if (isLoading) return <LoadingState label="Loading case…" />;
+  if (isLoading) return <LoadingState label={t("details.loading")} />;
 
   if (isError || !data) {
     return (
       <ErrorState
-        title="Could not load this case"
-        description={caseErrorMessage(error)}
+        title={t("errors.detailTitle")}
+        description={errorMessage(error)}
         onRetry={() => void refetch()}
       />
     );

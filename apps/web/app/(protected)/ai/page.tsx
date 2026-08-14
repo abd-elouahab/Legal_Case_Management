@@ -25,8 +25,8 @@ export default function AiAssistantPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="AI Assistant"
-        description="Ask questions about your case documents. Every answer cites the file and page it came from, and the assistant says so when the documents do not support one."
+        titleKey="aiAssistant.title"
+        descriptionKey="aiAssistant.description"
       />
       {/* Gates itself on `ai:monitor` and renders nothing otherwise, so the page
           does not have to know who is allowed to see operational figures. */}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Search, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,6 @@ import type { DocumentListQueryState } from "@/hooks/use-document-list-query";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
   DOCUMENT_CATEGORIES,
-  DOCUMENT_CATEGORY_LABELS,
   SUPPORTED_DOCUMENT_EXTENSIONS,
   type DocumentCategory,
 } from "@/types/document";
@@ -70,15 +70,18 @@ export function DocumentFilters({ list }: { list: DocumentListQueryState }) {
   const representatives = useCaseAssignees("court");
   const canFilterByUploader = can(PERMISSION.usersView);
   const uploaders = [...lawyers.users, ...representatives.users];
+  const t = useTranslations("documents.filters");
+  const tCategories = useTranslations("documents.categories");
+  const tActions = useTranslations("common.actions");
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-border p-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
         <div className="flex flex-1 flex-col gap-2">
-          <Label htmlFor="document-search">Search</Label>
+          <Label htmlFor="document-search">{tActions("search")}</Label>
           <div className="relative">
             <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
               aria-hidden="true"
             />
             <Input
@@ -86,14 +89,14 @@ export function DocumentFilters({ list }: { list: DocumentListQueryState }) {
               type="search"
               value={list.searchInput}
               onChange={(event) => list.setSearch(event.target.value)}
-              placeholder="Search by file name, description, or category"
-              className="pl-9"
+              placeholder={t("searchPlaceholder")}
+              className="ps-9"
             />
           </div>
         </div>
 
         <div className="flex flex-col gap-2 lg:w-56">
-          <Label htmlFor="document-category-filter">Category</Label>
+          <Label htmlFor="document-category-filter">{t("category")}</Label>
           <Select
             value={list.query.category ?? ANY}
             onValueChange={(value) =>
@@ -101,13 +104,13 @@ export function DocumentFilters({ list }: { list: DocumentListQueryState }) {
             }
           >
             <SelectTrigger id="document-category-filter">
-              <SelectValue placeholder="All categories" />
+              <SelectValue placeholder={t("allCategories")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={ANY}>All categories</SelectItem>
+              <SelectItem value={ANY}>{t("allCategories")}</SelectItem>
               {DOCUMENT_CATEGORIES.map((option) => (
                 <SelectItem key={option} value={option}>
-                  {DOCUMENT_CATEGORY_LABELS[option]}
+                  {tCategories(option)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -115,16 +118,16 @@ export function DocumentFilters({ list }: { list: DocumentListQueryState }) {
         </div>
 
         <div className="flex flex-col gap-2 lg:w-40">
-          <Label htmlFor="document-type-filter">File type</Label>
+          <Label htmlFor="document-type-filter">{t("fileType")}</Label>
           <Select
             value={list.query.fileExtension ?? ANY}
             onValueChange={(value) => list.setFileExtension(value === ANY ? null : value)}
           >
             <SelectTrigger id="document-type-filter">
-              <SelectValue placeholder="All types" />
+              <SelectValue placeholder={t("allTypes")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={ANY}>All types</SelectItem>
+              <SelectItem value={ANY}>{t("allTypes")}</SelectItem>
               {SUPPORTED_DOCUMENT_EXTENSIONS.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option.toUpperCase()}
@@ -137,7 +140,7 @@ export function DocumentFilters({ list }: { list: DocumentListQueryState }) {
         {list.isFiltered ? (
           <Button type="button" variant="ghost" onClick={list.reset}>
             <X className="h-4 w-4" />
-            Clear
+            {tActions("clear")}
           </Button>
         ) : null}
       </div>
@@ -145,16 +148,16 @@ export function DocumentFilters({ list }: { list: DocumentListQueryState }) {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {canFilterByUploader ? (
           <div className="flex flex-col gap-2">
-            <Label htmlFor="document-uploader-filter">Uploaded by</Label>
+            <Label htmlFor="document-uploader-filter">{t("uploadedBy")}</Label>
             <Select
               value={list.query.uploadedBy ?? ANY}
               onValueChange={(value) => list.setUploadedBy(value === ANY ? null : value)}
             >
               <SelectTrigger id="document-uploader-filter">
-                <SelectValue placeholder="Anyone" />
+                <SelectValue placeholder={t("anyone")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ANY}>Anyone</SelectItem>
+                <SelectItem value={ANY}>{t("anyone")}</SelectItem>
                 {uploaders.map((user) => (
                   <SelectItem key={user.id} value={user.id}>
                     {user.fullName}
@@ -167,13 +170,13 @@ export function DocumentFilters({ list }: { list: DocumentListQueryState }) {
 
         <DateFilter
           id="document-uploaded-from"
-          label="Uploaded from"
+          label={t("uploadedFrom")}
           value={list.query.uploadedFrom}
           onChange={(value) => list.setUploadedRange(value, list.query.uploadedTo)}
         />
         <DateFilter
           id="document-uploaded-to"
-          label="Uploaded until"
+          label={t("uploadedUntil")}
           value={list.query.uploadedTo}
           onChange={(value) => list.setUploadedRange(list.query.uploadedFrom, value)}
         />

@@ -22,8 +22,10 @@ from models.indexing import DocumentIndex, IndexStatus
 from models.notification import Notification, NotificationPreference
 from models.ocr import OcrPage, OcrResult, OcrStatus
 from models.report import Report, ReportStatus, ReportType
+from models.settings import PlatformSetting, UserSetting
 from models.timeline import TimelineEvent, TimelineEventCategory, TimelineEventType
 from models.user import User, UserRole, UserStatus
+from models.whatsapp import WhatsAppDelivery, WhatsAppDeliveryStatus
 
 __all__ = [
     "Case",
@@ -47,6 +49,7 @@ __all__ = [
     "OcrPage",
     "OcrResult",
     "OcrStatus",
+    "PlatformSetting",
     "Report",
     "ReportStatus",
     "ReportType",
@@ -55,5 +58,8 @@ __all__ = [
     "TimelineEventType",
     "User",
     "UserRole",
+    "UserSetting",
     "UserStatus",
+    "WhatsAppDelivery",
+    "WhatsAppDeliveryStatus",
 ]

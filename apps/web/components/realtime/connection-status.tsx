@@ -1,6 +1,7 @@
 "use client";
 
 import { Loader2, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -35,8 +36,8 @@ import type { ConnectionStatus } from "@/types/realtime";
  */
 
 interface StatePresentation {
-  label: string;
-  detail: string;
+  /** Translation key under `realtime`, resolved at render. */
+  key: string;
   icon: typeof Wifi;
   className: string;
   spin?: boolean;
@@ -49,28 +50,25 @@ interface StatePresentation {
  * rather than "WebSocket disconnected". A lawyer needs to know whether the case
  * in front of them is current; the name of the protocol carrying it is not their
  * concern, and a message that names it invites a support ticket instead of a
- * page refresh.
+ * page refresh. That argument is about *what* the sentence says, so it survives
+ * translation — which is why what lives here is a key and an icon, and the
+ * sentences live in `messages/*.json` beside every other one on the platform.
  */
 const PRESENTATION: Record<Exclude<ConnectionStatus, "idle" | "connected">, StatePresentation> = {
   connecting: {
-    label: "Connecting",
-    detail: "Connecting to live updates.",
+    key: "connecting",
     icon: Loader2,
     className: "text-muted-foreground",
     spin: true,
   },
   reconnecting: {
-    label: "Reconnecting",
-    detail: "Live updates were interrupted. Reconnecting — the page still works.",
+    key: "reconnecting",
     icon: Loader2,
     className: "text-warning",
     spin: true,
   },
   offline: {
-    label: "Updates paused",
-    detail:
-      "Live updates are unavailable. Everything still works, but changes made by " +
-      "other people will not appear until you refresh.",
+    key: "offline",
     icon: WifiOff,
     className: "text-muted-foreground",
   },
@@ -79,6 +77,7 @@ const PRESENTATION: Record<Exclude<ConnectionStatus, "idle" | "connected">, Stat
 export function ConnectionStatusIndicator({ className }: { className?: string }) {
   const status = useConnectionStatus();
   const client = useRealtimeClient();
+  const t = useTranslations("realtime");
 
   // `idle` is "no channel in this tree" — an authentication page, or a
   // deployment with the feature off. Both are normal, and neither is something
@@ -87,6 +86,8 @@ export function ConnectionStatusIndicator({ className }: { className?: string })
 
   const presentation = PRESENTATION[status];
   const Icon = presentation.icon;
+  const label = t(`${presentation.key}.label`);
+  const detail = t(`${presentation.key}.detail`);
 
   return (
     <div
@@ -105,13 +106,13 @@ export function ConnectionStatusIndicator({ className }: { className?: string })
             )}
           >
             <Icon className={cn("h-4 w-4", presentation.spin && "animate-spin")} />
-            <span className="hidden sm:inline">{presentation.label}</span>
+            <span className="hidden sm:inline">{label}</span>
             {/* The label carries the meaning on small screens too, where the
                 text is hidden — an icon alone would be colour-and-shape only. */}
-            <span className="sr-only sm:hidden">{presentation.label}</span>
+            <span className="sr-only sm:hidden">{label}</span>
           </span>
         </TooltipTrigger>
-        <TooltipContent className="max-w-xs">{presentation.detail}</TooltipContent>
+        <TooltipContent className="max-w-xs">{detail}</TooltipContent>
       </Tooltip>
 
       {status === "offline" && client ? (
@@ -120,7 +121,7 @@ export function ConnectionStatusIndicator({ className }: { className?: string })
           size="icon"
           className="h-7 w-7"
           onClick={() => client.retry()}
-          aria-label="Retry connecting to live updates"
+          aria-label={t("retry")}
         >
           <RefreshCw className="h-4 w-4" />
         </Button>

@@ -25,8 +25,8 @@ export default async function CaseDetailsPage({
   return (
     <PageContainer>
       <PageHeader
-        title="Case details"
-        description="General information, assignment, court information, and audit trail."
+        titleKey="caseDetails.title"
+        descriptionKey="caseDetails.description"
       />
       <CaseDetails caseId={id} />
     </PageContainer>

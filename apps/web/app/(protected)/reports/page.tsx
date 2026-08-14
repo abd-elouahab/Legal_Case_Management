@@ -29,8 +29,8 @@ export default function ReportsPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Reports"
-        description="Generate structured, cited legal reports from a case's indexed documents. Each report is written in the background, section by section, and only the reports you generated appear here."
+        titleKey="reports.title"
+        descriptionKey="reports.description"
       />
 
       <Protected permission={PERMISSION.reportsMonitor}>

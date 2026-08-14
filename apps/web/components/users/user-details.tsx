@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -26,8 +27,8 @@ import { ResetPasswordDialog } from "@/components/users/reset-password-dialog";
 import { UserAvatar } from "@/components/users/user-avatar";
 import { UserRoleBadge, UserStatusBadge } from "@/components/users/user-badges";
 import { useSession } from "@/hooks/use-session";
-import { useActivateUser, useUser, userErrorMessage } from "@/hooks/use-users";
-import { formatDateTime } from "@/lib/format";
+import { useActivateUser, useUser, useUserErrorMessage } from "@/hooks/use-users";
+import { useDateFormat } from "@/hooks/use-date-format";
 import { ROUTES } from "@/lib/routes";
 import { PERMISSION } from "@/types/authorization";
 import type { ManagedUser } from "@/types/user";
@@ -58,7 +59,7 @@ function DetailRow({
         {Icon ? <Icon className="h-4 w-4" /> : null}
         {label}
       </dt>
-      <dd className="text-sm text-foreground sm:text-right">{value}</dd>
+      <dd className="text-sm text-foreground sm:text-end">{value}</dd>
     </div>
   );
 }
@@ -77,8 +78,16 @@ function DetailsCard({ title, children }: { title: string; children: React.React
 }
 
 function UserDetailsContent({ user }: { user: ManagedUser }) {
+  const { formatDateTime } = useDateFormat();
   const { user: currentUser } = useSession();
   const activateUser = useActivateUser();
+  const t = useTranslations("users.details");
+  const tForm = useTranslations("users.form");
+  const tUserActions = useTranslations("users.actions");
+  const tActions = useTranslations("common.actions");
+  const tStates = useTranslations("common.states");
+  const tTime = useTranslations("common.time");
+  const errorMessage = useUserErrorMessage();
   const [dialog, setDialog] = React.useState<DialogKind>("none");
 
   const isSelf = currentUser?.id === user.id;
@@ -86,18 +95,18 @@ function UserDetailsContent({ user }: { user: ManagedUser }) {
   async function activate() {
     try {
       await activateUser.mutateAsync(user.id);
-      toast.success(`${user.fullName} was activated.`);
+      toast.success(tUserActions("activated", { name: user.fullName }));
     } catch (error) {
-      toast.error(userErrorMessage(error));
+      toast.error(errorMessage(error));
     }
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <Button asChild variant="ghost" size="sm" className="w-fit -ml-2">
+      <Button asChild variant="ghost" size="sm" className="w-fit -ms-2">
         <Link href={ROUTES.users}>
-          <ArrowLeft className="h-4 w-4" />
-          Back to users
+          <ArrowLeft data-flip-rtl className="h-4 w-4" />
+          {t("backToUsers")}
         </Link>
       </Button>
 
@@ -111,7 +120,7 @@ function UserDetailsContent({ user }: { user: ManagedUser }) {
               <UserStatusBadge status={user.status} />
               {user.mustChangePassword ? (
                 <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning">
-                  Password change required
+                  {t("passwordChangeRequired")}
                 </Badge>
               ) : null}
             </div>
@@ -122,11 +131,11 @@ function UserDetailsContent({ user }: { user: ManagedUser }) {
           <Protected permission={PERMISSION.usersUpdate}>
             <Button variant="outline" onClick={() => setDialog("edit")}>
               <Pencil className="h-4 w-4" />
-              Edit
+              {tActions("edit")}
             </Button>
             <Button variant="outline" onClick={() => setDialog("reset")}>
               <KeyRound className="h-4 w-4" />
-              Reset password
+              {tUserActions("resetPassword")}
             </Button>
           </Protected>
 
@@ -134,14 +143,14 @@ function UserDetailsContent({ user }: { user: ManagedUser }) {
             <Protected permission={PERMISSION.usersDelete}>
               <Button variant="destructive" onClick={() => setDialog("deactivate")}>
                 <UserX className="h-4 w-4" />
-                Deactivate
+                {tUserActions("deactivate")}
               </Button>
             </Protected>
           ) : (
             <Protected permission={PERMISSION.usersUpdate}>
               <Button onClick={activate} disabled={activateUser.isPending}>
                 <UserCheck className="h-4 w-4" />
-                Activate
+                {tUserActions("activate")}
               </Button>
             </Protected>
           )}
@@ -151,14 +160,14 @@ function UserDetailsContent({ user }: { user: ManagedUser }) {
       <Separator />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <DetailsCard title="Personal information">
-          <DetailRow label="First name" value={user.firstName} />
-          <DetailRow label="Last name" value={user.lastName} />
+        <DetailsCard title={t("personalInformation")}>
+          <DetailRow label={tForm("firstName")} value={user.firstName} />
+          <DetailRow label={tForm("lastName")} value={user.lastName} />
         </DetailsCard>
 
-        <DetailsCard title="Contact information">
+        <DetailsCard title={t("contactInformation")}>
           <DetailRow
-            label="Email"
+            label={tForm("email")}
             icon={Mail}
             value={
               <a href={`mailto:${user.email}`} className="hover:underline">
@@ -167,7 +176,7 @@ function UserDetailsContent({ user }: { user: ManagedUser }) {
             }
           />
           <DetailRow
-            label="Phone"
+            label={tForm("phone")}
             icon={Phone}
             value={
               user.phone ? (
@@ -175,25 +184,31 @@ function UserDetailsContent({ user }: { user: ManagedUser }) {
                   {user.phone}
                 </a>
               ) : (
-                <span className="text-muted-foreground">Not provided</span>
+                <span className="text-muted-foreground">{t("notProvided")}</span>
               )
             }
           />
         </DetailsCard>
 
-        <DetailsCard title="Access">
-          <DetailRow label="Role" value={<UserRoleBadge role={user.role} />} />
-          <DetailRow label="Status" value={<UserStatusBadge status={user.status} />} />
+        <DetailsCard title={t("access")}>
+          <DetailRow label={tForm("role")} value={<UserRoleBadge role={user.role} />} />
           <DetailRow
-            label="Can sign in"
-            value={user.isActive ? "Yes" : "No"}
+            label={tForm("status")}
+            value={<UserStatusBadge status={user.status} />}
+          />
+          <DetailRow
+            label={t("canSignIn")}
+            value={user.isActive ? tStates("yes") : tStates("no")}
           />
         </DetailsCard>
 
-        <DetailsCard title="Account activity">
-          <DetailRow label="Last sign-in" value={formatDateTime(user.lastLoginAt, "Never")} />
-          <DetailRow label="Created" value={formatDateTime(user.createdAt)} />
-          <DetailRow label="Last updated" value={formatDateTime(user.updatedAt)} />
+        <DetailsCard title={t("accountActivity")}>
+          <DetailRow
+            label={t("lastSignIn")}
+            value={formatDateTime(user.lastLoginAt, tTime("never"))}
+          />
+          <DetailRow label={t("created")} value={formatDateTime(user.createdAt)} />
+          <DetailRow label={t("lastUpdated")} value={formatDateTime(user.updatedAt)} />
         </DetailsCard>
       </div>
 
@@ -218,14 +233,16 @@ function UserDetailsContent({ user }: { user: ManagedUser }) {
 
 export function UserDetails({ userId }: { userId: string }) {
   const { data, isLoading, isError, error, refetch } = useUser(userId);
+  const t = useTranslations("users.details");
+  const errorMessage = useUserErrorMessage();
 
-  if (isLoading) return <LoadingState label="Loading user…" />;
+  if (isLoading) return <LoadingState label={t("loading")} />;
 
   if (isError || !data) {
     return (
       <ErrorState
-        title="Could not load this user"
-        description={userErrorMessage(error)}
+        title={t("loadFailed")}
+        description={errorMessage(error)}
         onRetry={() => void refetch()}
       />
     );

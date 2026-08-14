@@ -25,6 +25,7 @@ from core.exceptions import (
     RagUnavailableError,
     SearchAccessDeniedError,
 )
+from core.localization import default_language
 from core.rag import INSUFFICIENT_EVIDENCE_MARKER, RagFailureCode
 from models.conversation import ConversationStatus, FeedbackRating
 from models.user import UserRole
@@ -914,7 +915,12 @@ class TestSuggestions:
         assert question == "Quel est le loyer ?"
         assert answer
         assert citations >= 1
-        assert language == "fr"
+        # The application default: this service is built without a language
+        # directory, so nothing was *chosen*, and "Quel est le loyer ?" carries
+        # no diacritic for `detect_language` to read French from — see
+        # `core.rag.resolve_answer_language` for why the deployment's own answer
+        # is the honest fallback there.
+        assert language == default_language()
 
 
 # --------------------------------------------------------------------------- #

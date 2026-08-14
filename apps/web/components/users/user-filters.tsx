@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Search, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ROLE_LABELS, STATUS_LABELS, USER_ROLES, USER_STATUSES } from "@/types/user";
+import { roleMessageKey, USER_ROLES, USER_STATUSES } from "@/types/user";
 import type { UserRole, UserStatus } from "@/types/user";
 
 /**
@@ -46,13 +47,18 @@ export function UserFilters({
   onReset: () => void;
   isFiltered: boolean;
 }) {
+  const t = useTranslations("users.filters");
+  const tRoles = useTranslations("users.roles");
+  const tStatuses = useTranslations("users.statuses");
+  const tActions = useTranslations("common.actions");
+
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
       <div className="flex flex-1 flex-col gap-2">
-        <Label htmlFor="user-search">Search</Label>
+        <Label htmlFor="user-search">{tActions("search")}</Label>
         <div className="relative">
           <Search
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+            className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
             aria-hidden="true"
           />
           <Input
@@ -60,26 +66,26 @@ export function UserFilters({
             type="search"
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Search by name or email"
-            className="pl-9"
+            placeholder={t("searchPlaceholder")}
+            className="ps-9"
           />
         </div>
       </div>
 
       <div className="flex flex-col gap-2 sm:w-48">
-        <Label htmlFor="user-role-filter">Role</Label>
+        <Label htmlFor="user-role-filter">{t("role")}</Label>
         <Select
           value={role ?? ANY}
           onValueChange={(value) => onRoleChange(value === ANY ? null : (value as UserRole))}
         >
           <SelectTrigger id="user-role-filter">
-            <SelectValue placeholder="All roles" />
+            <SelectValue placeholder={t("allRoles")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ANY}>All roles</SelectItem>
+            <SelectItem value={ANY}>{t("allRoles")}</SelectItem>
             {USER_ROLES.map((option) => (
               <SelectItem key={option} value={option}>
-                {ROLE_LABELS[option]}
+                {tRoles(roleMessageKey(option))}
               </SelectItem>
             ))}
           </SelectContent>
@@ -87,19 +93,19 @@ export function UserFilters({
       </div>
 
       <div className="flex flex-col gap-2 sm:w-44">
-        <Label htmlFor="user-status-filter">Status</Label>
+        <Label htmlFor="user-status-filter">{t("status")}</Label>
         <Select
           value={status ?? ANY}
           onValueChange={(value) => onStatusChange(value === ANY ? null : (value as UserStatus))}
         >
           <SelectTrigger id="user-status-filter">
-            <SelectValue placeholder="All statuses" />
+            <SelectValue placeholder={t("allStatuses")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ANY}>All statuses</SelectItem>
+            <SelectItem value={ANY}>{t("allStatuses")}</SelectItem>
             {USER_STATUSES.map((option) => (
               <SelectItem key={option} value={option}>
-                {STATUS_LABELS[option]}
+                {tStatuses(option)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -109,7 +115,7 @@ export function UserFilters({
       {isFiltered ? (
         <Button type="button" variant="ghost" onClick={onReset} className="sm:mb-0">
           <X className="h-4 w-4" />
-          Clear
+          {tActions("clear")}
         </Button>
       ) : null}
     </div>

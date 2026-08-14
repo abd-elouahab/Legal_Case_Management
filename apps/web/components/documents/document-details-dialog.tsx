@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslations } from "next-intl";
 import { Check, Download, Pencil } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
@@ -35,12 +36,13 @@ import { DocumentVersionHistory } from "@/components/documents/document-version-
 import { DocumentIndexPanel } from "@/components/indexing/document-index-panel";
 import { DocumentOcrPanel } from "@/components/ocr/document-ocr-panel";
 import {
-  documentErrorMessage,
   useDocument,
+  useDocumentErrorMessage,
   useDownloadDocument,
   useUpdateDocument,
 } from "@/hooks/use-documents";
-import { formatDateTime } from "@/lib/format";
+import { useDateFormat } from "@/hooks/use-date-format";
+import { useFieldError } from "@/hooks/use-field-error";
 import { caseRoute } from "@/lib/routes";
 import {
   MAX_DESCRIPTION_LENGTH,
@@ -50,7 +52,6 @@ import {
 import { PERMISSION } from "@/types/authorization";
 import {
   DOCUMENT_CATEGORIES,
-  DOCUMENT_CATEGORY_LABELS,
   type DocumentCategory,
   type DocumentVersion,
   type LegalDocument,
@@ -73,13 +74,19 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   return (
     <div className="flex flex-col gap-1 py-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="text-sm text-foreground sm:max-w-[60%] sm:text-right">{value}</dd>
+      <dd className="text-sm text-foreground sm:max-w-[60%] sm:text-end">{value}</dd>
     </div>
   );
 }
 
 function DocumentMetadataForm({ document }: { document: LegalDocument }) {
   const update = useUpdateDocument();
+  const t = useTranslations("documents.detailsDialog");
+  const tCategories = useTranslations("documents.categories");
+  const tUpload = useTranslations("documents.uploadDialog");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useDocumentErrorMessage();
+  const fieldError = useFieldError();
   const [formError, setFormError] = React.useState<string | null>(null);
 
   const defaults = React.useMemo<EditDocumentFormValues>(
@@ -124,9 +131,9 @@ function DocumentMetadataForm({ document }: { document: LegalDocument }) {
           description: values.description || null,
         },
       });
-      toast.success("Document details were updated.");
+      toast.success(t("saved"));
     } catch (error) {
-      setFormError(documentErrorMessage(error));
+      setFormError(errorMessage(error));
     }
   });
 
@@ -141,7 +148,7 @@ function DocumentMetadataForm({ document }: { document: LegalDocument }) {
       ) : null}
 
       <div className="flex flex-col gap-2">
-        <Label htmlFor="document-details-category">Category</Label>
+        <Label htmlFor="document-details-category">{tUpload("category")}</Label>
         <Select
           value={category}
           onValueChange={(value) =>
@@ -153,25 +160,25 @@ function DocumentMetadataForm({ document }: { document: LegalDocument }) {
           disabled={isPending}
         >
           <SelectTrigger id="document-details-category">
-            <SelectValue placeholder="Select a category" />
+            <SelectValue placeholder={tUpload("selectCategory")} />
           </SelectTrigger>
           <SelectContent>
             {DOCUMENT_CATEGORIES.map((option) => (
               <SelectItem key={option} value={option}>
-                {DOCUMENT_CATEGORY_LABELS[option]}
+                {tCategories(option)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
         {errors.category ? (
           <p role="alert" className="text-sm text-destructive">
-            {errors.category.message}
+            {fieldError(errors.category.message)}
           </p>
         ) : null}
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label htmlFor="document-details-description">Description</Label>
+        <Label htmlFor="document-details-description">{t("fields.description")}</Label>
         <Textarea
           id="document-details-description"
           rows={3}
@@ -181,7 +188,7 @@ function DocumentMetadataForm({ document }: { document: LegalDocument }) {
         />
         {errors.description ? (
           <p role="alert" className="text-sm text-destructive">
-            {errors.description.message}
+            {fieldError(errors.description.message)}
           </p>
         ) : null}
       </div>
@@ -191,12 +198,12 @@ function DocumentMetadataForm({ document }: { document: LegalDocument }) {
           {isPending ? (
             <>
               <Spinner className="h-4 w-4 text-current" />
-              Saving…
+              {tActions("saving")}
             </>
           ) : (
             <>
               <Check className="h-4 w-4" />
-              Save details
+              {t("saveDetails")}
             </>
           )}
         </Button>
@@ -212,7 +219,11 @@ function DocumentDetailsContent({
   document: LegalDocument;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { formatDateTime } = useDateFormat();
   const download = useDownloadDocument();
+  const t = useTranslations("documents.detailsDialog");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useDocumentErrorMessage();
   const [downloadingVersion, setDownloadingVersion] = React.useState<number | null>(null);
 
   async function fetchVersion(version: DocumentVersion | null) {
@@ -229,7 +240,7 @@ function DocumentDetailsContent({
         version: target.version,
       });
     } catch (error) {
-      toast.error(documentErrorMessage(error));
+      toast.error(errorMessage(error));
     } finally {
       setDownloadingVersion(null);
     }
@@ -238,45 +249,57 @@ function DocumentDetailsContent({
   return (
     <>
       <dl className="divide-y divide-border">
-        <DetailRow label="File name" value={document.originalFilename} />
+        <DetailRow label={t("fields.fileName")} value={document.originalFilename} />
         <DetailRow
-          label="Category"
+          label={t("fields.category")}
           value={<DocumentCategoryBadge category={document.category} />}
         />
         <DetailRow
-          label="Case"
+          label={t("fields.case")}
           value={
             document.case ? (
               <Link href={caseRoute(document.case.id)} className="hover:underline">
                 {document.case.caseNumber} — {document.case.title}
               </Link>
             ) : (
-              <span className="text-muted-foreground">Not available</span>
+              <span className="text-muted-foreground">{t("notAvailable")}</span>
             )
           }
         />
-        <DetailRow label="Type" value={document.fileExtension.toUpperCase()} />
-        <DetailRow label="Size" value={document.fileSizeLabel} />
-        <DetailRow label="Current version" value={`v${document.version}`} />
         <DetailRow
-          label="Uploaded by"
+          label={t("fields.type")}
+          value={document.fileExtension.toUpperCase()}
+        />
+        <DetailRow label={t("fields.size")} value={document.fileSizeLabel} />
+        <DetailRow
+          label={t("fields.currentVersion")}
+          value={t("versionShort", { version: document.version })}
+        />
+        <DetailRow
+          label={t("fields.uploadedBy")}
           value={
             document.uploader?.fullName ?? (
-              <span className="text-muted-foreground">Not recorded</span>
+              <span className="text-muted-foreground">{t("notRecorded")}</span>
             )
           }
         />
-        <DetailRow label="Added to case" value={formatDateTime(document.createdAt)} />
-        <DetailRow label="Current version uploaded" value={formatDateTime(document.uploadedAt)} />
         <DetailRow
-          label="Description"
+          label={t("fields.addedToCase")}
+          value={formatDateTime(document.createdAt)}
+        />
+        <DetailRow
+          label={t("fields.currentVersionUploaded")}
+          value={formatDateTime(document.uploadedAt)}
+        />
+        <DetailRow
+          label={t("fields.description")}
           value={
             document.description ? (
               // `whitespace-pre-line` keeps the author's paragraphs, which the
               // API deliberately preserves rather than collapsing.
               <span className="whitespace-pre-line">{document.description}</span>
             ) : (
-              <span className="text-muted-foreground">Not provided</span>
+              <span className="text-muted-foreground">{t("notProvided")}</span>
             )
           }
         />
@@ -314,7 +337,7 @@ function DocumentDetailsContent({
 
       <DialogFooter>
         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-          Close
+          {tActions("close")}
         </Button>
         <Button
           type="button"
@@ -322,7 +345,7 @@ function DocumentDetailsContent({
           disabled={downloadingVersion !== null}
         >
           <Download className="h-4 w-4" />
-          Download current version
+          {t("downloadCurrent")}
         </Button>
       </DialogFooter>
     </>
@@ -341,6 +364,8 @@ export function DocumentDetailsDialog({
   const { data, isLoading, isError, error, refetch } = useDocument(documentId ?? "", {
     enabled: open && Boolean(documentId),
   });
+  const t = useTranslations("documents.detailsDialog");
+  const errorMessage = useDocumentErrorMessage();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -348,20 +373,17 @@ export function DocumentDetailsDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Pencil className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            Document details
+            {t("title")}
           </DialogTitle>
-          <DialogDescription>
-            Metadata, the case this document belongs to, and every version ever
-            uploaded — each one still downloadable.
-          </DialogDescription>
+          <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
 
         {isLoading ? (
-          <LoadingState label="Loading document…" />
+          <LoadingState label={t("loading")} />
         ) : isError || !data ? (
           <ErrorState
-            title="Could not load this document"
-            description={documentErrorMessage(error)}
+            title={t("loadFailed")}
+            description={errorMessage(error)}
             onRetry={() => void refetch()}
           />
         ) : (

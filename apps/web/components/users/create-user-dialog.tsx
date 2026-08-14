@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { UserPlus } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
@@ -17,7 +18,8 @@ import {
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/shared/spinner";
 import { UserFormFieldset } from "@/components/users/user-form";
-import { fieldErrors, useCreateUser, userErrorMessage } from "@/hooks/use-users";
+import { fieldErrors, useCreateUser, useUserErrorMessage } from "@/hooks/use-users";
+import { useFieldError } from "@/hooks/use-field-error";
 import { createUserFormSchema, type CreateUserFormValues } from "@/lib/validation/user";
 
 /**
@@ -25,7 +27,7 @@ import { createUserFormSchema, type CreateUserFormValues } from "@/lib/validatio
  *
  * Owns nothing but presentation and form state: the request, cache
  * invalidation, and error translation all live in `useCreateUser` /
- * `userErrorMessage`, per the standard that components carry no business logic.
+ * `useUserErrorMessage`, per the standard that components carry no business logic.
  *
  * Server-side validation failures are mapped back onto the offending fields
  * rather than shown only as a banner, so a rejected email lands next to the email
@@ -51,6 +53,10 @@ export function CreateUserDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const createUser = useCreateUser();
+  const t = useTranslations("users.createDialog");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useUserErrorMessage();
+  const fieldError = useFieldError();
   const [formError, setFormError] = React.useState<string | null>(null);
 
   const form = useForm<CreateUserFormValues>({
@@ -117,7 +123,7 @@ export function CreateUserDialog({
       }
       // Only surface the banner when nothing could be attached to a field —
       // otherwise the same complaint would appear twice.
-      if (Object.keys(fields).length === 0) setFormError(userErrorMessage(error));
+      if (Object.keys(fields).length === 0) setFormError(errorMessage(error));
     }
   });
 
@@ -127,7 +133,7 @@ export function CreateUserDialog({
     <Dialog open={open} onOpenChange={isPending ? undefined : onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add user</DialogTitle>
+          <DialogTitle>{t("title")}</DialogTitle>
           <DialogDescription>
             Create an account and assign its role. The user signs in with the email
             and password you set here.
@@ -144,13 +150,13 @@ export function CreateUserDialog({
               phone: register("phone"),
             }}
             errors={{
-              firstName: errors.firstName?.message,
-              lastName: errors.lastName?.message,
-              email: errors.email?.message,
-              phone: errors.phone?.message,
-              password: errors.password?.message,
-              role: errors.role?.message,
-              status: errors.status?.message,
+              firstName: fieldError(errors.firstName?.message),
+              lastName: fieldError(errors.lastName?.message),
+              email: fieldError(errors.email?.message),
+              phone: fieldError(errors.phone?.message),
+              password: fieldError(errors.password?.message),
+              role: fieldError(errors.role?.message),
+              status: fieldError(errors.status?.message),
             }}
             role={role}
             onRoleChange={(value) => setValue("role", value, { shouldValidate: true })}
@@ -172,18 +178,18 @@ export function CreateUserDialog({
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              {tActions("cancel")}
             </Button>
             <Button type="submit" disabled={isPending}>
               {isPending ? (
                 <>
                   <Spinner className="h-4 w-4 text-current" />
-                  Creating…
+                  {t("creating")}
                 </>
               ) : (
                 <>
                   <UserPlus className="h-4 w-4" />
-                  Create user
+                  {t("submit")}
                 </>
               )}
             </Button>

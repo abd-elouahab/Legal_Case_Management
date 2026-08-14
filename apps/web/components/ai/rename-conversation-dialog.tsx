@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -14,11 +15,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/shared/spinner";
-import { assistantErrorMessage, useUpdateConversation } from "@/hooks/use-assistant";
+import { useAssistantErrorMessage, useUpdateConversation } from "@/hooks/use-assistant";
 import {
   MAX_TITLE_LENGTH,
   conversationTitleFormSchema,
 } from "@/lib/validation/assistant";
+import { useFieldError } from "@/hooks/use-field-error";
 import type { Conversation } from "@/types/assistant";
 
 /**
@@ -70,6 +72,10 @@ function RenameForm({
   onDone: () => void;
 }) {
   const update = useUpdateConversation();
+  const t = useTranslations("assistant.rename");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useAssistantErrorMessage();
+  const fieldError = useFieldError();
   const [title, setTitle] = React.useState(conversation.title);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -78,7 +84,7 @@ function RenameForm({
 
     const parsed = conversationTitleFormSchema.safeParse({ title });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "Enter a name.");
+      setError(fieldError(parsed.error.issues[0]?.message) ?? t("enterName"));
       return;
     }
 
@@ -86,7 +92,7 @@ function RenameForm({
       { id: conversation.id, input: { title: parsed.data.title } },
       {
         onSuccess: onDone,
-        onError: (failure) => setError(assistantErrorMessage(failure)),
+        onError: (failure) => setError(errorMessage(failure)),
       },
     );
   }
@@ -94,16 +100,13 @@ function RenameForm({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Rename conversation</DialogTitle>
-        <DialogDescription>
-          Only the name changes. The questions and answers in this conversation are
-          untouched.
-        </DialogDescription>
+        <DialogTitle>{t("title")}</DialogTitle>
+        <DialogDescription>{t("description")}</DialogDescription>
       </DialogHeader>
 
       <form onSubmit={submit} className="flex flex-col gap-3">
         <div className="flex flex-col gap-2">
-          <Label htmlFor="conversation-title">Name</Label>
+          <Label htmlFor="conversation-title">{t("name")}</Label>
           <Input
             id="conversation-title"
             value={title}
@@ -128,16 +131,16 @@ function RenameForm({
             onClick={onDone}
             disabled={update.isPending}
           >
-            Cancel
+            {tActions("cancel")}
           </Button>
           <Button type="submit" disabled={update.isPending}>
             {update.isPending ? (
               <>
                 <Spinner className="h-4 w-4 text-current" />
-                Saving…
+                {tActions("saving")}
               </>
             ) : (
-              "Save"
+              tActions("save")
             )}
           </Button>
         </DialogFooter>

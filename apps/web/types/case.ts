@@ -81,20 +81,19 @@ export interface LegalCase {
   allowedTransitions: readonly CaseStatus[];
 }
 
-/** Human-readable status labels (future: i18n keys). */
-export const CASE_STATUS_LABELS: Record<CaseStatus, string> = {
-  draft: "Draft",
-  open: "Open",
-  in_progress: "In Progress",
-  waiting_for_hearing: "Waiting for Hearing",
-  closed: "Closed",
-  archived: "Archived",
-};
-
-/** Human-readable priority labels (future: i18n keys). */
-export const CASE_PRIORITY_LABELS: Record<CasePriority, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  urgent: "Urgent",
-};
+/**
+ * Where the words for a status and a priority live.
+ *
+ * **Not here.** They used to be two `Record<…, string>` constants in this module,
+ * carrying a `(future: i18n keys)` note; `21-localization.md` is what cashed it.
+ * A module constant cannot read the reader's language, so a badge built from one
+ * stayed English on an Arabic screen — and `code-standards.md` names that exactly:
+ * *"never hardcode user-facing strings; every text must use translation keys"*.
+ *
+ * A status renders as `t(status)` under `cases.statuses` and a priority as
+ * `t(priority)` under `cases.priorities`. The *values* stay here, because a
+ * lifecycle is a fact about the platform and a translation is not: `CASE_STATUSES`
+ * is what a menu iterates, and the catalogue is what each entry says.
+ */
+export const CASE_STATUS_NAMESPACE = "cases.statuses";
+export const CASE_PRIORITY_NAMESPACE = "cases.priorities";

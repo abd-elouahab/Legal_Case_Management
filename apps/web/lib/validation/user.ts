@@ -18,6 +18,8 @@
 
 import { z } from "zod";
 
+import { vm } from "@/lib/validation/messages";
+
 import { MAX_PASSWORD_BYTES, MIN_PASSWORD_LENGTH } from "@/lib/validation/auth";
 import { PERMISSIONS } from "@/types/authorization";
 import { SORT_ORDERS, USER_SORT_FIELDS } from "@/types/user-management";
@@ -48,21 +50,29 @@ function countDigits(value: string): number {
 // Field schemas
 // --------------------------------------------------------------------------- //
 
-const namePart = (label: string) =>
+/**
+ * One half of a person's name.
+ *
+ * The field's own name is deliberately not in the message — see the equivalent
+ * note in `lib/validation/case.ts`. "Required." beneath the First name input says
+ * everything "First name is required." did, in one catalogue entry rather than
+ * one per field.
+ */
+const namePart = () =>
   z
     .string()
     .transform((value) => value.replace(/\s+/g, " ").trim())
-    .refine((value) => value.length > 0, `${label} is required.`)
+    .refine((value) => value.length > 0, vm("validation.required"))
     .refine(
       (value) => value.length <= MAX_NAME_LENGTH,
-      `${label} must be at most ${MAX_NAME_LENGTH} characters.`,
+      vm("validation.maxLength", { max: MAX_NAME_LENGTH }),
     );
 
 const emailField = z
   .string()
   .transform((value) => value.trim().toLowerCase())
-  .refine((value) => value.length > 0, "Email is required.")
-  .refine((value) => z.string().email().safeParse(value).success, "Enter a valid email address.");
+  .refine((value) => value.length > 0, vm("validation.auth.emailRequired"))
+  .refine((value) => z.string().email().safeParse(value).success, vm("validation.auth.emailInvalid"));
 
 /**
  * An optional phone number. A blank field means "no phone", matching the API,
@@ -73,21 +83,21 @@ const optionalPhoneField = z
   .transform((value) => value.replace(/\s+/g, " ").trim())
   .refine(
     (value) => value === "" || PHONE_ALLOWED.test(value),
-    "Phone number may contain only digits, spaces, and the characters + ( ) - . /",
+    vm("validation.user.phoneCharacters"),
   )
   .refine(
     (value) =>
       value === "" ||
       (countDigits(value) >= MIN_PHONE_DIGITS && countDigits(value) <= MAX_PHONE_DIGITS),
-    `Phone number must contain between ${MIN_PHONE_DIGITS} and ${MAX_PHONE_DIGITS} digits.`,
+    vm("validation.user.phoneDigits", { min: MIN_PHONE_DIGITS, max: MAX_PHONE_DIGITS }),
   );
 
 const passwordField = z
   .string()
-  .min(MIN_PASSWORD_LENGTH, `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`)
+  .min(MIN_PASSWORD_LENGTH, vm("validation.auth.passwordTooShort", { min: MIN_PASSWORD_LENGTH }))
   .refine(
     (value) => byteLength(value) <= MAX_PASSWORD_BYTES,
-    `Password must not exceed ${MAX_PASSWORD_BYTES} bytes.`,
+    vm("validation.auth.passwordTooLong", { max: MAX_PASSWORD_BYTES }),
   );
 
 // --------------------------------------------------------------------------- //
@@ -103,12 +113,12 @@ const passwordField = z
  * types stay identical and the forms need one type each.
  */
 const sharedUserFields = {
-  firstName: namePart("First name"),
-  lastName: namePart("Last name"),
+  firstName: namePart(),
+  lastName: namePart(),
   email: emailField,
   phone: optionalPhoneField,
-  role: z.enum(USER_ROLES, { required_error: "Select a role." }),
-  status: z.enum(USER_STATUSES, { required_error: "Select a status." }),
+  role: z.enum(USER_ROLES, { required_error: vm("validation.user.roleRequired") }),
+  status: z.enum(USER_STATUSES, { required_error: vm("validation.user.statusRequired") }),
 };
 
 /**

@@ -14,6 +14,8 @@
 
 import { z } from "zod";
 
+import { vm } from "@/lib/validation/messages";
+
 import { DOCUMENT_CATEGORIES } from "@/types/document";
 
 /** Shortest query worth sending, matching `MIN_QUERY_LENGTH` on the server. */
@@ -33,11 +35,11 @@ export const searchFormSchema = z.object({
   query: z
     .string()
     .trim()
-    .min(MIN_QUERY_LENGTH, `Enter at least ${MIN_QUERY_LENGTH} characters.`)
-    .max(MAX_QUERY_LENGTH, `Queries are limited to ${MAX_QUERY_LENGTH} characters.`)
+    .min(MIN_QUERY_LENGTH, vm("validation.minLength", { min: MIN_QUERY_LENGTH }))
+    .max(MAX_QUERY_LENGTH, vm("validation.search.queryTooLong", { max: MAX_QUERY_LENGTH }))
     .refine(
       (value) => /[\p{L}\p{N}]/u.test(value),
-      "Enter a word or a number to search for.",
+      vm("validation.search.queryRequired"),
     ),
 });
 

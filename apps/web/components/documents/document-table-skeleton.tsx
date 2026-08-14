@@ -1,3 +1,7 @@
+"use client";
+
+import { useTranslations } from "next-intl";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -23,22 +27,30 @@ export function DocumentTableSkeleton({
   rows?: number;
   showCase?: boolean;
 }) {
+  const t = useTranslations("documents.table");
+
   return (
     <div
       className="w-full overflow-x-auto rounded-lg border border-border"
       aria-busy="true"
-      aria-label="Loading documents"
+      aria-label={t("loading")}
     >
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>File name</TableHead>
-            {showCase ? <TableHead className="hidden lg:table-cell">Case</TableHead> : null}
-            <TableHead>Category</TableHead>
-            <TableHead>Size</TableHead>
-            <TableHead className="hidden lg:table-cell">Version</TableHead>
-            <TableHead className="hidden xl:table-cell">Uploaded by</TableHead>
-            <TableHead className="hidden xl:table-cell">Upload date</TableHead>
+            <TableHead>{t("columns.original_filename")}</TableHead>
+            {showCase ? (
+              <TableHead className="hidden lg:table-cell">{t("columns.case")}</TableHead>
+            ) : null}
+            <TableHead>{t("columns.category")}</TableHead>
+            <TableHead>{t("columns.file_size")}</TableHead>
+            <TableHead className="hidden lg:table-cell">{t("columns.version")}</TableHead>
+            <TableHead className="hidden xl:table-cell">
+              {t("columns.uploadedBy")}
+            </TableHead>
+            <TableHead className="hidden xl:table-cell">
+              {t("columns.uploaded_at")}
+            </TableHead>
             <TableHead className="w-12" />
           </TableRow>
         </TableHeader>

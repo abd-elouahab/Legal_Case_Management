@@ -1,11 +1,12 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { FileBarChart, TriangleAlert } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useReportMetrics } from "@/hooks/use-reports";
-import { reportFailureLabel, reportTypeLabel } from "@/types/report";
+import { useNumberFormat } from "@/hooks/use-number-format";
 
 /**
  * Platform-wide AI report health.
@@ -43,6 +44,10 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 export function ReportMetricsPanel() {
   const { data, isLoading, isError } = useReportMetrics();
+  const t = useTranslations("reports.metrics");
+  const tTypes = useTranslations("reports.types");
+  const tFailures = useTranslations("reports.failures");
+  const { formatNumber, formatPercent } = useNumberFormat();
 
   if (isError) return null;
 
@@ -51,7 +56,7 @@ export function ReportMetricsPanel() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm">
           <FileBarChart className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-          AI report generation
+          {t("title")}
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -65,8 +70,7 @@ export function ReportMetricsPanel() {
           <>
             {!data.enabled ? (
               <p className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
-                Report generation is disabled on this deployment. Existing reports stay
-                readable and exportable; no new ones are queued.
+                {t("disabled")}
               </p>
             ) : !data.llmAvailable ? (
               <p
@@ -74,11 +78,7 @@ export function ReportMetricsPanel() {
                 className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
               >
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>
-                  No AI provider is reachable, so new reports will fail. Cases, documents,
-                  and existing reports are unaffected, and every run can be generated
-                  again once it is available.
-                </span>
+                <span>{t("llmUnavailable")}</span>
               </p>
             ) : !data.promptAvailable ? (
               <p
@@ -86,50 +86,54 @@ export function ReportMetricsPanel() {
                 className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
               >
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>
-                  The pipeline&apos;s answer template cannot be loaded, so every section
-                  will fail — a report section is a pipeline run. Cases and documents are
-                  unaffected.
-                </span>
+                <span>{t("promptUnavailable")}</span>
               </p>
             ) : null}
 
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <Stat label="Reports generated" value={data.completed.toLocaleString()} />
+              <Stat label={t("reportsGenerated")} value={formatNumber(data.completed)} />
               <Stat
-                label="Average time"
+                label={t("averageTime")}
                 value={
                   data.averageDurationSeconds !== null
-                    ? `${data.averageDurationSeconds}s`
+                    ? t("seconds", { value: data.averageDurationSeconds })
                     : "—"
                 }
               />
-              <Stat label="Exports" value={data.totalExports.toLocaleString()} />
-              <Stat label="Failures" value={data.failed.toLocaleString()} />
+              <Stat label={t("exports")} value={formatNumber(data.totalExports)} />
+              <Stat label={t("failures")} value={formatNumber(data.failed)} />
             </div>
 
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <Stat label="Success rate" value={`${data.successRate}%`} />
+              <Stat
+                label={t("successRate")}
+                value={formatPercent(data.successRate, { decimals: 0 })}
+              />
               {/* The number to watch, and not an AI metric: a falling rate means
                   the corpus no longer covers what reports ask of it. */}
-              <Stat label="Sections grounded" value={`${data.groundingRate}%`} />
               <Stat
-                label="Average size"
+                label={t("sectionsGrounded")}
+                value={formatPercent(data.groundingRate, { decimals: 0 })}
+              />
+              <Stat
+                label={t("averageSize")}
                 value={
                   data.averageCharacters !== null
-                    ? `${Math.round(data.averageCharacters).toLocaleString()} chars`
+                    ? t("characters", {
+                        value: formatNumber(Math.round(data.averageCharacters)),
+                      })
                     : "—"
                 }
               />
               {/* Absent rather than zero when no provider has reported usage:
                   zero would read as "this platform's reports are free". */}
               <Stat
-                label="Tokens used"
+                label={t("tokensUsed")}
                 value={
                   data.totalPromptTokens !== null || data.totalCompletionTokens !== null
-                    ? (
-                        (data.totalPromptTokens ?? 0) + (data.totalCompletionTokens ?? 0)
-                      ).toLocaleString()
+                    ? formatNumber(
+                        (data.totalPromptTokens ?? 0) + (data.totalCompletionTokens ?? 0),
+                      )
                     : "—"
                 }
               />
@@ -137,12 +141,12 @@ export function ReportMetricsPanel() {
 
             {Object.keys(data.reportsByType).length > 0 ? (
               <div className="flex flex-col gap-2">
-                <span className="text-xs text-muted-foreground">Reports by type</span>
+                <span className="text-xs text-muted-foreground">{t("reportsByType")}</span>
                 <ul className="flex flex-wrap gap-x-4 gap-y-1">
                   {Object.entries(data.reportsByType).map(([type, count]) => (
                     <li key={type} className="text-sm text-secondary-foreground">
-                      {reportTypeLabel(type)}:{" "}
-                      <span className="tabular-nums">{count.toLocaleString()}</span>
+                      {tTypes(type)}:{" "}
+                      <span className="tabular-nums">{formatNumber(count)}</span>
                     </li>
                   ))}
                 </ul>
@@ -154,12 +158,12 @@ export function ReportMetricsPanel() {
                 {/* A failure rate says something is wrong; this says what — an
                     unreachable vector database, a missing credential, and a case
                     with no indexed documents read identically otherwise. */}
-                <span className="text-xs text-muted-foreground">Failures by cause</span>
+                <span className="text-xs text-muted-foreground">{t("failuresByCause")}</span>
                 <ul className="flex flex-wrap gap-x-4 gap-y-1">
                   {Object.entries(data.failuresByCode).map(([code, count]) => (
                     <li key={code} className="text-sm text-secondary-foreground">
-                      {reportFailureLabel(code)}:{" "}
-                      <span className="tabular-nums">{count.toLocaleString()}</span>
+                      {tFailures(code)}:{" "}
+                      <span className="tabular-nums">{formatNumber(count)}</span>
                     </li>
                   ))}
                 </ul>
@@ -167,11 +171,13 @@ export function ReportMetricsPanel() {
             ) : null}
 
             <p className="text-xs text-muted-foreground">
-              Export formats available here:{" "}
-              {data.availableFormats.length > 0
-                ? data.availableFormats.join(", ")
-                : "none"}
-              . Template set v{data.templateVersion}.
+              {t("footnote", {
+                formats:
+                  data.availableFormats.length > 0
+                    ? data.availableFormats.join(", ")
+                    : t("noFormats"),
+                version: data.templateVersion,
+              })}
             </p>
           </>
         )}

@@ -1,12 +1,14 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { Check, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { EmptyState } from "@/components/shared/empty-state";
+import { useNumberFormat } from "@/hooks/use-number-format";
 import type { OcrText } from "@/types/ocr";
 
 /**
@@ -27,6 +29,8 @@ import type { OcrText } from "@/types/ocr";
 
 function CopyTextButton({ text }: { text: string }) {
   const [copied, setCopied] = React.useState(false);
+  const t = useTranslations("ocr.text");
+  const tActions = useTranslations("common.actions");
 
   React.useEffect(() => {
     if (!copied) return;
@@ -41,7 +45,7 @@ function CopyTextButton({ text }: { text: string }) {
     } catch {
       // Clipboard access is refused in insecure contexts and by some browser
       // settings. Saying so beats a button that silently does nothing.
-      toast.error("Your browser did not allow copying. Select the text instead.");
+      toast.error(t("copyRefused"));
     }
   }
 
@@ -50,12 +54,12 @@ function CopyTextButton({ text }: { text: string }) {
       {copied ? (
         <>
           <Check className="h-4 w-4" aria-hidden="true" />
-          Copied
+          {tActions("copied")}
         </>
       ) : (
         <>
           <Copy className="h-4 w-4" aria-hidden="true" />
-          Copy all text
+          {t("copyAll")}
         </>
       )}
     </Button>
@@ -63,11 +67,15 @@ function CopyTextButton({ text }: { text: string }) {
 }
 
 export function OcrTextView({ text }: { text: OcrText }) {
+  const t = useTranslations("ocr.text");
+  const tLanguages = useTranslations("common.languages");
+  const { formatNumber } = useNumberFormat();
+
   if (text.pages.length === 0) {
     return (
       <EmptyState
-        title="No text was extracted"
-        description="This document produced no readable text. It may be a blank scan or contain images only."
+        titleKey="ocr.text.emptyTitle"
+        descriptionKey="ocr.text.emptyDescription"
       />
     );
   }
@@ -75,10 +83,17 @@ export function OcrTextView({ text }: { text: OcrText }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
+        {/* One ICU message rather than a count, a conditional "s", and a
+            hand-formatted number: the plural rule, the separator, and the digits
+            are all language-dependent. */}
         <p className="text-sm text-muted-foreground">
-          {text.pageCount} page{text.pageCount === 1 ? "" : "s"} ·{" "}
-          {text.characterCount.toLocaleString()} characters
-          {text.detectedLanguage ? ` · ${text.detectedLanguage}` : ""}
+          {t("summary", {
+            pages: text.pageCount,
+            characters: formatNumber(text.characterCount),
+          })}
+          {text.detectedLanguage
+            ? ` · ${tLanguages(text.detectedLanguage)}`
+            : ""}
         </p>
         <CopyTextButton text={text.fullText} />
       </div>
@@ -89,19 +104,17 @@ export function OcrTextView({ text }: { text: OcrText }) {
             {index > 0 ? <Separator /> : null}
             <div className="flex items-center justify-between gap-2">
               <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Page {page.pageNumber}
+                {t("page", { number: page.pageNumber })}
               </h4>
               {page.confidence !== null ? (
                 <span className="text-xs text-muted-foreground">
-                  {Math.round(page.confidence)}% confidence
+                  {t("confidence", { value: Math.round(page.confidence) })}
                 </span>
               ) : null}
             </div>
 
             {page.isEmpty ? (
-              <p className="text-sm italic text-muted-foreground">
-                This page produced no text.
-              </p>
+              <p className="text-sm italic text-muted-foreground">{t("emptyPage")}</p>
             ) : (
               <p
                 dir="auto"

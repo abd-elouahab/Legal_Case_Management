@@ -6,10 +6,12 @@ and turns a Bearer token into the authenticated :class:`~models.user.User`.
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from typing import Annotated
 
+import structlog
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
@@ -21,20 +23,27 @@ from db.session import SessionLocal, get_db
 from models.user import User
 from repositories.case import CaseRepository
 from repositories.conversation import ConversationRepository
+from repositories.dashboard import DashboardRepository
 from repositories.document import DocumentRepository
 from repositories.email import EmailDeliveryRepository
 from repositories.indexing import IndexingRepository
+from repositories.localization import LocalizationRepository
 from repositories.notification import NotificationRepository
 from repositories.ocr import OcrRepository
 from repositories.report import ReportRepository
 from repositories.search import SearchRepository
+from repositories.settings import SettingsRepository
 from repositories.timeline import TimelineRepository
 from repositories.user import UserRepository
+from repositories.whatsapp import WhatsAppDeliveryRepository
 from services.assistant import AssistantService
 from services.assistant_metrics import AssistantMetricsRecorder, get_assistant_metrics
 from services.auth import AuthService
 from services.case import CaseService
 from services.chunking import Chunker, get_chunker
+from services.dashboard import DashboardService
+from services.dashboard_access import DashboardAccessPolicy
+from services.dashboard_metrics import DashboardMetricsRecorder, get_dashboard_metrics
 from services.document import DocumentService
 from services.document_storage import DocumentStorageService
 from services.email_delivery import EmailDeliveryService, EmailJob
@@ -43,12 +52,24 @@ from services.email_provider import EmailProvider, get_email_provider
 from services.email_templates import EmailTemplateRenderer, get_email_template_renderer
 from services.email_worker import email_queue
 from services.embedding import Embedder, get_embedder
+from services.error_tracker import ErrorTracker, NullErrorTracker, get_error_tracker
 from services.events import EventPublisher, get_event_dispatcher
 from services.indexing import IndexingService, IndexJob
 from services.indexing_worker import index_queue
 from services.job_queue import JobQueue
 from services.llm import LLMProvider, get_llm_provider
+from services.localization import LanguageDirectory, SettingsLanguageDirectory
+from services.localization_metrics import (
+    LocalizationMetricsRecorder,
+    get_localization_metrics,
+)
 from services.login_throttle import LoginThrottle
+from services.metrics_registry import (
+    MetricsRegistry,
+    NullMetricsRegistry,
+    get_metrics_registry,
+)
+from services.monitoring import MonitoringService
 from services.notification import NotificationDispatcher, NotificationService
 from services.notification_events import (
     NotificationEventSubscriber,
@@ -70,12 +91,29 @@ from services.report_worker import report_queue
 from services.search import SearchService
 from services.search_metrics import SearchMetricsRecorder, get_search_metrics
 from services.search_ranking import Ranker, get_ranker
+from services.security_monitor import (
+    NullSecurityMonitor,
+    SecurityMonitor,
+    get_security_monitor,
+)
+from services.session_registry import SessionRegistry, SessionStore
+from services.settings import SettingsService
+from services.settings_metrics import SettingsMetricsRecorder, get_settings_metrics
 from services.suggestions import FollowUpSuggester, get_follow_up_suggester
 from services.timeline import TimelineService
 from services.token_revocation import TokenRevocationStore
+from services.tracer import NullTracer, Tracer, get_tracer
 from services.user import UserService
 from services.vector_search import VectorSearcher, get_vector_searcher
 from services.vector_store import VectorStore, get_vector_store
+from services.whatsapp_delivery import WhatsAppDeliveryService, WhatsAppJob
+from services.whatsapp_metrics import WhatsAppMetricsRecorder, get_whatsapp_metrics
+from services.whatsapp_provider import WhatsAppProvider, get_whatsapp_provider
+from services.whatsapp_templates import (
+    WhatsAppTemplateRenderer,
+    get_whatsapp_template_renderer,
+)
+from services.whatsapp_worker import whatsapp_queue
 
 # auto_error=False so a missing header raises our own MissingTokenError (with a
 # consistent error envelope) instead of FastAPI's bare 403 "Not authenticated".
@@ -104,13 +142,83 @@ def get_login_throttle() -> LoginThrottle:
     return LoginThrottle()
 
 
+def get_session_registry() -> SessionStore:
+    """Provide the Redis-backed record of live sign-ins.
+
+    Added by ``20-settings.md``, whose Account & Security section asks for a list
+    of active sessions — a question a stateless-JWT platform could not previously
+    answer.
+
+    **A view, never a boundary**: nothing here decides whether a request is
+    authorized, so this store fails *soft* where
+    :func:`get_token_revocation_store`'s fails closed. See
+    :mod:`services.session_registry` for the whole of that argument, and for why
+    swapping in :class:`~services.session_registry.NullSessionRegistry` costs a
+    deployment its sessions *list* and nothing else.
+    """
+    return SessionRegistry()
+
+
+# --------------------------------------------------------------------------- #
+# Localization
+# --------------------------------------------------------------------------- #
+
+
+def get_localization_repository(session: DbSession) -> LocalizationRepository:
+    """Provide a request-scoped language-preference repository."""
+    return LocalizationRepository(session)
+
+
+def get_language_directory(
+    repository: Annotated[LocalizationRepository, Depends(get_localization_repository)],
+) -> LanguageDirectory:
+    """Provide the request-scoped answer to *"which language does this account read
+    in?"*
+
+    Typed as the one-method :class:`~services.localization.LanguageDirectory`
+    rather than as the concrete class, and that is the load-bearing line — it is
+    the deliberate answer to the open question the email channel recorded when it
+    shipped (*"giving a delivery worker a settings repository is the decision to
+    make deliberately rather than in passing"*). A surface handed this can ask what
+    language somebody reads in and **cannot** read their theme, their dashboard
+    preferences, their AI settings, or anything else about their account — and
+    cannot write, because nothing underneath it has a write method.
+
+    No ``channel_default`` here: this is the *request* path, where the caller is
+    the account being resolved. The two delivery channels build their own with
+    ``EMAIL_DEFAULT_LANGUAGE`` / ``WHATSAPP_DEFAULT_LANGUAGE`` — see
+    :func:`~services.localization.build_language_directory`.
+    """
+    return SettingsLanguageDirectory(repository)
+
+
+LanguageDirectoryDep = Annotated[LanguageDirectory, Depends(get_language_directory)]
+
+
+def get_localization_metrics_recorder() -> LocalizationMetricsRecorder:
+    """Provide the process-wide localization metrics recorder.
+
+    Process-wide rather than per request for the reason every other recorder here
+    is, and with one of its own: two of the four figures it holds are **reported by
+    browsers** on requests that have nothing else in common, so a recorder rebuilt
+    per request would count every report to one and forget it.
+    """
+    return get_localization_metrics()
+
+
+LocalizationMetricsDep = Annotated[
+    LocalizationMetricsRecorder, Depends(get_localization_metrics_recorder)
+]
+
+
 def get_auth_service(
     users: Annotated[UserRepository, Depends(get_user_repository)],
     revocations: Annotated[TokenRevocationStore, Depends(get_token_revocation_store)],
     throttle: Annotated[LoginThrottle, Depends(get_login_throttle)],
+    sessions: Annotated[SessionStore, Depends(get_session_registry)],
 ) -> AuthService:
     """Provide the authentication service with its collaborators injected."""
-    return AuthService(users, revocations, throttle)
+    return AuthService(users, revocations, throttle, sessions)
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
@@ -529,6 +637,7 @@ def get_assistant_service(
     rag: Annotated[RagService, Depends(get_rag_service)],
     suggester: Annotated[FollowUpSuggester, Depends(get_follow_up_suggester_dependency)],
     metrics: Annotated[AssistantMetricsRecorder, Depends(get_assistant_metrics_recorder)],
+    languages: Annotated[LanguageDirectory, Depends(get_language_directory)],
 ) -> AssistantService:
     """Provide the AI assistant with its collaborators injected.
 
@@ -551,8 +660,17 @@ def get_assistant_service(
     belongs to a user rather than to a matter. Recording "asked the assistant a
     question" on a case's audit trail would also put one lawyer's private research
     in front of everyone else assigned to it.
+
+    The language directory is the one collaborator ``21-localization.md`` added,
+    and it is narrow on purpose: the assistant asks *which language does this
+    person read in* so that an answer defaults to it, and can ask nothing else
+    about the account — no theme, no dashboard preferences, no AI presentation
+    settings. It also cannot write, so a question asked in English can never
+    change what the asker's account says.
     """
-    return AssistantService(conversations, rag, suggester=suggester, metrics=metrics)
+    return AssistantService(
+        conversations, rag, suggester=suggester, metrics=metrics, languages=languages
+    )
 
 
 AssistantServiceDep = Annotated[AssistantService, Depends(get_assistant_service)]
@@ -584,6 +702,7 @@ def get_report_service(
     queue: Annotated[JobQueue[ReportJob], Depends(get_report_job_queue)],
     timeline: Annotated[TimelineService, Depends(get_timeline_service)],
     events: Annotated[EventPublisher, Depends(get_event_publisher)],
+    languages: Annotated[LanguageDirectory, Depends(get_language_directory)],
 ) -> ReportService:
     """Provide the report agent with its collaborators injected.
 
@@ -606,8 +725,20 @@ def get_report_service(
     case's history. Unlike the assistant — which deliberately publishes nothing,
     because a conversation is one lawyer's private research — a report is case
     work product, and the people on the matter are entitled to know one exists.
+
+    The language directory is injected for the same reason and in the same narrow
+    shape as the assistant's: a report is written in the requester's preferred
+    language unless the request names another one.
     """
-    return ReportService(reports, cases, rag, queue, timeline=timeline, events=events)
+    return ReportService(
+        reports,
+        cases,
+        rag,
+        queue,
+        timeline=timeline,
+        events=events,
+        languages=languages,
+    )
 
 
 ReportServiceDep = Annotated[ReportService, Depends(get_report_service)]
@@ -710,6 +841,7 @@ def get_email_delivery_service(
     ],
     queue: Annotated[JobQueue[EmailJob], Depends(get_email_job_queue)],
     metrics: Annotated[EmailMetricsRecorder, Depends(get_email_metrics_recorder)],
+    languages: Annotated[LanguageDirectory, Depends(get_language_directory)],
 ) -> EmailDeliveryService:
     """Provide the email delivery service with its collaborators injected.
 
@@ -731,7 +863,13 @@ def get_email_delivery_service(
     addressee is entitled to read.
     """
     return EmailDeliveryService(
-        deliveries, notifications, provider, templates, queue, metrics=metrics
+        deliveries,
+        notifications,
+        provider,
+        templates,
+        queue,
+        metrics=metrics,
+        languages=languages,
     )
 
 
@@ -740,24 +878,138 @@ EmailDeliveryServiceDep = Annotated[
 ]
 
 
+def get_whatsapp_delivery_repository(session: DbSession) -> WhatsAppDeliveryRepository:
+    """Provide a request-scoped WhatsApp delivery repository."""
+    return WhatsAppDeliveryRepository(session)
+
+
+def get_whatsapp_provider_dependency() -> WhatsAppProvider:
+    """Provide the configured WhatsApp provider.
+
+    The instance is process-wide (see
+    :func:`~services.whatsapp_provider.get_whatsapp_provider`) because it holds
+    configuration and a future provider would hold a connection pool, but it is
+    still reached through a dependency so an integration test can substitute
+    :class:`~services.whatsapp_provider.NullWhatsAppProvider` and exercise the
+    whole delivery pipeline **without a WhatsApp Business account, an approved
+    template, or a real phone number** — none of which a test suite can have, which
+    makes this substitution the only way the failure paths are testable at all.
+    """
+    return get_whatsapp_provider()
+
+
+def get_whatsapp_template_renderer_dependency() -> WhatsAppTemplateRenderer:
+    """Provide the configured WhatsApp template renderer.
+
+    Process-wide because it owns Jinja's compiled-template cache — the same
+    reasoning :func:`get_email_template_renderer_dependency` records — and reached
+    through a dependency so a test can point it at descriptors of its own.
+    """
+    return get_whatsapp_template_renderer()
+
+
+def get_whatsapp_metrics_recorder() -> WhatsAppMetricsRecorder:
+    """Provide the process-wide WhatsApp metrics recorder.
+
+    Process-wide rather than per request for the reason every other recorder here
+    is: **every** message is queued and sent on a background thread with no request
+    at all, so the recorder the metrics endpoint reads must be the same object the
+    workers write to.
+    """
+    return get_whatsapp_metrics()
+
+
+def get_whatsapp_job_queue() -> JobQueue[WhatsAppJob]:
+    """Provide the application's background WhatsApp queue.
+
+    The process-wide pool from :mod:`services.whatsapp_worker`, not a fresh one per
+    request: bounding concurrency is the whole point of it, and a pool per request
+    would bound nothing. **Its own pool rather than the email one**, because the
+    Cloud API rate-limits per business phone number while a relay greylists per
+    sender — sharing would make a throttled WhatsApp number slow down password-reset
+    mail, and a greylisting relay occupy the threads that deliver hearing updates. A
+    test overrides this with an inline queue so the send happens synchronously and
+    the assertion does not race a thread.
+    """
+    return whatsapp_queue
+
+
+def get_whatsapp_delivery_service(
+    deliveries: Annotated[
+        WhatsAppDeliveryRepository, Depends(get_whatsapp_delivery_repository)
+    ],
+    notifications: Annotated[NotificationRepository, Depends(get_notification_repository)],
+    provider: Annotated[WhatsAppProvider, Depends(get_whatsapp_provider_dependency)],
+    templates: Annotated[
+        WhatsAppTemplateRenderer, Depends(get_whatsapp_template_renderer_dependency)
+    ],
+    queue: Annotated[JobQueue[WhatsAppJob], Depends(get_whatsapp_job_queue)],
+    metrics: Annotated[WhatsAppMetricsRecorder, Depends(get_whatsapp_metrics_recorder)],
+    languages: Annotated[LanguageDirectory, Depends(get_language_directory)],
+) -> WhatsAppDeliveryService:
+    """Provide the WhatsApp delivery service with its collaborators injected.
+
+    **What this function does not inject is the load-bearing part**, exactly as it
+    is for the email channel above. There is no case service, no document service,
+    no report service, no user service, and — the one that matters most —
+    **no event publisher and no event dispatcher**.
+    ``18-whatsapp-delivery-channel.md`` requires that this channel be built *"as a
+    notification consumer, not as a business event consumer"*, and this is where
+    that would be undone: giving it a publisher or a dispatcher would hand it a way
+    to learn about a business event without a notification having been created and
+    authorized first. It takes neither, so the boundary holds structurally rather
+    than by discipline.
+
+    The notification repository is injected because a queued delivery has to read
+    its notification back to render it — and note *which* repository: every read in
+    :mod:`repositories.notification` is keyed by recipient and there is no unscoped
+    variant, so a message can only ever be composed from something its addressee is
+    entitled to read.
+    """
+    return WhatsAppDeliveryService(
+        deliveries,
+        notifications,
+        provider,
+        templates,
+        queue,
+        metrics=metrics,
+        languages=languages,
+    )
+
+
+WhatsAppDeliveryServiceDep = Annotated[
+    WhatsAppDeliveryService, Depends(get_whatsapp_delivery_service)
+]
+
+
 def get_notification_channels(
     email: Annotated[EmailDeliveryService, Depends(get_email_delivery_service)],
+    whatsapp: Annotated[WhatsAppDeliveryService, Depends(get_whatsapp_delivery_service)],
 ) -> list[NotificationDispatcher]:
     """Provide the delivery channels beyond the in-app feed.
 
-    A **list**, because the platform is specified to grow WhatsApp, SMS, and push:
-    each arrives as one more entry here and nothing else moves, which is the same
-    property :data:`~services.email_provider.EMAIL_PROVIDER_FACTORIES` gives a
-    second mail vendor one layer down.
+    A **list**, because the platform is specified to grow SMS and push — and
+    because it already grew WhatsApp, which cost exactly one parameter here and
+    one entry below. That is the same property
+    :data:`~services.whatsapp_provider.WHATSAPP_PROVIDER_FACTORIES` gives a second
+    messaging vendor one layer down.
 
     Typed as :class:`~services.notification.NotificationDispatcher` rather than as
-    the concrete service, and that is the load-bearing line: the Notification
-    Service receives one narrow method and therefore cannot ask a channel what it
-    is, whether it succeeded, or who it reached — which is what keeps *"business
-    modules and the Notification Service remain responsible for deciding when a
-    notification should be created"* from quietly acquiring a delivery opinion.
+    the concrete services, and that is the load-bearing line: the Notification
+    Service receives one narrow method per channel and therefore cannot ask any of
+    them what it is, whether it succeeded, or who it reached — which is what keeps
+    *"business modules and the Notification Service remain responsible for deciding
+    when a notification should be created"* from quietly acquiring a delivery
+    opinion.
+
+    **The order is the order they are offered the batch**, and it is deliberate
+    rather than incidental: email first, because it is the channel that has been
+    proven in production the longest and the one a deployment is most likely to
+    have configured. Neither can fail the other — `_dispatch` catches per channel —
+    so the order costs nothing but a few milliseconds, and it is worth being stated
+    rather than being an accident of a parameter list.
     """
-    return [email]
+    return [email, whatsapp]
 
 
 def get_notification_service(
@@ -809,6 +1061,217 @@ NotificationServiceDep = Annotated[NotificationService, Depends(get_notification
 NotificationSubscriberDep = Annotated[
     NotificationEventSubscriber, Depends(get_notification_subscriber_dependency)
 ]
+
+
+def get_dashboard_repository(session: DbSession) -> DashboardRepository:
+    """Provide a request-scoped dashboard repository."""
+    return DashboardRepository(session)
+
+
+def get_dashboard_access_policy() -> DashboardAccessPolicy:
+    """Provide the dashboard's per-widget authorization policy.
+
+    Stateless and pure, so a fresh instance per request costs nothing — and it is
+    a dependency rather than a constructor default so a test can substitute one
+    and assert that an unauthorized widget is *never computed* rather than merely
+    absent from a response.
+    """
+    return DashboardAccessPolicy()
+
+
+def get_dashboard_metrics_recorder() -> DashboardMetricsRecorder:
+    """Provide the process-wide dashboard metrics recorder.
+
+    Process-wide rather than per request for the reason every other recorder here
+    is: a counter rebuilt per request counts to one. It matters slightly more for
+    this one than for most, because the figure operators care about most —
+    distinct active dashboard users — is accumulated across requests by
+    construction and would otherwise always report one.
+    """
+    return get_dashboard_metrics()
+
+
+def get_dashboard_service(
+    dashboards: Annotated[DashboardRepository, Depends(get_dashboard_repository)],
+    notifications: Annotated[NotificationRepository, Depends(get_notification_repository)],
+    access: Annotated[DashboardAccessPolicy, Depends(get_dashboard_access_policy)],
+    metrics: Annotated[DashboardMetricsRecorder, Depends(get_dashboard_metrics_recorder)],
+) -> DashboardService:
+    """Provide the dashboard with its collaborators injected.
+
+    **What this function does not inject is the load-bearing part**, and it is a
+    longer list than for any other service here. There is no case service, no
+    document service, no OCR service, no indexing service, no report service, no
+    assistant, and no notification service — the dashboard reads *across* every
+    module, and injecting any of their services would give it a way to perform one
+    of their operations. It takes **two repositories, a policy, and a recorder**,
+    so there is no path from it into a business module at all: it can count and it
+    cannot change anything.
+
+    There is also **no event publisher**, which is the omission worth naming.
+    Every other feature that reads and writes takes one; this one reads only, so
+    it has nothing to announce — and holding a publisher would let a page load
+    produce an event, which is how a dashboard becomes a source of traffic instead
+    of a view of it. Its real-time behaviour runs entirely the other way: it
+    *consumes* events, in the browser, through the widget catalog's
+    ``refresh_events``.
+
+    The **notification repository** is the one place the dashboard reads through
+    another module's data access rather than its own, and it is deliberate: every
+    read there is keyed by recipient with no unscoped variant, so a dashboard
+    cannot become the first way to see somebody else's feed.
+    """
+    return DashboardService(dashboards, notifications, access=access, metrics=metrics)
+
+
+DashboardServiceDep = Annotated[DashboardService, Depends(get_dashboard_service)]
+
+
+def get_settings_repository(session: DbSession) -> SettingsRepository:
+    """Provide a request-scoped settings repository."""
+    return SettingsRepository(session)
+
+
+def get_settings_metrics_recorder() -> SettingsMetricsRecorder:
+    """Provide the process-wide settings metrics recorder.
+
+    Process-wide for the reason every other recorder here is: a counter rebuilt
+    per request counts to one.
+    """
+    return get_settings_metrics()
+
+
+def get_settings_service(
+    settings_repository: Annotated[SettingsRepository, Depends(get_settings_repository)],
+    users: Annotated[UserRepository, Depends(get_user_repository)],
+    auth: AuthServiceDep,
+    metrics: Annotated[SettingsMetricsRecorder, Depends(get_settings_metrics_recorder)],
+) -> SettingsService:
+    """Provide the settings service with its collaborators injected.
+
+    **What is injected says what the module is allowed to do**, and this list is
+    short on purpose:
+
+    * a **settings repository**, for the four sections no other feature owned;
+    * a **user repository** — not :class:`~services.user.UserService`. That
+      service is an administrator editing somebody else's account: it takes a user
+      id, checks ``users:update``, can change a role, a status, and an email, and
+      publishes an event about a third party. None of that is a person editing
+      their own name, so what is reused is the layer below, where reuse is safe;
+    * an **auth service**, because the password workflow and session revocation
+      are Authentication's and are delegated whole rather than re-implemented;
+    * a **metrics recorder**.
+
+    **No notification service, and that absence is the spec's ownership rule.**
+    Notification and communication preferences are read and written through
+    ``/notifications/preferences``; a settings service holding a notification
+    service would be a second way to write one stored thing, and the first step
+    toward two answers to one question.
+
+    **No event publisher either.** Changing your own theme is not a business event
+    anybody else is entitled to hear about, and a publisher here would let a
+    preference save reach the notification pipeline — which is precisely the
+    feedback the notification module's ``EVENT_RULES`` has no entry for.
+    """
+    return SettingsService(settings_repository, users, auth, metrics=metrics)
+
+
+SettingsServiceDep = Annotated[SettingsService, Depends(get_settings_service)]
+
+
+# --------------------------------------------------------------------------- #
+# Monitoring & observability
+#
+# **Four process-wide recorders and one per-request service.** The recorders are
+# module-level singletons for the reason every other recorder here is — a counter
+# rebuilt per request counts to one — and they are wired *through* dependencies
+# rather than imported by the router, which is what lets a Redis-backed registry,
+# an OpenTelemetry tracer, or a Sentry-backed error tracker replace one of them at
+# this single line with no endpoint changing.
+#
+# The two switches are honoured **here** rather than at every recording site: a
+# deployment with `MONITORING_METRICS_ENABLED=false` gets the null registry, and
+# recording code stays a plain call with no `if enabled` guard in it. That is the
+# same choice `NullSearchMetrics` made when the first of these shipped.
+# --------------------------------------------------------------------------- #
+
+
+def get_metrics_registry_dependency() -> MetricsRegistry:
+    """Provide the process-wide metric registry, or a null one when switched off."""
+    if settings.MONITORING_ENABLED and settings.MONITORING_METRICS_ENABLED:
+        return get_metrics_registry()
+    return NullMetricsRegistry()
+
+
+MetricsRegistryDep = Annotated[MetricsRegistry, Depends(get_metrics_registry_dependency)]
+
+
+def get_tracer_dependency() -> Tracer:
+    """Provide the process-wide tracer, or a null one when tracing is switched off."""
+    if settings.MONITORING_ENABLED and settings.MONITORING_TRACING_ENABLED:
+        return get_tracer()
+    return NullTracer()
+
+
+TracerDep = Annotated[Tracer, Depends(get_tracer_dependency)]
+
+
+def get_error_tracker_dependency() -> ErrorTracker:
+    """Provide the process-wide error tracker, or a null one when switched off."""
+    if settings.MONITORING_ENABLED:
+        return get_error_tracker()
+    return NullErrorTracker()
+
+
+ErrorTrackerDep = Annotated[ErrorTracker, Depends(get_error_tracker_dependency)]
+
+
+def get_security_monitor_dependency() -> SecurityMonitor:
+    """Provide the process-wide security monitor, or a null one when switched off."""
+    if settings.MONITORING_ENABLED:
+        return get_security_monitor()
+    return NullSecurityMonitor()
+
+
+SecurityMonitorDep = Annotated[SecurityMonitor, Depends(get_security_monitor_dependency)]
+
+
+def get_monitoring_service(
+    dashboards: Annotated[DashboardRepository, Depends(get_dashboard_repository)],
+    emails: Annotated[EmailDeliveryRepository, Depends(get_email_delivery_repository)],
+    whatsapp: Annotated[WhatsAppDeliveryRepository, Depends(get_whatsapp_delivery_repository)],
+    metrics: MetricsRegistryDep,
+    tracer: TracerDep,
+    errors: ErrorTrackerDep,
+    security: SecurityMonitorDep,
+) -> MonitoringService:
+    """Provide the monitoring view with its collaborators injected.
+
+    **Three repositories and four recorders, and no service at all** — which is
+    the same absence :func:`get_dashboard_service` documents, one step further.
+    The dashboard reads across every module through repositories; this reads
+    across every module through repositories *and* through the recorders those
+    modules already keep, and it holds no case service, no document service, no
+    notification service, and no access policy, because it asks no question that
+    is about anybody's rows.
+
+    The three repositories are the only place monitoring touches the database, and
+    each is for a **count of persisted state**: the queue depths the dashboard
+    already computes, and the two delivery channels' own lifecycle counts. Nothing
+    here reads a case, a document, or a person.
+    """
+    return MonitoringService(
+        dashboard=dashboards,
+        emails=emails,
+        whatsapp=whatsapp,
+        metrics=metrics,
+        tracer=tracer,
+        errors=errors,
+        security=security,
+    )
+
+
+MonitoringServiceDep = Annotated[MonitoringService, Depends(get_monitoring_service)]
 
 
 def get_ocr_service(
@@ -911,6 +1374,23 @@ def get_client_ip(request: Request) -> str | None:
 ClientIp = Annotated[str | None, Depends(get_client_ip)]
 
 
+def get_client_user_agent(request: Request) -> str | None:
+    """The client's ``User-Agent``, for the active-sessions list.
+
+    Added by ``20-settings.md``, which asks a person to be able to recognise which
+    device a session belongs to. It is **display only** and is never parsed,
+    matched, or used in any decision — a header a client chooses cannot be
+    evidence of anything, and the moment one is treated as evidence it becomes
+    worth forging. It is truncated where it is stored (see
+    :mod:`services.session_registry`) rather than here, so the bound lives beside
+    the thing it bounds.
+    """
+    return request.headers.get("User-Agent")
+
+
+ClientUserAgent = Annotated[str | None, Depends(get_client_user_agent)]
+
+
 def get_access_token(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer_scheme)],
 ) -> str:
@@ -933,9 +1413,29 @@ def get_current_user(request: Request, token: AccessToken, auth: AuthServiceDep)
     Rejects missing, malformed, expired, and revoked tokens, and disabled
     accounts. The decoded payload is stashed on ``request.state`` so endpoints
     such as logout can revoke exactly this token without decoding it again.
+
+    **It is also where the caller's identity enters the observability context**,
+    and this is the only reason monitoring appears in this function at all.
+    ``22-monitoring.md`` requires every structured log entry to carry a *user
+    identifier* and an *authenticated role*, and authentication is the earliest
+    point at which either is known — :mod:`core.middleware` runs before any
+    dependency, so it cannot bind what has not been resolved yet. Two lines here
+    put both into the request-scoped log context, after which every module's own
+    log lines carry them without a single call site changing.
+
+    **The identifier, never the person.** A user id and a role go in; an email
+    address, a name, and a token do not. The id is an opaque UUID that leads back
+    to an account through a query somebody has to be authorized to run, which is
+    exactly the property that makes it safe to log.
     """
     user, payload = auth.resolve_access_token(token)
     request.state.access_token_payload = payload
+    # Read by `core.middleware._log_completion` for the request's own line.
+    request.state.user = user
+    # Suppressed rather than handled: observability must never fail a request,
+    # and there is nothing to do about a context variable that would not bind.
+    with contextlib.suppress(Exception):
+        structlog.contextvars.bind_contextvars(actor_id=str(user.id), role=user.role.value)
     return user
 
 

@@ -42,7 +42,10 @@ class PermissionGroup(StrEnum):
     NOTIFICATIONS = "notifications"
     AI = "ai"
     REALTIME = "realtime"
+    DASHBOARD = "dashboard"
     SETTINGS = "settings"
+    LOCALIZATION = "localization"
+    MONITORING = "monitoring"
 
 
 class Permission(StrEnum):
@@ -232,9 +235,104 @@ class Permission(StrEnum):
     #: and ``reports:monitor``.
     REALTIME_MONITOR = "realtime:monitor"
 
+    # --- Dashboard ----------------------------------------------------------- #
+    #
+    # **One permission, and the absence of a second is the design.** There is no
+    # ``dashboard:view``: the dashboard is the landing page for every
+    # authenticated role, and a permission gating it would be a permission every
+    # role holds — which is not a permission, it is a sentence in a docstring.
+    # What a dashboard *contains* is decided per widget, against the capability
+    # that owns the underlying rows (``cases:view``, ``documents:view``,
+    # ``ocr:view``, ``reports:view``, ``ai:chat``, ``users:view``, …), so a role
+    # is never offered a widget it could not have read the long way round. See
+    # :data:`~core.dashboard.WIDGETS`.
+    #
+    #: Read platform-wide dashboard metrics — load time, widget load time, refresh
+    #: frequency, failed widget requests, active dashboard users. Not scoped to a
+    #: case or to a user, so it is deliberately an administrative capability
+    #: rather than something every person with a dashboard holds, exactly like
+    #: ``ocr:monitor``, ``indexing:monitor``, ``search:monitor``, ``ai:monitor``,
+    #: ``reports:monitor``, ``realtime:monitor``, and ``notifications:monitor``.
+    DASHBOARD_MONITOR = "dashboard:monitor"
+
     # --- Settings ----------------------------------------------------------- #
+    #
+    # **Four, and two of them grant nothing about anybody else.** ``settings:view``
+    # and ``settings:update`` are *your own* preferences, so both sit in
+    # :data:`~core.roles.BASE_PERMISSIONS`: a role that could not change its own
+    # theme, language, or notification channels would be a role the platform is
+    # unusable in, which is a defect rather than a policy. There is deliberately
+    # no ``settings:view-all`` and no ``settings:update-any`` — every query in
+    # :mod:`repositories.settings` is keyed by the caller, the same shape a
+    # conversation, a report, and a notification have.
+    #
+    #: Read your own settings and the platform's public posture (which sections
+    #: exist, and whether maintenance mode is on).
     SETTINGS_VIEW = "settings:view"
+    #: Change your own settings — profile, appearance, language, AI presentation,
+    #: dashboard preferences. Never anybody else's: there is no endpoint that
+    #: takes a user identifier, so this cannot reach another account.
     SETTINGS_UPDATE = "settings:update"
+    #: Read and change **platform** settings: maintenance mode, and the defaults
+    #: every account that has expressed no opinion follows. Held by administrators
+    #: only, which is ``20-settings.md``'s *"administrator settings require
+    #: administrator privileges"* — and it is a separate permission from
+    #: ``settings:update`` rather than a wider version of it, because the two act
+    #: on different tables and one of them reaches every user on the platform.
+    SETTINGS_MANAGE = "settings:manage"
+    #: Read platform-wide settings metrics — updates, failed updates, profile
+    #: changes, password changes. Not scoped to a user, so it is deliberately an
+    #: administrative capability rather than something everybody with settings
+    #: holds, exactly like ``ocr:monitor``, ``search:monitor``, ``ai:monitor``,
+    #: ``reports:monitor``, ``realtime:monitor``, ``notifications:monitor``, and
+    #: ``dashboard:monitor``.
+    SETTINGS_MONITOR = "settings:monitor"
+
+    # --- Localization -------------------------------------------------------- #
+    #
+    # **One, and it is a monitoring permission.** ``21-localization.md`` adds no
+    # capability anybody needs a grant for: reading the interface in Arabic is not
+    # a thing to be permitted, choosing a language is ``settings:update`` (the
+    # preference is a setting, and this feature deliberately did not give it a
+    # second home), and the catalogue of supported languages is served to every
+    # authenticated caller because a language selector that could not list its
+    # options would be a selector nobody could use. The spec is explicit that
+    # *"language switching cannot affect application permissions"*, and the
+    # cleanest evidence of that is a feature that grants none.
+    #
+    #: Read platform-wide localization metrics — active languages, translation
+    #: loading failures, missing translations, language distribution. Not scoped to
+    #: a user, so it is administrative like every other ``*:monitor``; and more
+    #: pointedly than most, because the distribution beside it is a statement about
+    #: the whole user base.
+    LOCALIZATION_MONITOR = "localization:monitor"
+
+    # --- Monitoring & observability ------------------------------------------ #
+    #
+    # **Two, and neither of them is a `*:monitor`** — which is the joke this
+    # feature is entitled to make and also the substance of it. Eleven features
+    # each added a ``<feature>:monitor`` permission gating *their own* operational
+    # view; this one is the operational view, so its permissions are named for
+    # what they grant rather than for the feature they watch.
+    #
+    # Both are administrator-only, and there is deliberately no base or lawyer
+    # grant: ``22-monitoring.md`` is explicit that *"regular users must never
+    # access monitoring endpoints or operational metrics"*, and every figure here
+    # is platform-wide by construction — there is nothing to scope to a case, so
+    # there is no narrower version of this to give somebody.
+    #
+    #: Read the platform's operational state: health, metrics, performance,
+    #: traces, tracked errors, security events, background jobs, and alerts. A
+    #: **read**, and the only capability the monitoring module grants — nothing
+    #: here changes anything, which is why there is no ``monitoring:manage``.
+    MONITORING_VIEW = "monitoring:view"
+    #: Scrape the metrics exposition endpoint. Separate from ``monitoring:view``
+    #: for a practical reason rather than a theoretical one: the account that
+    #: holds it is a *scraper*, not a person, and a deployment should be able to
+    #: give Prometheus a credential that can read counters and cannot read the
+    #: security feed, the error list, or the trace buffer — each of which says
+    #: considerably more about the platform than a counter does.
+    MONITORING_EXPORT = "monitoring:export"
 
     @property
     def group(self) -> PermissionGroup:

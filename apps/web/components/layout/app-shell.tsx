@@ -1,4 +1,7 @@
+"use client";
+
 import * as React from "react";
+import { useTranslations } from "next-intl";
 
 import { AppFooter } from "@/components/layout/app-footer";
 import { AppHeader } from "@/components/layout/app-header";
@@ -15,13 +18,15 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
  * client components composed here.
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const tA11y = useTranslations("common.a11y");
+
   return (
     <div className="flex min-h-svh w-full">
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
+        className="sr-only focus:not-sr-only focus:absolute focus:start-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
       >
-        Skip to content
+        {tA11y("skipToContent")}
       </a>
       <AppSidebar />
       <div className="flex min-w-0 flex-1 flex-col">

@@ -26,13 +26,8 @@ import type { AssistantCitation } from "@/types/assistant";
 export const REPORT_STATUSES = ["pending", "processing", "completed", "failed"] as const;
 export type ReportStatus = (typeof REPORT_STATUSES)[number];
 
-/** Human-readable status labels (future: i18n keys). */
-export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
-  pending: "Queued",
-  processing: "Generating",
-  completed: "Ready",
-  failed: "Failed",
-};
+/** Where the words live: `reports.statuses` in the message catalogues. */
+export const REPORT_STATUS_NAMESPACE = "reports.statuses";
 
 /** The reports the platform can produce. */
 export const REPORT_TYPES = [
@@ -45,34 +40,34 @@ export const REPORT_TYPES = [
 export type ReportType = (typeof REPORT_TYPES)[number];
 
 /**
- * Fallback labels for a report type.
+ * Where a report type's name lives: `reports.types` in the message catalogues.
  *
- * Used only where the fetched catalogue is not to hand — a history row rendered
- * before `/reports/templates` has resolved. Anywhere the catalogue *is*
- * available, its titles win, because they are the server's and are written in
- * the report's own language.
+ * These are a **fallback**, and the distinction survives the move: anywhere the
+ * fetched `/reports/templates` catalogue is to hand, its titles win, because they
+ * are the server's and are written in the report's own language. This namespace
+ * is for a history row rendered before that response has resolved.
+ *
+ * A type this build has never heard of renders through the provider's
+ * `getMessageFallback`, which humanizes the key — the same thing the old
+ * `reportTypeLabel` did with a regex, in the one place the whole platform already
+ * falls back.
  */
-export const REPORT_TYPE_LABELS: Record<ReportType, string> = {
-  case_summary: "Case Summary",
-  hearing_preparation: "Hearing Preparation",
-  evidence_summary: "Evidence Summary",
-  chronological_timeline: "Chronological Timeline",
-  executive_summary: "Executive Summary",
-};
+export const REPORT_TYPE_NAMESPACE = "reports.types";
 
-/** A readable name for a report type, falling back to a readable identifier. */
-export function reportTypeLabel(value: string): string {
-  const known = REPORT_TYPE_LABELS[value as ReportType];
-  if (known) return known;
-
-  const words = value.replace(/_/g, " ").trim();
-  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "Report";
-}
 
 /** Formats a finished report can be downloaded in. */
 export const REPORT_FORMATS = ["pdf", "markdown"] as const;
 export type ReportFormat = (typeof REPORT_FORMATS)[number];
 
+/**
+ * The two export formats, by name.
+ *
+ * **Deliberately not in a message catalogue.** `PDF` and `Markdown` are the names
+ * of file formats rather than words in a language — they are written the same way
+ * in French and Arabic, and a translator handed them would have nothing to do but
+ * introduce a difference. The same reasoning `hooks/use-number-format.ts` gives
+ * for leaving `MB` alone.
+ */
 export const REPORT_FORMAT_LABELS: Record<ReportFormat, string> = {
   pdf: "PDF",
   markdown: "Markdown",
@@ -99,37 +94,21 @@ export const REPORT_FAILURE_CODES = [
 ] as const;
 export type KnownReportFailureCode = (typeof REPORT_FAILURE_CODES)[number];
 
-const REPORT_FAILURE_LABELS: Record<KnownReportFailureCode, string> = {
-  retrieval_unavailable: "Documents could not be retrieved",
-  llm_unavailable: "AI service unavailable",
-  timeout: "Took too long",
-  llm_failure: "AI service failed",
-  malformed_response: "Unusable response",
-  insufficient_context: "Nothing to report on",
-  export_failure: "Export failed",
-  unknown: "Did not complete",
-};
+/** Where the words live: `reports.failures` in the message catalogues. */
+export const REPORT_FAILURE_NAMESPACE = "reports.failures";
 
-/** A short label for a failure cause, falling back to a readable identifier. */
-export function reportFailureLabel(code: string | null): string {
-  if (!code) return "Failed";
-
-  const known = REPORT_FAILURE_LABELS[code as KnownReportFailureCode];
-  if (known) return known;
-
-  const words = code.replace(/_/g, " ").trim();
-  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "Failed";
-}
 
 /** Languages a report can be written in, matching the API's supported set. */
 export const REPORT_LANGUAGES = ["fr", "ar", "en"] as const;
 export type ReportLanguage = (typeof REPORT_LANGUAGES)[number];
 
-export const REPORT_LANGUAGE_LABELS: Record<ReportLanguage, string> = {
-  fr: "French",
-  ar: "Arabic",
-  en: "English",
-};
+/**
+ * Where a language's name lives: `common.languages` in the message catalogues.
+ *
+ * The platform's shared vocabulary rather than the report module's own, so
+ * "Arabic" is one word on a generate dialog, an OCR panel, and a search result.
+ */
+export const REPORT_LANGUAGE_NAMESPACE = "common.languages";
 
 /** Whether a language reads right-to-left, which decides `dir` on its prose. */
 export function isRtlLanguage(language: string | null): boolean {

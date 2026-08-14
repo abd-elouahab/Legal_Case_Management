@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from core.localization import default_language
 from core.email import (
     EMAIL_CHROME,
     EMAIL_RULES,
@@ -358,9 +359,13 @@ class TestLanguage:
     def test_an_unknown_language_reads_left_to_right(self) -> None:
         assert text_direction("de") == "ltr"
 
-    def test_french_is_the_fallback(self) -> None:
-        assert resolve_email_language(None) == "fr"
-        assert resolve_email_language("de") == "fr"
+    def test_the_application_default_is_the_fallback(self) -> None:
+        """`21-localization.md` names the *application default* as what an
+        unresolvable language falls back to, and the deployment configures it —
+        so this asserts against `DEFAULT_LANGUAGE` rather than against a literal
+        that would have to be changed in twelve places the day it moves."""
+        assert resolve_email_language(None) == default_language()
+        assert resolve_email_language("de") == default_language()
         assert resolve_email_language("AR") == "ar"
 
     def test_every_language_has_chrome(self) -> None:

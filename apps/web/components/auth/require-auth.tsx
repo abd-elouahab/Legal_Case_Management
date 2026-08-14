@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 
 import { LoadingState } from "@/components/shared/loading-state";
@@ -22,6 +23,7 @@ import { ROUTES } from "@/lib/routes";
 export function RequireAuth({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { status } = useSession();
+  const t = useTranslations("auth.states");
 
   React.useEffect(() => {
     if (status === "unauthenticated") {
@@ -36,7 +38,7 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-svh items-center justify-center">
       <LoadingState
-        label={status === "loading" ? "Restoring your session…" : "Redirecting to sign in…"}
+        label={status === "loading" ? t("restoringSession") : t("redirecting")}
       />
     </div>
   );

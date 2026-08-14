@@ -1,3 +1,7 @@
+"use client";
+
+import { useTranslations } from "next-intl";
+
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
@@ -8,11 +12,13 @@ import { Skeleton } from "@/components/ui/skeleton";
  * shape is worse than a spinner, because it promises a layout it then changes.
  */
 export function TimelineSkeleton({ rows = 4 }: { rows?: number }) {
+  const t = useTranslations("timeline");
+
   return (
     <ul
       className="flex flex-col"
       aria-busy="true"
-      aria-label="Loading activity"
+      aria-label={t("loading")}
       data-testid="timeline-skeleton"
     >
       {Array.from({ length: rows }, (_, index) => (

@@ -1,0 +1,2027 @@
+{
+  "assistant": {
+    "caseSection": {
+      "description": "Ask about this case's documents. Every answer is built only from files filed under this case, and cites the document and page it came from.",
+      "title": "AI assistant"
+    },
+    "chat": {
+      "dismissAndRetry": "Dismiss and try again",
+      "documentsUnaffected": "Your documents and their text are unaffected.",
+      "earlierHidden": "Earlier messages in this conversation are not shown.",
+      "firstQuestionDescription": "Answers are built only from the documents on cases you have access to, and every statement carries the file and page it came from. If the documents do not support an answer, the assistant says so rather than guessing.",
+      "firstQuestionTitle": "Ask your first question",
+      "noConversationDescription": "Start a new conversation to ask questions about the documents on your cases. Every answer cites the file and page it came from.",
+      "noConversationTitle": "No conversation open",
+      "placeholder": "Ask about your documents — for example, when is the rent payable?",
+      "placeholderCase": "Ask about this case's documents…",
+      "transcript": "Conversation"
+    },
+    "citations": {
+      "hideExcerpt": "Hide excerpt",
+      "label": "Sources",
+      "match": "{percent}% match",
+      "notCited": "Not cited",
+      "notCitedTitle": "Retrieved, but not cited in the answer",
+      "openCase": "Open case",
+      "pageAndVersion": "Page {page} · Version {version}",
+      "showExcerpt": "Show excerpt",
+      "similarity": "Similarity {score}",
+      "summary": "{sources, plural, =1 {1 source} other {# sources}} from {documents, plural, =1 {1 document} other {# documents}}",
+      "truncated": "This passage was shortened to fit the answer's context budget."
+    },
+    "composer": {
+      "enterQuestion": "Enter a question.",
+      "hint": "Answers come from your case documents only, with a citation for every statement. Enter sends · Shift+Enter for a new line.",
+      "label": "Ask the assistant a question",
+      "placeholder": "Ask about your documents — for example, when is the rent payable?",
+      "send": "Send question"
+    },
+    "conversations": {
+      "actionsFor": "Actions for {title}",
+      "active": "Active",
+      "archive": "Archive",
+      "archived": "Archived",
+      "emptyArchivedDescription": "Conversations you archive are kept here and stay readable.",
+      "emptyArchivedTitle": "Nothing archived",
+      "emptyDescription": "Start one to ask questions about the documents on your cases.",
+      "emptySearchDescription": "No conversation name matches that.",
+      "emptySearchTitle": "No matching conversations",
+      "emptyTitle": "No conversations yet",
+      "label": "Conversations",
+      "loadFailed": "Your conversations could not be loaded.",
+      "new": "New conversation",
+      "noMessages": "No messages yet",
+      "rename": "Rename",
+      "restore": "Restore",
+      "searchLabel": "Search conversations by name",
+      "searchPlaceholder": "Search conversations"
+    },
+    "deleteConversation": {
+      "deleting": "Deleting…",
+      "description": "The conversation and its answers will no longer appear anywhere in the platform, and you will not be able to reopen it. If you only want it out of your list, archive it instead — an archived conversation stays readable.",
+      "title": "Delete “{title}”?",
+      "titleGeneric": "Delete this conversation?"
+    },
+    "errors": {
+      "caseNotFound": "That case no longer exists.",
+      "contextOverflow": "That question needs more context than the assistant can hold at once. Ask a narrower question.",
+      "conversationArchived": "This conversation is archived. Restore it, or start a new one, to continue.",
+      "conversationFull": "This conversation has reached its message limit. Start a new one to continue.",
+      "conversationNotFound": "That conversation no longer exists.",
+      "disabled": "The AI assistant is currently disabled on this platform.",
+      "filterTooBroad": "That filter matches too much to search. Narrow it to a case or a document.",
+      "invalidFeedbackTarget": "Only the assistant's answers can be rated.",
+      "invalidQuestion": "Enter a question of at least two characters.",
+      "malformedResponse": "The model returned an answer the platform could not read. Try asking again.",
+      "messageNotFound": "That message no longer exists.",
+      "modelFailure": "The language model failed to answer. Try again in a moment.",
+      "modelUnavailable": "The language model is unavailable right now. Try again in a moment.",
+      "noCaseAccess": "You do not have access to the case you asked about.",
+      "retrievalUnavailable": "Document retrieval is unavailable right now, so the assistant cannot ground an answer.",
+      "timeout": "The assistant took too long to answer. Try a narrower question."
+    },
+    "failures": {
+      "context_overflow": "Context overflow",
+      "llm_failure": "Model failure",
+      "llm_unavailable": "Model unavailable",
+      "malformed_response": "Malformed response",
+      "retrieval_unavailable": "Retrieval unavailable",
+      "timeout": "Timeout"
+    },
+    "feedback": {
+      "copyAnswer": "Copy this answer",
+      "helpful": "Helpful",
+      "notHelpful": "Not helpful",
+      "rateHelpful": "Rate this answer helpful",
+      "rateNotHelpful": "Rate this answer not helpful",
+      "ratedHelpful": "Rated helpful.",
+      "ratedNotHelpful": "Rated not helpful.",
+      "removeHelpful": "Remove helpful rating",
+      "removeNotHelpful": "Remove not helpful rating"
+    },
+    "message": {
+      "answerInProgress": "Assistant answer in progress",
+      "assistantAnswer": "Assistant answer",
+      "durationSeconds": "{seconds}s",
+      "followUp": "Follow-up",
+      "followUpTitle": "This question was read against what was asked before it",
+      "insufficientEvidence": "No supporting document was found for this question, so the assistant did not answer from anything. Documents become answerable once their text has been extracted and indexed.",
+      "noPassages": "No matching passages found…",
+      "passageCount": "{count, plural, =1 {1 passage} other {# passages}}",
+      "searching": "Searching your documents…",
+      "truncated": "This answer reached the length limit and stops early. Ask a narrower question to see the rest.",
+      "writing": "{count, plural, =1 {Read 1 passage} other {Read # passages}} — writing the answer…",
+      "yourMessage": "Your message"
+    },
+    "metrics": {
+      "activeConversations": "Active conversations",
+      "averageLength": "Average length",
+      "averageResponse": "Average response",
+      "disabled": "The assistant is disabled on this deployment. Existing conversations stay readable; only new ones and new messages are refused.",
+      "failed": "Failed",
+      "failuresByCause": "Failures by cause",
+      "footnote": "Conversations and ratings cover the whole platform. Request counts and timings are from this API process since {at} and reset when it restarts.",
+      "grounded": "Grounded",
+      "helpfulOf": "{percent}% of {total}",
+      "messageCount": "{count, plural, =1 {1 message} other {# messages}}",
+      "messagesAnswered": "Messages answered",
+      "ratedHelpful": "Rated helpful",
+      "seconds": "{value}s",
+      "streamed": "Streamed",
+      "streamingOff": "Streaming is turned off.",
+      "suggestionsOff": "Follow-up suggestions are unavailable.",
+      "title": "AI assistant"
+    },
+    "rename": {
+      "description": "Only the name changes. The questions and answers in this conversation are untouched.",
+      "enterName": "Enter a name.",
+      "name": "Name",
+      "title": "Rename conversation"
+    },
+    "suggestions": {
+      "askNext": "Ask next",
+      "label": "Suggested follow-up questions"
+    },
+    "workspace": {
+      "conversations": "Conversations",
+      "readOnly": "You can read your conversations, but your role does not allow asking the AI assistant new questions."
+    }
+  },
+  "auth": {
+    "errors": {
+      "accountDisabled": "This account has been disabled. Contact an administrator.",
+      "invalidCredentials": "Incorrect email or password.",
+      "tooManyAttempts": "Too many sign-in attempts. Wait a few minutes and try again."
+    },
+    "login": {
+      "description": "Enter your credentials to access your cases.",
+      "email": "Email",
+      "emailPlaceholder": "you@example.com",
+      "hidePassword": "Hide password",
+      "password": "Password",
+      "passwordPlaceholder": "Enter your password",
+      "showPassword": "Show password",
+      "signingIn": "Signing in…",
+      "submit": "Sign in",
+      "title": "Sign in"
+    },
+    "states": {
+      "checkingAccess": "Checking your access…",
+      "redirecting": "Redirecting to sign in…",
+      "restoringSession": "Restoring your session…"
+    }
+  },
+  "cases": {
+    "actions": {
+      "archive": "Archive",
+      "label": "Actions",
+      "manageAssignments": "Manage assignments",
+      "menuFor": "Actions for {caseNumber}",
+      "restore": "Restore",
+      "viewDetails": "View details"
+    },
+    "archiveDialog": {
+      "archived": "Case {caseNumber} was archived.",
+      "archiving": "Archiving…",
+      "confirm": "Archive",
+      "description": "The case leaves the active workload but is kept — not deleted — so its documents, timeline, and history stay intact. It remains searchable, and you can restore it at any time.",
+      "title": "Archive {caseNumber}?",
+      "titleGeneric": "Archive this case?"
+    },
+    "assignDialog": {
+      "description": "Choose who works on {caseNumber}. Selecting “Unassigned” removes the current assignment.",
+      "descriptionGeneric": "Choose who works on this case.",
+      "noChanges": "No assignment changes to save.",
+      "submit": "Save assignments",
+      "title": "Manage assignments",
+      "updated": "Assignments for {caseNumber} were updated."
+    },
+    "createDialog": {
+      "created": "Case {caseNumber} was created.",
+      "creating": "Creating…",
+      "description": "Open a case and, optionally, assign the lawyer and court representative who will work on it.",
+      "submit": "Create case",
+      "title": "New case"
+    },
+    "details": {
+      "assignment": "Assignment",
+      "assignments": "Assignments",
+      "auditInformation": "Audit information",
+      "backToCases": "Back to cases",
+      "courtInformation": "Court information",
+      "createdAt": "Created at",
+      "createdBy": "Created by",
+      "generalInformation": "General information",
+      "loading": "Loading case…",
+      "notProvided": "Not provided",
+      "notRecorded": "Not recorded",
+      "notScheduled": "Not scheduled",
+      "notSet": "Not set",
+      "updatedAt": "Updated at",
+      "updatedBy": "Updated by"
+    },
+    "editDialog": {
+      "description": "Update {caseNumber} — its details, status, priority, court, or assignments.",
+      "descriptionGeneric": "Update this case.",
+      "noChanges": "No changes to save.",
+      "title": "Edit case",
+      "updated": "Case {caseNumber} was updated."
+    },
+    "empty": {
+      "description": "Open the first case to start tracking a matter through its lifecycle.",
+      "filteredDescription": "Try a different search term or date range, or clear the filters to see everything.",
+      "filteredTitle": "No cases match your filters",
+      "title": "No cases yet"
+    },
+    "errors": {
+      "detailTitle": "Could not load this case",
+      "invalidAssignment": "The selected user cannot be assigned to that position.",
+      "invalidDates": "Those dates are not in a valid order. Check the filing and hearing dates.",
+      "invalidTransition": "This case cannot move to that status from where it is now.",
+      "listTitle": "Could not load cases",
+      "notFound": "This case no longer exists. Refresh the list and try again.",
+      "numberTaken": "A case with this case number already exists."
+    },
+    "filters": {
+      "allPriorities": "All priorities",
+      "allStatuses": "All statuses",
+      "anyCourt": "Any court",
+      "anyLawyer": "Any lawyer",
+      "anyRepresentative": "Any representative",
+      "assignedLawyer": "Assigned lawyer",
+      "assignedRepresentative": "Assigned representative",
+      "court": "Court",
+      "filedFrom": "Filed from",
+      "filedUntil": "Filed until",
+      "hearingFrom": "Hearing from",
+      "hearingUntil": "Hearing until",
+      "priority": "Priority",
+      "searchPlaceholder": "Search by case number, title, description, or court",
+      "status": "Status"
+    },
+    "form": {
+      "assignedLawyer": "Assigned lawyer",
+      "assignedRepresentative": "Assigned court representative",
+      "caseNumber": "Case number",
+      "caseNumberHint": "Leave empty to generate the next number automatically.",
+      "caseNumberPlaceholder": "CASE-2026-0001",
+      "category": "Category",
+      "categoryHint": "Optional — e.g. Commercial, Labour, Family.",
+      "categoryPlaceholder": "Commercial",
+      "court": "Court",
+      "courtPlaceholder": "Tribunal de Commerce de Casablanca",
+      "description": "Description",
+      "descriptionPlaceholder": "Summary of the matter.",
+      "filingDate": "Filing date",
+      "nextHearing": "Next hearing",
+      "noEligibleAccounts": "No active accounts hold this role yet.",
+      "priority": "Priority",
+      "selectPriority": "Select a priority",
+      "selectStatus": "Select a status",
+      "status": "Status",
+      "statusHint": "Only the moves this case can legally make are offered.",
+      "title": "Title",
+      "titlePlaceholder": "Benali v. Société Atlas",
+      "unassigned": "Unassigned"
+    },
+    "pagination": {
+      "summary": "{count, plural, =0 {No cases} =1 {Showing {from}–{to} of 1 case} other {Showing {from}–{to} of # cases}}"
+    },
+    "priorities": {
+      "high": "High",
+      "low": "Low",
+      "medium": "Medium",
+      "urgent": "Urgent"
+    },
+    "restored": "Case {caseNumber} was restored.",
+    "statuses": {
+      "archived": "Archived",
+      "closed": "Closed",
+      "draft": "Draft",
+      "in_progress": "In Progress",
+      "open": "Open",
+      "waiting_for_hearing": "Waiting for Hearing"
+    },
+    "table": {
+      "columns": {
+        "assignedLawyer": "Assigned lawyer",
+        "assignedRepresentative": "Assigned representative",
+        "case_number": "Case number",
+        "court": "Court",
+        "filing_date": "Filing date",
+        "next_hearing_date": "Next hearing",
+        "priority": "Priority",
+        "status": "Status",
+        "title": "Title",
+        "updated_at": "Last updated"
+      },
+      "loading": "Loading cases",
+      "notScheduled": "Not scheduled"
+    },
+    "unassigned": "Unassigned",
+    "upcoming": {
+      "availability": "Available in an upcoming release.",
+      "heading": "Coming to this case",
+      "notes": {
+        "description": "Working notes shared between the administrator and the assigned team.",
+        "title": "Notes"
+      }
+    }
+  },
+  "common": {
+    "a11y": {
+      "breadcrumb": "Breadcrumb",
+      "collapseSidebar": "Collapse sidebar",
+      "dashboardHome": "Dashboard home",
+      "expandSidebar": "Expand sidebar",
+      "openAccountMenu": "Open account menu",
+      "openNavigation": "Open navigation menu",
+      "primaryNavigation": "Primary",
+      "sidebar": "Sidebar",
+      "skipToContent": "Skip to content"
+    },
+    "actions": {
+      "apply": "Apply",
+      "cancel": "Cancel",
+      "clear": "Clear",
+      "clearFilters": "Clear filters",
+      "close": "Close",
+      "confirm": "Confirm",
+      "copied": "Copied",
+      "copy": "Copy",
+      "create": "Create",
+      "delete": "Delete",
+      "download": "Download",
+      "edit": "Edit",
+      "next": "Next",
+      "openMenu": "Open menu",
+      "previous": "Previous",
+      "refresh": "Refresh",
+      "remove": "Remove",
+      "retry": "Try again",
+      "save": "Save",
+      "saveChanges": "Save changes",
+      "saving": "Saving…",
+      "search": "Search",
+      "send": "Send",
+      "view": "View"
+    },
+    "languages": {
+      "ar": "Arabic",
+      "en": "English",
+      "fr": "French",
+      "und": "Undetermined"
+    },
+    "pagination": {
+      "page": "Page {page}",
+      "pageOf": "Page {page} of {total}",
+      "showing": "Showing {from}–{to} of {total}"
+    },
+    "sort": {
+      "sortBy": "Sort by {column}",
+      "sortedAscending": "Sorted ascending. Activate to reverse.",
+      "sortedDescending": "Sorted descending. Activate to reverse."
+    },
+    "states": {
+      "emptyTitle": "Nothing here yet",
+      "errorDescription": "The information could not be loaded.",
+      "errorTitle": "Something went wrong",
+      "loading": "Loading…",
+      "no": "No",
+      "noResults": "No results",
+      "notAvailable": "—",
+      "optional": "Optional",
+      "platformDefault": "(platform default)",
+      "required": "Required",
+      "unknown": "Unknown",
+      "yes": "Yes"
+    },
+    "time": {
+      "dateAt": "{date} • {time}",
+      "never": "Never",
+      "todayAt": "Today • {time}",
+      "yesterdayAt": "Yesterday • {time}"
+    }
+  },
+  "dashboard": {
+    "buckets": {
+      "archived": "Archived",
+      "assignment": "Assignment",
+      "case": "Case",
+      "closed": "Closed",
+      "completed": "Completed",
+      "document": "Document",
+      "draft": "Draft",
+      "failed": "Failed",
+      "in_progress": "In progress",
+      "not_started": "Not started",
+      "open": "Open",
+      "pending": "Queued",
+      "priority": "Priority",
+      "processing": "Processing",
+      "skipped": "Skipped",
+      "status": "Status",
+      "waiting_for_hearing": "Waiting for hearing"
+    },
+    "card": {
+      "refreshWidget": "Refresh {widget}",
+      "seeAll": "See all"
+    },
+    "empty": {
+      "ai_reports": "You have not generated any reports yet.",
+      "case_status_overview": "No cases yet.",
+      "my_cases": "You are not assigned to any open cases.",
+      "notifications": "No notifications yet.",
+      "ocr_status": "No documents to extract text from yet.",
+      "recent_activity": "No activity in your cases yet.",
+      "recent_cases": "No cases have been updated yet.",
+      "recent_conversations": "You have not asked the assistant anything yet.",
+      "recent_documents": "No documents uploaded yet.",
+      "timeline_activity": "Nothing happened in this period.",
+      "upcoming_hearings": "No hearings scheduled in the next 30 days."
+    },
+    "errors": {
+      "disabled": "The dashboard is switched off on this platform right now.",
+      "noAccess": "You do not have access to this dashboard.",
+      "title": "Your dashboard could not be loaded",
+      "widget": {
+        "budgetExhausted": "This widget was skipped to keep the page responsive. Refresh it to load it.",
+        "budgetExhaustedShort": "Skipped to stay responsive",
+        "generic": "This widget is unavailable right now.",
+        "queryFailed": "This widget could not be loaded. Everything else on the page is unaffected.",
+        "queryFailedShort": "Query failed"
+      },
+      "widgetNotFound": "That widget is not available to you."
+    },
+    "filters": {
+      "from": "From",
+      "invalidRange": "The end date must not be before the start date.",
+      "period": "Time period",
+      "to": "To"
+    },
+    "groups": {
+      "ai": "AI",
+      "cases": "Cases",
+      "court": "Court",
+      "documents": "Documents",
+      "general": "Overview",
+      "system": "System",
+      "timeline": "Activity"
+    },
+    "health": {
+      "activeUsers": "Active users",
+      "averageLoad": "Average load",
+      "averageWidget": "Average widget",
+      "disabled": "The dashboard is disabled on this deployment. Every other module is unaffected — a dashboard owns no data.",
+      "failuresByCause": "Failures by cause",
+      "loads": "Dashboards loaded",
+      "refreshes": "Widget refreshes",
+      "since": "Counted in this API process since {at}. The dashboard stores nothing, so these reset when it restarts.",
+      "slowestWidgets": "Slowest widgets",
+      "successRate": "Success rate",
+      "title": "Dashboard health",
+      "widgetsFailed": "Widgets failed",
+      "widgetsLoaded": "Widgets loaded"
+    },
+    "messageCount": "{count, plural, =1 {1 message} other {# messages}}",
+    "metrics": {
+      "accounts_administrator": "Administrators",
+      "accounts_court_representative": "Court representatives",
+      "accounts_lawyer": "Lawyers",
+      "active_cases": "Active",
+      "active_conversations": "Active",
+      "active_users": "Signed in recently",
+      "archived_cases": "Archived",
+      "assistant_messages": "Messages",
+      "average_document_bytes": "Average size",
+      "closed_cases": "Closed",
+      "closed_in_window": "Closed in period",
+      "conversations": "Conversations",
+      "conversations_in_window": "Started in period",
+      "created_in_window": "Opened in period",
+      "disabled_accounts": "Disabled",
+      "documents": "Documents",
+      "enabled_accounts": "Enabled",
+      "hearings_next_30_days": "Next 30 days",
+      "hearings_next_7_days": "Next 7 days",
+      "hearings_overdue": "Past due",
+      "hearings_today": "Today",
+      "indexing_completed": "Indexed",
+      "indexing_failed": "Indexing failed",
+      "indexing_pending": "Indexing queued",
+      "indexing_processing": "Indexing",
+      "ocr_completed": "Text extracted",
+      "ocr_failed": "Extraction failed",
+      "ocr_pending": "Extraction queued",
+      "ocr_processing": "Extracting",
+      "queued_total": "Queued",
+      "reports_failed": "Failed",
+      "reports_generated": "Completed",
+      "reports_in_progress": "In progress",
+      "reports_in_window": "Generated in period",
+      "reports_pending": "Reports queued",
+      "reports_processing": "Writing reports",
+      "reports_total": "Reports",
+      "storage_bytes": "Storage used",
+      "suspended_accounts": "Suspended",
+      "total_accounts": "Accounts",
+      "total_cases": "Total cases",
+      "total_documents": "Documents",
+      "uploaded_in_window": "Uploaded in period",
+      "version_bytes": "Previous versions"
+    },
+    "partialFailure": "{count, plural, =1 {One widget could not be loaded. Everything else on this page is up to date.} other {# widgets could not be loaded. Everything else on this page is up to date.}}",
+    "quickActions": {
+      "create_case": "New case",
+      "generate_report": "Generate report",
+      "open_assistant": "Ask the assistant",
+      "upload_document": "Upload document",
+      "view_calendar": "Court calendar"
+    },
+    "ranges": {
+      "custom": "Custom range",
+      "last_30_days": "Last 30 days",
+      "last_7_days": "Last 7 days",
+      "today": "Today"
+    },
+    "sectionProgress": "{completed}/{total} sections",
+    "subtitle": "Your caseload, your documents, and what the platform is working on.",
+    "title": "Dashboard",
+    "widgets": {
+      "active_users": {
+        "description": "Accounts, and who has signed in lately.",
+        "title": "Users"
+      },
+      "ai_analytics": {
+        "description": "Your own conversations and reports.",
+        "title": "AI usage"
+      },
+      "ai_reports": {
+        "description": "Reports you generated.",
+        "title": "AI reports"
+      },
+      "case_analytics": {
+        "title": "Case analytics"
+      },
+      "case_status_overview": {
+        "description": "How your caseload is distributed.",
+        "title": "Case status"
+      },
+      "document_analytics": {
+        "title": "Document analytics"
+      },
+      "hearing_calendar": {
+        "title": "Hearing calendar"
+      },
+      "my_cases": {
+        "description": "Cases assigned to you, most urgent first.",
+        "title": "My cases"
+      },
+      "notifications": {
+        "description": "Your latest alerts.",
+        "title": "Notifications"
+      },
+      "ocr_status": {
+        "description": "Where your documents are in the pipeline.",
+        "title": "Text extraction"
+      },
+      "processing_queues": {
+        "description": "Work the platform has accepted and not yet finished.",
+        "title": "Processing queues"
+      },
+      "quick_actions": {
+        "description": "The things you do most often.",
+        "title": "Quick actions"
+      },
+      "recent_activity": {
+        "description": "What changed across your cases.",
+        "title": "Recent activity"
+      },
+      "recent_cases": {
+        "title": "Recently updated cases"
+      },
+      "recent_conversations": {
+        "title": "Assistant conversations"
+      },
+      "recent_documents": {
+        "title": "Recent documents"
+      },
+      "storage_usage": {
+        "description": "What the platform is holding.",
+        "title": "Storage"
+      },
+      "timeline_activity": {
+        "description": "Where the work went in this period.",
+        "title": "Activity breakdown"
+      },
+      "upcoming_hearings": {
+        "description": "The next dates in court.",
+        "title": "Upcoming hearings"
+      }
+    }
+  },
+  "documents": {
+    "actions": {
+      "label": "Actions",
+      "menuFor": "Actions for {filename}",
+      "preview": "Preview",
+      "replace": "Replace",
+      "viewDetails": "View details"
+    },
+    "categories": {
+      "contract": "Contract",
+      "correspondence": "Correspondence",
+      "court_decision": "Court Decision",
+      "evidence": "Evidence",
+      "identity_document": "Identity Document",
+      "invoice": "Invoice",
+      "other": "Other",
+      "pleading": "Pleading"
+    },
+    "deleteDialog": {
+      "deleted": "{filename} was deleted.",
+      "deleting": "Deleting…",
+      "description": "The document is withdrawn from the case and will no longer appear in lists, searches, or downloads. It is kept — not destroyed — along with every stored version, because a legal document is never permanently removed without authorization.",
+      "title": "Delete {filename}?",
+      "titleGeneric": "Delete this document?"
+    },
+    "detailsDialog": {
+      "description": "Metadata, the case this document belongs to, and every version ever uploaded — each one still downloadable.",
+      "downloadCurrent": "Download current version",
+      "fields": {
+        "addedToCase": "Added to case",
+        "case": "Case",
+        "category": "Category",
+        "currentVersion": "Current version",
+        "currentVersionUploaded": "Current version uploaded",
+        "description": "Description",
+        "fileName": "File name",
+        "size": "Size",
+        "type": "Type",
+        "uploadedBy": "Uploaded by"
+      },
+      "loadFailed": "Could not load this document",
+      "loading": "Loading document…",
+      "notAvailable": "Not available",
+      "notProvided": "Not provided",
+      "notRecorded": "Not recorded",
+      "saveDetails": "Save details",
+      "saved": "Document details were updated.",
+      "title": "Document details",
+      "versionShort": "v{version}"
+    },
+    "empty": {
+      "description": "Upload the first contract, filing, or piece of evidence to start building the case file.",
+      "filteredDescription": "Try a different search term, category, or date range, or clear the filters to see everything.",
+      "filteredTitle": "No documents match your filters",
+      "title": "No documents yet"
+    },
+    "errors": {
+      "caseNotFound": "That case no longer exists. Refresh the page and try again.",
+      "invalidFile": "That file was refused. Check its type and size, then try again.",
+      "listTitle": "Could not load documents",
+      "notFound": "This document no longer exists. Refresh the list and try again.",
+      "previewUnavailable": "This file type cannot be previewed. Download it instead.",
+      "storageUnavailable": "Document storage is temporarily unavailable. Please try again.",
+      "versionNotFound": "That version of the document is no longer available."
+    },
+    "filters": {
+      "allCategories": "All categories",
+      "allTypes": "All types",
+      "anyone": "Anyone",
+      "category": "Category",
+      "fileType": "File type",
+      "searchPlaceholder": "Search by file name, description, or category",
+      "uploadedBy": "Uploaded by",
+      "uploadedFrom": "Uploaded from",
+      "uploadedUntil": "Uploaded until"
+    },
+    "pagination": {
+      "summary": "{count, plural, =0 {No documents} =1 {Showing {from}–{to} of 1 document} other {Showing {from}–{to} of # documents}}"
+    },
+    "preview": {
+      "downloading": "Downloading…",
+      "failedDescription": "{reason} You can still download it.",
+      "failedTitle": "Cannot preview this document",
+      "frameTitle": "Preview of {filename}",
+      "imageAlt": "Document preview",
+      "loading": "Loading preview…",
+      "loadingDocument": "Loading the document…",
+      "title": "Preview",
+      "versionAndSize": "Version {version} · {size}"
+    },
+    "replaceDialog": {
+      "description": "Upload a new version of {filename}. Version {version} is kept and stays downloadable from the version history — nothing is overwritten.",
+      "descriptionGeneric": "Upload a new version. Previous versions are kept and stay downloadable.",
+      "newFile": "New file",
+      "progressLabel": "Replacement progress",
+      "replaced": "{filename} was saved as version {version}. Version {previous} is still available.",
+      "submit": "Upload new version",
+      "supportedTypes": "Supported types: {types} — up to {maxSize} MB. The replacement may be a different type from the file it replaces.",
+      "title": "Replace document"
+    },
+    "table": {
+      "columns": {
+        "case": "Case",
+        "category": "Category",
+        "created_at": "Upload date",
+        "file_size": "Size",
+        "original_filename": "File name",
+        "uploadedBy": "Uploaded by",
+        "uploaded_at": "Upload date",
+        "version": "Version"
+      },
+      "loading": "Loading documents",
+      "versionShort": "v{version}"
+    },
+    "upload": {
+      "chosenFile": "{name} — {kilobytes} KB",
+      "progressLabel": "Upload progress",
+      "uploading": "Uploading…",
+      "uploadingPercent": "Uploading… {percent}%"
+    },
+    "uploadDialog": {
+      "case": "Case",
+      "category": "Category",
+      "description": "Attach a file to a case. Supported types: {types} — up to {maxSize} MB.",
+      "descriptionField": "Description (optional)",
+      "descriptionPlaceholder": "What this document is, and why it matters to the case.",
+      "file": "File",
+      "loadingCases": "Loading cases…",
+      "selectCase": "Select a case",
+      "selectCategory": "Select a category",
+      "submit": "Upload",
+      "title": "Upload document",
+      "uploaded": "{filename} was uploaded."
+    },
+    "versions": {
+      "current": "Current",
+      "downloadVersion": "Download version {version}",
+      "downloading": "Downloading…",
+      "none": "No versions recorded.",
+      "title": "Version history",
+      "version": "Version {version}"
+    }
+  },
+  "errors": {
+    "forbidden": "You do not have permission to do this.",
+    "generic": "Something went wrong. Please try again.",
+    "network": "The server could not be reached. Check your connection and try again.",
+    "notFound": "That item no longer exists.",
+    "rateLimited": "Too many attempts. Please wait a moment and try again.",
+    "sessionExpired": "Your session has ended. Sign in again to continue.",
+    "unauthorized": "You need to sign in to do this.",
+    "unavailable": "That service is temporarily unavailable. Please try again shortly.",
+    "validation": "Some of the information provided is not valid. Check the form and try again."
+  },
+  "indexing": {
+    "build": "Index for search",
+    "errors": {
+      "alreadyRunning": "This document is already being indexed.",
+      "disabled": "Document indexing is currently disabled on this platform.",
+      "documentNotFound": "This document no longer exists. Refresh the page and try again.",
+      "notIndexed": "This document has not been indexed for search.",
+      "notReady": "This document is not ready to be indexed yet — its text has not been extracted.",
+      "versionNotFound": "That version of the document is no longer available."
+    },
+    "failureNote": "The document and its extracted text are unaffected.",
+    "failures": {
+      "chunking_failure": "Text could not be divided",
+      "embedding_failure": "Embedding service failed",
+      "invalid_ocr_output": "No extracted text",
+      "timeout": "Took too long",
+      "unknown": "Did not complete",
+      "vector_store_unavailable": "Search index unavailable"
+    },
+    "metadata": {
+      "attempts": "Attempts",
+      "characters": "Characters",
+      "duration": "Duration",
+      "finished": "Finished",
+      "language": "Language",
+      "model": "Model",
+      "pages": "Pages",
+      "passageSize": "Passage size",
+      "passageSizeValue": "{size} chars",
+      "passageSizeWithOverlap": "{size} chars, {overlap} overlap",
+      "passages": "Passages",
+      "seconds": "{value}s",
+      "started": "Started"
+    },
+    "metrics": {
+      "averageTime": "Average time",
+      "configuration": "{model} · {dimensions} dimensions · {chunker} · {chunkSize}/{chunkOverlap} chars · {collection}",
+      "disabled": "Document indexing is disabled on this deployment. Existing indexes stay readable; no new work is scheduled.",
+      "documentsIndexed": "Documents indexed",
+      "embeddingUnavailable": "The {model} embedding model cannot be loaded, so new indexing will fail. Documents and their extracted text are unaffected, and every run can be rebuilt once it is available.",
+      "failureRate": "Failure rate",
+      "failures": "Failures",
+      "failuresByCause": "Failures by cause",
+      "passagesIndexed": "Passages indexed",
+      "passagesPerDocument": "Passages per document",
+      "seconds": "{value}s",
+      "successRate": "Success rate",
+      "title": "Search indexing",
+      "vectorStoreUnavailable": "The search index is not reachable, so new indexing will fail. Documents and their extracted text are unaffected.",
+      "vectorsStored": "Vectors stored"
+    },
+    "notApplicable": "Search indexing applies to documents whose text has been extracted, which covers PDFs and images.",
+    "notIndexed": "This document has not been indexed for search yet. Indexing begins once its text has been extracted.",
+    "queued": "Search indexing was queued.",
+    "rebuild": "Rebuild index",
+    "statuses": {
+      "failed": "Failed",
+      "indexed": "Searchable",
+      "indexing": "Indexing",
+      "pending": "Queued"
+    },
+    "title": "Search index",
+    "waitingBuilding": "Building the search index. This page updates automatically.",
+    "waitingQueued": "Queued for indexing. This page updates automatically."
+  },
+  "monitoring": {
+    "alerts": {
+      "deliveryNote": "Conditions are evaluated here and delivered nowhere — an alert manager or a person reading this page is what turns one into a phone call.",
+      "measured": "Measured {value} against a threshold of {threshold}.",
+      "none": "Nothing is firing.",
+      "title": "Alerts"
+    },
+    "errors": {
+      "distinct": "Distinct failures",
+      "evicted": "Evicted groups",
+      "none": "Nothing has failed in this window.",
+      "occurrences": "Seen {count} times",
+      "title": "Errors",
+      "total": "Occurrences"
+    },
+    "events": {
+      "account_disabled": "Account disabled",
+      "login_failed": "Sign-in failed",
+      "login_locked_out": "Locked out",
+      "login_succeeded": "Sign-in succeeded",
+      "logout": "Signed out",
+      "password_changed": "Password changed",
+      "permission_denied": "Permission denied",
+      "rate_limited": "Rate limited",
+      "resource_access_denied": "Resource refused",
+      "token_expired": "Expired token",
+      "token_invalid": "Invalid token"
+    },
+    "externalNote": "External services are reported from configuration alone — a readiness probe never calls a metered model or opens a mail connection.",
+    "generatedAt": "Read at {at}",
+    "health": {
+      "dependencies": "Backing services",
+      "environment": "Environment",
+      "externalServices": "External services",
+      "required": "required",
+      "threads": "Threads",
+      "title": "Health",
+      "uptime": "Uptime",
+      "version": "Version"
+    },
+    "jobs": {
+      "depthsUnavailable": "Queue depths could not be read, so nothing is shown rather than zero.",
+      "failed": "Failed",
+      "none": "No background work is outstanding.",
+      "pending": "Pending",
+      "processing": "Processing",
+      "queue": "Queue",
+      "title": "Background jobs",
+      "workers": "Worker pools"
+    },
+    "latencies": {
+      "api_response": "API response",
+      "background_job": "Background job",
+      "database_query": "Database query",
+      "external_call": "External call",
+      "span": "Traced work"
+    },
+    "loadFailed": "The platform's operational state could not be read.",
+    "partial": "Some sections could not be assembled: {sections}. Everything else on this page is current.",
+    "performance": {
+      "average": "Average",
+      "clientErrors": "Client errors",
+      "count": "Count",
+      "errorRate": "Error rate",
+      "max": "Slowest",
+      "measurement": "Measurement",
+      "noObservations": "Nothing has been measured in this window yet.",
+      "requests": "Requests",
+      "serverErrors": "Server errors",
+      "slowestRoutes": "Slowest routes",
+      "title": "Performance"
+    },
+    "queues": {
+      "email": "Email",
+      "indexing": "Indexing",
+      "notifications": "Notifications",
+      "ocr": "Text extraction",
+      "reports": "Reports",
+      "whatsapp": "WhatsApp"
+    },
+    "refresh": "Refresh",
+    "rules": {
+      "authentication_failures_high": "Failed sign-ins are above the threshold for this window.",
+      "background_workers_stopped": "A background worker pool is not running, so its queue will never drain.",
+      "cache_unavailable": "Redis is not reachable, so sign-out and login throttling cannot be enforced.",
+      "database_unavailable": "PostgreSQL is not reachable.",
+      "error_rate_high": "Too many requests are being answered with a server error.",
+      "latency_high": "Requests are slower than the threshold allows.",
+      "queue_backlog": "A background queue holds more work than the threshold allows.",
+      "storage_unavailable": "MinIO is not reachable, so documents cannot be stored or served.",
+      "vector_unavailable": "Qdrant is not reachable, so semantic search and the AI pipeline are refusing."
+    },
+    "security": {
+      "attempts": "Sign-in attempts",
+      "failureRate": "Failure rate",
+      "failures": "Failed sign-ins",
+      "none": "No security events in this window.",
+      "privacyNote": "No account and no address is recorded — a source is a salted digest whose only readable property is how many distinct ones there were.",
+      "sources": "Distinct sources",
+      "title": "Security"
+    },
+    "severities": {
+      "critical": "Critical",
+      "info": "Info",
+      "warning": "Warning"
+    },
+    "states": {
+      "degraded": "Degraded",
+      "disabled": "Disabled",
+      "healthy": "Healthy",
+      "unhealthy": "Unhealthy",
+      "unknown": "Unknown"
+    },
+    "traces": {
+      "dropped": "Dropped spans",
+      "failed": "Failed",
+      "failedTrace": "failed",
+      "none": "No traces have been recorded yet.",
+      "recorded": "Traces",
+      "spanSummary": "{count} spans",
+      "spans": "Spans",
+      "title": "Traces"
+    }
+  },
+  "navigation": {
+    "descriptions": {
+      "aiAssistant": "Legal document Q&A and summaries",
+      "cases": "Manage legal cases",
+      "courtUpdates": "Hearings and court decisions",
+      "dashboard": "Key case metrics at a glance",
+      "documents": "Legal documents and files",
+      "lawyers": "Assigned lawyers",
+      "monitoring": "Platform health and operations",
+      "notifications": "Alerts and reminders",
+      "reports": "AI-generated legal reports",
+      "search": "Find passages across indexed documents",
+      "settings": "Workspace preferences",
+      "users": "Platform accounts and roles"
+    },
+    "items": {
+      "aiAssistant": "AI Assistant",
+      "cases": "Cases",
+      "courtUpdates": "Court Updates",
+      "dashboard": "Dashboard",
+      "documents": "Documents",
+      "lawyers": "Lawyers",
+      "monitoring": "Monitoring",
+      "notifications": "Notifications",
+      "reports": "Reports",
+      "search": "Search",
+      "settings": "Settings",
+      "users": "Users"
+    },
+    "routes": {
+      "accessDenied": "Access Denied",
+      "aiAssistant": "AI Assistant",
+      "cases": "Cases",
+      "courtUpdates": "Court Updates",
+      "dashboard": "Dashboard",
+      "documents": "Documents",
+      "lawyers": "Lawyers",
+      "monitoring": "Monitoring",
+      "notifications": "Notifications",
+      "reports": "Reports",
+      "search": "Search",
+      "settings": "Settings",
+      "signIn": "Sign In",
+      "users": "Users"
+    },
+    "sections": {
+      "workspace": "Workspace"
+    }
+  },
+  "notifications": {
+    "announcement": {
+      "characterCount": "{used} / {max} characters",
+      "description": "Sent to every active account, as an in-app notification. People who have switched platform announcements off are not notified.",
+      "kind": "Kind",
+      "kindHint": "Maintenance is delivered as a high-priority warning; an announcement is ordinary news.",
+      "kinds": {
+        "announcement": "Announcement",
+        "maintenance": "Scheduled maintenance"
+      },
+      "message": "Message",
+      "messagePlaceholder": "The platform will be read-only on Sunday between 08:00 and 10:00.",
+      "sending": "Sending…",
+      "sent": "{count, plural, =1 {Announcement sent to 1 person.} other {Announcement sent to # people.}}",
+      "skipped": "{count, plural, =1 {1 person has platform announcements switched off.} other {# people have platform announcements switched off.}}",
+      "submit": "Send announcement",
+      "title": "Platform announcement"
+    },
+    "categories": {
+      "ai": "Assistant",
+      "case": "Cases",
+      "document": "Documents",
+      "hearing": "Hearings",
+      "ocr": "Text extraction",
+      "report": "Reports",
+      "system": "Platform",
+      "user": "Account"
+    },
+    "center": {
+      "all": "All notifications",
+      "announce": "Announce",
+      "preferences": "Preferences"
+    },
+    "channels": {
+      "email": "Email",
+      "inApp": "In app",
+      "whatsapp": "WhatsApp"
+    },
+    "errors": {
+      "disabled": "Notifications are switched off on this platform right now.",
+      "notFound": "This notification is no longer available."
+    },
+    "feed": {
+      "emptyDescription": "Case updates, document activity, hearings, and AI results will appear here.",
+      "emptyFiltered": "No notifications match these filters.",
+      "emptyTitle": "Nothing here",
+      "loadFailed": "Could not load your notifications",
+      "markCategoryRead": "Mark this category as read",
+      "totalCount": "{count, plural, =1 {1 notification} other {# notifications}}"
+    },
+    "filters": {
+      "allCategories": "All categories",
+      "allPriorities": "All priorities",
+      "allTypes": "All types",
+      "byCategory": "Filter by category",
+      "byPriority": "Filter by priority",
+      "byType": "Filter by type",
+      "unreadOnly": "Unread only"
+    },
+    "item": {
+      "markRead": "Mark read",
+      "markReadFor": "Mark “{title}” as read"
+    },
+    "panel": {
+      "empty": "No notifications yet.",
+      "loading": "Loading notifications…",
+      "markAllRead": "Mark all as read",
+      "marking": "Marking…",
+      "moreThan": "more than {count}",
+      "nothingUnread": "Nothing unread.",
+      "showAll": "Show all",
+      "title": "Notifications",
+      "unreadLabel": "Notifications, {count} unread",
+      "unreadOnly": "Unread only",
+      "viewAll": "View all"
+    },
+    "preferences": {
+      "account_activity": {
+        "description": "Password resets, role changes, and account activation.",
+        "title": "Account activity"
+      },
+      "ai_report_completion": {
+        "description": "When a report you asked for is ready, and when generation fails.",
+        "title": "AI reports"
+      },
+      "case_updates": {
+        "description": "New cases, status and priority changes, archiving, and assignments.",
+        "title": "Case updates"
+      },
+      "document_updates": {
+        "description": "Files uploaded, replaced, or withdrawn on your cases.",
+        "title": "Document updates"
+      },
+      "hearing_updates": {
+        "description": "Court dates, filing dates, and cases moving to await a hearing.",
+        "title": "Hearings"
+      },
+      "ocr_completion": {
+        "description": "When a scanned document becomes readable, and when extraction fails.",
+        "title": "Text extraction"
+      },
+      "system_announcements": {
+        "description": "Maintenance windows and announcements from your administrators.",
+        "title": "Platform announcements"
+      }
+    },
+    "preferencesForm": {
+      "channelToggle": "{preference} — {channel}",
+      "description": "Choose what the platform tells you about, and how it reaches you. Switching something off stops new notifications of that kind — the ones already in your feed stay where they are. Only important updates are sent by email or WhatsApp; routine activity stays in the app whatever you choose here, and WhatsApp needs a phone number on your account.",
+      "loading": "Loading your preferences…",
+      "title": "Notification preferences"
+    },
+    "priorities": {
+      "critical": "Critical",
+      "high": "High",
+      "low": "Low",
+      "normal": "Normal"
+    },
+    "types": {
+      "error": "Error",
+      "information": "Information",
+      "success": "Success",
+      "warning": "Warning"
+    }
+  },
+  "ocr": {
+    "errors": {
+      "alreadyRunning": "Text extraction is already running for this document.",
+      "disabled": "Text extraction is currently disabled on this platform.",
+      "documentNotFound": "This document no longer exists. Refresh the page and try again.",
+      "notProcessed": "This document has not been processed for text extraction.",
+      "unsupportedFormat": "Text extraction does not apply to this file type.",
+      "versionNotFound": "That version of the document is no longer available."
+    },
+    "extract": "Extract text",
+    "failureNote": "The document itself is unaffected and can still be downloaded.",
+    "failures": {
+      "corrupted_document": "File could not be read",
+      "engine_failure": "Extraction service failed",
+      "storage_failure": "Stored file unavailable",
+      "timeout": "Took too long",
+      "unknown": "Did not complete",
+      "unreadable_document": "Nothing readable found",
+      "unsupported_format": "Unsupported file type"
+    },
+    "hideText": "Hide extracted text",
+    "metadata": {
+      "attempts": "Attempts",
+      "confidence": "Confidence",
+      "duration": "Duration",
+      "engine": "Engine",
+      "finished": "Finished",
+      "language": "Language",
+      "pages": "Pages",
+      "percent": "{value}%",
+      "seconds": "{value}s",
+      "started": "Started"
+    },
+    "metrics": {
+      "averageTime": "Average time",
+      "disabled": "Text extraction is disabled on this deployment. Existing results stay readable; no new work is scheduled.",
+      "engineUnavailable": "The {engine} engine is not reachable, so new extractions will fail. Uploaded documents are unaffected and every run can be retried once it is installed.",
+      "failureRate": "Failure rate",
+      "failuresByCause": "Failures by cause",
+      "runs": "Runs",
+      "seconds": "{value}s",
+      "successRate": "Success rate"
+    },
+    "notApplicable": "Text extraction applies to PDFs and images. This file type already carries machine-readable text.",
+    "notProcessed": "This document has not been processed yet.",
+    "queued": "Text extraction was queued.",
+    "retry": "Retry extraction",
+    "statuses": {
+      "completed": "Completed",
+      "failed": "Failed",
+      "pending": "Queued",
+      "processing": "Extracting"
+    },
+    "text": {
+      "confidence": "{value}% confidence",
+      "copyAll": "Copy all text",
+      "copyRefused": "Your browser did not allow copying. Select the text instead.",
+      "emptyDescription": "This document produced no readable text. It may be a blank scan or contain images only.",
+      "emptyPage": "This page produced no text.",
+      "emptyTitle": "No text was extracted",
+      "page": "Page {number}",
+      "summary": "{pages, plural, =1 {1 page} other {# pages}} · {characters} characters"
+    },
+    "title": "Text extraction",
+    "viewText": "View extracted text",
+    "waitingQueued": "Queued for extraction. This page updates automatically.",
+    "waitingReading": "Reading the document. This page updates automatically."
+  },
+  "pages": {
+    "aiAssistant": {
+      "description": "Ask questions about your case documents. Every answer cites the file and page it came from, and the assistant says so when the documents do not support one.",
+      "title": "AI Assistant"
+    },
+    "caseDetails": {
+      "description": "General information, assignment, court information, and audit trail.",
+      "title": "Case details"
+    },
+    "cases": {
+      "description": "Create, organize, and track legal cases through their lifecycle.",
+      "title": "Cases"
+    },
+    "courtUpdates": {
+      "description": "Track hearings, court decisions, and case deadlines.",
+      "emptyDescription": "Hearing and court decision tracking will be implemented in an upcoming feature.",
+      "emptyTitle": "No court updates yet",
+      "title": "Court Updates"
+    },
+    "dashboard": {
+      "description": "Your cases, hearings, documents, and activity — updated as things happen.",
+      "title": "Dashboard"
+    },
+    "documents": {
+      "description": "Upload, organize, version, and retrieve the files attached to your cases.",
+      "title": "Documents"
+    },
+    "lawyers": {
+      "description": "Manage lawyers and their case assignments.",
+      "emptyDescription": "Lawyer management will be implemented in an upcoming feature.",
+      "emptyTitle": "No lawyers yet",
+      "title": "Lawyers"
+    },
+    "monitoring": {
+      "description": "How this deployment is behaving: health, latency, background work, failures, and security activity.",
+      "title": "Monitoring"
+    },
+    "notFound": {
+      "description": "The page you’re looking for doesn’t exist or may have been moved.",
+      "title": "Page not found"
+    },
+    "notifications": {
+      "description": "Case updates, court decisions, document activity, and AI results.",
+      "title": "Notifications"
+    },
+    "reports": {
+      "description": "Generate structured, cited legal reports from a case's indexed documents. Each report is written in the background, section by section, and only the reports you generated appear here.",
+      "title": "Reports"
+    },
+    "search": {
+      "description": "Ask a question in your own words and find the passages that answer it, across the documents on your cases.",
+      "title": "Search"
+    },
+    "settings": {
+      "description": "Manage your profile, your account security, and how this platform behaves for you.",
+      "title": "Settings"
+    },
+    "userDetails": {
+      "description": "Profile, role, account status, and activity.",
+      "title": "User details"
+    },
+    "users": {
+      "description": "Manage administrators, lawyers, and court representatives.",
+      "title": "Users"
+    }
+  },
+  "realtime": {
+    "connecting": {
+      "detail": "Connecting to live updates.",
+      "label": "Connecting"
+    },
+    "offline": {
+      "detail": "Live updates are unavailable. Everything still works, but changes made by other people will not appear until you refresh.",
+      "label": "Updates paused"
+    },
+    "reconnecting": {
+      "detail": "Live updates were interrupted. Reconnecting — the page still works.",
+      "label": "Reconnecting"
+    },
+    "retry": "Retry connecting to live updates"
+  },
+  "reports": {
+    "actions": {
+      "menuFor": "Actions for {title}",
+      "open": "Open",
+      "queuedAgain": "Report queued again.",
+      "regenerate": "Regenerate"
+    },
+    "caseSection": {
+      "description": "Structured, cited reports generated from this case's indexed documents. Only the reports you generated appear here.",
+      "title": "Reports"
+    },
+    "deleteDialog": {
+      "confirm": "Delete report",
+      "deleted": "Report deleted.",
+      "deleting": "Deleting…",
+      "description": "leaves your history and can no longer be opened or exported. The case, its documents, and its timeline are untouched. Generating the report again is always possible.",
+      "title": "Delete this report?"
+    },
+    "detail": {
+      "failureFallback": "The report could not be generated. Try generating it again.",
+      "generatedAt": "generated {at}",
+      "groundedSummary": "{grounded} of {sections, plural, =1 {1 section} other {# sections}} grounded in {documents, plural, =1 {1 document} other {# documents}}",
+      "loading": "Loading the report.",
+      "openFailed": "This report could not be opened",
+      "progressNote": "Each section is retrieved and written separately, so a long case takes a few minutes. You can close this — the report keeps building.",
+      "queuedAgain": "Report queued again. It will update as it is rewritten.",
+      "title": "Report",
+      "typeAndRequested": "{type} · requested {at}"
+    },
+    "empty": {
+      "description": "Generate a structured, cited report from this case's indexed documents. It is written in the background, section by section.",
+      "filteredDescription": "No report in your history matches these filters.",
+      "filteredTitle": "No matching reports",
+      "title": "No reports yet"
+    },
+    "errors": {
+      "alreadyRunning": "This report is already being generated.",
+      "caseNotFound": "That case no longer exists. Refresh the page and try again.",
+      "disabled": "Report generation is currently disabled on this platform.",
+      "exportUnavailable": "That export format is not available on this deployment. Try the other one.",
+      "listTitle": "Reports could not be loaded",
+      "noGenerateAccess": "You do not have permission to generate reports for this case.",
+      "notFound": "This report is no longer available.",
+      "notReady": "This report is not finished yet. It can be exported once it is.",
+      "tooManyActive": "You already have several reports being generated. Wait for one to finish."
+    },
+    "export": {
+      "exported": "Report exported as {format}.",
+      "label": "Export"
+    },
+    "failures": {
+      "export_failure": "Export failed",
+      "insufficient_context": "Nothing to report on",
+      "llm_failure": "AI service failed",
+      "llm_unavailable": "AI service unavailable",
+      "malformed_response": "Unusable response",
+      "retrieval_unavailable": "Documents could not be retrieved",
+      "timeout": "Took too long",
+      "unknown": "Did not complete"
+    },
+    "filters": {
+      "all": "All",
+      "allStatuses": "All statuses",
+      "allTypes": "All types",
+      "searchPlaceholder": "Search report titles",
+      "status": "Status",
+      "type": "Type"
+    },
+    "generateDialog": {
+      "case": "Case",
+      "description": "The report is written from this case's indexed documents, section by section, with a citation for every finding. Generation runs in the background — you can close this and come back.",
+      "language": "Language",
+      "languageHint": "Every section is written in this language, whatever language the documents are in.",
+      "loadingCases": "Loading cases…",
+      "loadingTypes": "Loading report types…",
+      "queued": "Report queued. It will appear as it is written.",
+      "queueing": "Queueing…",
+      "reportType": "Report type",
+      "sectionPreview": "{count, plural, =1 {This report will contain 1 section} other {This report will contain # sections}}",
+      "selectCase": "Select a case",
+      "selectLanguage": "Select a language",
+      "selectType": "Select a type",
+      "submit": "Generate",
+      "title": "Generate report",
+      "titleField": "Title (optional)",
+      "titlePlaceholder": "Leave empty to name it after the report type and case number",
+      "uncoveredNote": "A section the case file does not cover says so, rather than being filled in."
+    },
+    "metrics": {
+      "averageSize": "Average size",
+      "averageTime": "Average time",
+      "characters": "{value} chars",
+      "disabled": "Report generation is disabled on this deployment. Existing reports stay readable and exportable; no new ones are queued.",
+      "exports": "Exports",
+      "failures": "Failures",
+      "failuresByCause": "Failures by cause",
+      "footnote": "Export formats available here: {formats}. Template set v{version}.",
+      "llmUnavailable": "No AI provider is reachable, so new reports will fail. Cases, documents, and existing reports are unaffected, and every run can be generated again once it is available.",
+      "noFormats": "none",
+      "promptUnavailable": "The pipeline's answer template cannot be loaded, so every section will fail — a report section is a pipeline run. Cases and documents are unaffected.",
+      "reportsByType": "Reports by type",
+      "reportsGenerated": "Reports generated",
+      "seconds": "{value}s",
+      "sectionsGrounded": "Sections grounded",
+      "successRate": "Success rate",
+      "title": "AI report generation",
+      "tokensUsed": "Tokens used"
+    },
+    "pagination": {
+      "summary": "{count, plural, =0 {No reports} =1 {Showing {from}–{to} of 1 report} other {Showing {from}–{to} of # reports}}"
+    },
+    "progress": {
+      "label": "Report generation progress",
+      "preparing": "Preparing",
+      "queued": "Queued — waiting for a worker",
+      "writingSection": "Writing section {current} of {total}"
+    },
+    "sections": {
+      "notCovered": "Not covered",
+      "sources": "Sources: {markers}",
+      "stopsEarly": "Stops early"
+    },
+    "statuses": {
+      "completed": "Ready",
+      "failed": "Failed",
+      "pending": "Queued",
+      "processing": "Generating"
+    },
+    "table": {
+      "columns": {
+        "case": "Case",
+        "created_at": "Requested",
+        "report": "Report",
+        "requested": "Requested",
+        "sections": "Sections",
+        "status": "Status",
+        "title": "Report"
+      },
+      "groundedOf": "{grounded}/{total} grounded",
+      "loading": "Loading reports",
+      "openCase": "Open case"
+    },
+    "types": {
+      "case_summary": "Case Summary",
+      "chronological_timeline": "Chronological Timeline",
+      "evidence_summary": "Evidence Summary",
+      "executive_summary": "Executive Summary",
+      "hearing_preparation": "Hearing Preparation"
+    }
+  },
+  "search": {
+    "bestMatch": "best match {percent}",
+    "caseSection": {
+      "description": "Ask a question in your own words and find the passages that answer it, with the file and page they came from.",
+      "title": "Search this case"
+    },
+    "documentsUnaffected": "Your documents and their text are unaffected.",
+    "durationMs": "{value} ms",
+    "empty": {
+      "noResultsDescription": "Nothing in the documents you can access is close to that question. Try different wording, or widen the filters. Documents are searchable once their text has been extracted and indexed.",
+      "noResultsTitle": "No matching passages",
+      "notSearchedDescription": "Ask a question in your own words. Results are passages from the documents on cases you have access to, each with the file, page, and relevance.",
+      "notSearchedTitle": "Nothing searched yet"
+    },
+    "enterQuery": "Enter a search query.",
+    "errors": {
+      "caseNotFound": "That case no longer exists. Clear the filter and search again.",
+      "disabled": "Semantic search is currently disabled on this platform.",
+      "documentNotFound": "That document no longer exists. Clear the filter and search again.",
+      "embeddingUnavailable": "The search model is unavailable right now, so a question cannot be matched against your documents.",
+      "filterTooBroad": "That filter matches too much to search. Narrow it to a case or a document.",
+      "invalidQuery": "Enter a search query of at least two characters.",
+      "noFilterAccess": "You do not have access to the case or document you filtered by.",
+      "vectorStoreUnavailable": "The search index is unreachable right now, so nothing can be matched against your documents."
+    },
+    "failures": {
+      "embedding_unavailable": "Search model unavailable",
+      "unknown": "Search did not complete",
+      "vector_store_unavailable": "Search index unavailable"
+    },
+    "filters": {
+      "allCases": "All cases",
+      "allCategories": "All categories",
+      "allLanguages": "All languages",
+      "allTypes": "All types",
+      "case": "Case",
+      "category": "Category",
+      "fileType": "File type",
+      "language": "Language"
+    },
+    "heading": "Semantic search",
+    "hint": "Natural language, in Arabic, French, or English — a question in one language finds passages written in the others.",
+    "label": "Search your documents",
+    "labelCase": "Search this case's documents",
+    "metrics": {
+      "averageRelevance": "Average relevance",
+      "averageTime": "Average time",
+      "configuration": "{model} · {dimensions} dimensions · {ranker} ranking · {collection} · up to {maxLimit} results",
+      "disabled": "Semantic search is disabled on this deployment. Indexed documents are unaffected; only searching them is refused.",
+      "embeddingUnavailable": "The {model} embedding model cannot be loaded, so every search will fail. Documents and their indexes are unaffected.",
+      "failureRate": "Failure rate",
+      "failures": "Failures",
+      "failuresByCause": "Failures by cause",
+      "milliseconds": "{value} ms",
+      "passagesReturned": "Passages returned",
+      "resultsPerSearch": "Results per search",
+      "searches": "Searches",
+      "since": "Counted on this API instance since {at}.",
+      "successRate": "Success rate",
+      "title": "Semantic search",
+      "vectorStoreUnavailable": "The search index is not reachable, so every search will fail. Documents and their extracted text are unaffected."
+    },
+    "placeholder": "Ask in your own words — for example, when is the rent payable?",
+    "result": {
+      "document": "Document",
+      "match": "{percent}% match",
+      "openCase": "Open case",
+      "provenance": "Page {page} · Passage {passage} · Version {version}",
+      "rank": "Result {rank}",
+      "similarity": "Similarity {score}"
+    },
+    "resultCount": "{count, plural, =1 {1 passage for} other {# passages for}}",
+    "searching": "Searching"
+  },
+  "settings": {
+    "administration": {
+      "description": "System configuration, and the defaults every account that has expressed no preference follows.",
+      "loading": "Loading platform configuration…",
+      "notice": "These settings apply to everyone. Each default below is what an account that has never chosen for itself will follow — changing one reaches every such account immediately. Maintenance mode shows a notice to everybody signed in; it does not close the platform.",
+      "title": "Platform configuration"
+    },
+    "definitions": {
+      "ai_citations": {
+        "description": "How an answer's sources are shown. Answers are always grounded in your documents — this changes the display only.",
+        "title": "Citations"
+      },
+      "ai_default_citations": {
+        "description": "For accounts that have not chosen one.",
+        "title": "Default citation display"
+      },
+      "ai_default_response_length": {
+        "description": "For accounts that have not chosen one.",
+        "title": "Default response length"
+      },
+      "ai_default_streaming": {
+        "description": "For accounts that have not chosen one.",
+        "title": "Stream responses by default"
+      },
+      "ai_response_length": {
+        "description": "How much detail the assistant's answers are shown with.",
+        "title": "Response length"
+      },
+      "ai_streaming": {
+        "description": "Show an answer as it is written rather than when it is finished.",
+        "title": "Stream responses"
+      },
+      "dashboard_range": {
+        "description": "The window your dashboard's analytics open on.",
+        "title": "Default date range"
+      },
+      "dashboard_widgets": {
+        "description": "Choose which cards appear. Leave everything unselected to see every widget your role allows, including ones added later.",
+        "title": "Visible widgets"
+      },
+      "date_format": {
+        "description": "How a date is written.",
+        "title": "Date format"
+      },
+      "default_date_format": {
+        "description": "For accounts that have not chosen one.",
+        "title": "Default date format"
+      },
+      "default_language": {
+        "description": "For accounts that have not chosen one.",
+        "title": "Default language"
+      },
+      "default_theme": {
+        "description": "For accounts that have not chosen one.",
+        "title": "Default theme"
+      },
+      "default_time_format": {
+        "description": "For accounts that have not chosen one.",
+        "title": "Default time format"
+      },
+      "default_timezone": {
+        "description": "For accounts that have not chosen one.",
+        "title": "Default time zone"
+      },
+      "language": {
+        "description": "The interface, and the language AI answers are written in.",
+        "title": "Language"
+      },
+      "maintenance_message": {
+        "description": "What everyone sees while maintenance mode is on.",
+        "title": "Maintenance notice"
+      },
+      "maintenance_mode": {
+        "description": "Shows a notice to everyone signed in. It announces maintenance; it does not close the platform.",
+        "title": "Maintenance mode"
+      },
+      "theme": {
+        "description": "Dark is the platform's designed experience. System follows your device.",
+        "title": "Theme"
+      },
+      "time_format": {
+        "description": "A 24-hour or 12-hour clock.",
+        "title": "Time format"
+      },
+      "timezone": {
+        "description": "Hearing times and deadlines are shown in this zone.",
+        "title": "Time zone"
+      }
+    },
+    "errors": {
+      "forbidden": "You do not have permission to change this.",
+      "invalidValue": "That value is not accepted for this setting. Check what you entered.",
+      "unavailable": "Settings are temporarily unavailable. Please try again.",
+      "wrongPassword": "Your current password is incorrect."
+    },
+    "failures": {
+      "bad_current_password": "Incorrect current password",
+      "invalid_value": "Invalid value",
+      "persistence_failed": "Could not be saved",
+      "unknown": "Unknown",
+      "unknown_setting": "Unknown setting"
+    },
+    "preferenceSections": {
+      "communication": {
+        "description": "Choose how notifications reach you outside the application. Only important updates are sent by email or WhatsApp — routine activity stays in the app whatever you choose here, and WhatsApp needs a phone number on your account.",
+        "title": "Communication"
+      },
+      "notifications": {
+        "description": "Choose what the platform tells you about. Switching something off stops new notifications of that kind — the ones already in your feed stay where they are.",
+        "title": "Notifications"
+      }
+    },
+    "profile": {
+      "description": "How you appear to colleagues on this platform. Your email address and role are set by an administrator and are shown here for reference.",
+      "discard": "Discard",
+      "emailAddress": "Email address",
+      "firstName": "First name",
+      "jobTitle": "Job title",
+      "jobTitleHint": "Optional. A label colleagues see beside your name.",
+      "jobTitlePlaceholder": "Senior Associate",
+      "lastName": "Last name",
+      "phone": "Phone number",
+      "phoneHint": "Optional. Used for WhatsApp alerts if you enable them.",
+      "profilePicture": "Profile picture",
+      "profilePictureHint": "Optional. A link to an image.",
+      "role": "Role",
+      "saved": "Your profile has been updated.",
+      "title": "Profile"
+    },
+    "sections": {
+      "administration": {
+        "description": "Platform-wide configuration. Administrators only.",
+        "title": "Administration"
+      },
+      "ai": {
+        "description": "How answers from the assistant are presented to you.",
+        "title": "AI assistant"
+      },
+      "appearance": {
+        "description": "The theme this platform is drawn in.",
+        "title": "Appearance"
+      },
+      "communication": {
+        "description": "How those notifications reach you.",
+        "title": "Communication"
+      },
+      "dashboard": {
+        "description": "What your landing page opens on.",
+        "title": "Dashboard"
+      },
+      "language": {
+        "description": "Your language, time zone, and how dates and times are written.",
+        "title": "Language & region"
+      },
+      "notifications": {
+        "description": "What the platform tells you about.",
+        "title": "Notifications"
+      },
+      "profile": {
+        "description": "How you appear to colleagues on this platform.",
+        "title": "Profile"
+      },
+      "security": {
+        "description": "Your password and the devices you are signed in on.",
+        "title": "Account & security"
+      }
+    },
+    "security": {
+      "activeSessions": "Active sessions",
+      "changePassword": "Change password",
+      "currentPassword": "Current password",
+      "hidePasswords": "Hide passwords",
+      "loadingSessions": "Loading your sessions…",
+      "newPassword": "New password",
+      "newPasswordHint": "At least 8 characters.",
+      "noOtherDevices": "No other devices are signed in.",
+      "repeatPassword": "Repeat new password",
+      "showPasswords": "Show passwords",
+      "thisDevice": "This device",
+      "unknownDevice": "Unknown device"
+    },
+    "values": {
+      "balanced": "Balanced",
+      "concise": "Concise",
+      "dark": "Dark",
+      "day_month_year": "31/12/2026",
+      "detailed": "Detailed",
+      "hidden": "Markers only, list collapsed",
+      "hour_12": "12-hour (2:32 pm)",
+      "hour_24": "24-hour (14:32)",
+      "inline": "Inline markers only",
+      "last_30_days": "Last 30 days",
+      "last_7_days": "Last 7 days",
+      "light": "Light",
+      "list": "Markers and a source list",
+      "long": "31 December 2026",
+      "month_day_year": "12/31/2026",
+      "system": "System",
+      "today": "Today",
+      "year_month_day": "2026-12-31"
+    },
+    "widgets": {
+      "active_users": "Active users",
+      "ai_analytics": "AI analytics",
+      "ai_reports": "AI reports",
+      "case_analytics": "Case analytics",
+      "case_status_overview": "Case status overview",
+      "document_analytics": "Document analytics",
+      "hearing_calendar": "Hearing calendar",
+      "my_cases": "My cases",
+      "notifications": "Notifications",
+      "ocr_status": "Text extraction status",
+      "processing_queues": "Processing queues",
+      "quick_actions": "Quick actions",
+      "recent_activity": "Recent activity",
+      "recent_cases": "Recent cases",
+      "recent_conversations": "Recent conversations",
+      "recent_documents": "Recent documents",
+      "storage_usage": "Storage usage",
+      "timeline_activity": "Activity distribution",
+      "upcoming_hearings": "Upcoming hearings"
+    },
+    "workspace": {
+      "loadFailed": "Settings could not be loaded",
+      "loading": "Loading your settings…",
+      "maintenanceFallback": "This platform is currently in maintenance.",
+      "sectionsLabel": "Settings sections"
+    }
+  },
+  "shared": {
+    "accessDenied": {
+      "backToDashboard": "Back to Dashboard",
+      "description": "You don’t have permission to view this page. If you believe this is a mistake, contact an administrator.",
+      "title": "Access denied"
+    },
+    "error": {
+      "description": "An unexpected error occurred. Please try again.",
+      "title": "Something went wrong"
+    },
+    "loading": {
+      "label": "Loading…"
+    },
+    "spinner": {
+      "label": "Loading"
+    }
+  },
+  "shell": {
+    "brand": {
+      "homeLabel": "Legal Case Management Platform — Dashboard",
+      "name": "Legal Platform",
+      "tagline": "Case Management"
+    },
+    "footer": {
+      "copyright": "© {year} Legal Case Management Platform",
+      "tagline": "AI-powered legal collaboration"
+    },
+    "language": {
+      "change": "Change language",
+      "current": "Current language: {language}",
+      "label": "Language"
+    },
+    "search": {
+      "label": "Search cases and documents (coming soon)",
+      "placeholder": "Search cases, documents…"
+    },
+    "sidebar": {
+      "collapse": "Collapse"
+    },
+    "userMenu": {
+      "profile": "Profile",
+      "settings": "Settings",
+      "signOut": "Sign out",
+      "signingOut": "Signing out…"
+    }
+  },
+  "timeline": {
+    "empty": {
+      "description": "Everything that happens to this case — updates, assignments, and documents — will be recorded here automatically.",
+      "filteredDescription": "Try a different search term, activity type, or date range, or clear the filters to see the whole history.",
+      "filteredTitle": "No activity matches your filters",
+      "title": "No activity yet"
+    },
+    "errors": {
+      "caseNotFound": "That case no longer exists. Refresh the page and try again.",
+      "entryNotFound": "This activity entry no longer exists.",
+      "invalidFilters": "Those filters are not valid. Clear them and try again.",
+      "loadTitle": "Could not load this case's activity",
+      "noAccess": "You do not have permission to view this case's activity."
+    },
+    "events": {
+      "case_archived": "Case archived",
+      "case_created": "Case created",
+      "case_restored": "Case restored",
+      "case_updated": "Case updated",
+      "document_deleted": "Document deleted",
+      "document_downloaded": "Document downloaded",
+      "document_replaced": "Document replaced",
+      "document_updated": "Document updated",
+      "document_uploaded": "Document uploaded",
+      "lawyer_assigned": "Lawyer assigned",
+      "lawyer_removed": "Lawyer removed",
+      "ocr_completed": "Text extraction completed",
+      "ocr_failed": "Text extraction failed",
+      "ocr_retried": "Text extraction retried",
+      "ocr_started": "Text extraction started",
+      "priority_changed": "Priority changed",
+      "representative_assigned": "Representative assigned",
+      "representative_removed": "Representative removed",
+      "status_changed": "Status changed"
+    },
+    "filters": {
+      "activityType": "Activity type",
+      "allActivity": "All activity",
+      "anyone": "Anyone",
+      "from": "From",
+      "newestFirst": "Newest first",
+      "oldestFirst": "Oldest first",
+      "performedBy": "Performed by",
+      "search": "Search activity",
+      "searchPlaceholder": "Search by what happened",
+      "sortNewestFirst": "Sort newest first",
+      "sortOldestFirst": "Sort oldest first",
+      "until": "Until"
+    },
+    "loading": "Loading activity",
+    "pagination": {
+      "summary": "{count, plural, =0 {No activity} =1 {Showing {from}–{to} of 1 entry} other {Showing {from}–{to} of # entries}}"
+    },
+    "system": "System",
+    "title": "Timeline"
+  },
+  "users": {
+    "actions": {
+      "activate": "Activate",
+      "activated": "{name} was activated.",
+      "deactivate": "Deactivate",
+      "label": "Actions",
+      "menuFor": "Actions for {name}",
+      "resetPassword": "Reset password",
+      "viewDetails": "View details"
+    },
+    "createDialog": {
+      "creating": "Creating…",
+      "submit": "Create user",
+      "title": "Add user"
+    },
+    "deactivateDialog": {
+      "confirm": "Deactivate",
+      "deactivated": "{name} was deactivated.",
+      "deactivating": "Deactivating…",
+      "title": "Deactivate {name}?",
+      "titleGeneric": "Deactivate this user?"
+    },
+    "details": {
+      "access": "Access",
+      "accountActivity": "Account activity",
+      "backToUsers": "Back to users",
+      "canSignIn": "Can sign in",
+      "contactInformation": "Contact information",
+      "created": "Created",
+      "lastSignIn": "Last sign-in",
+      "lastUpdated": "Last updated",
+      "loadFailed": "Could not load this user",
+      "loading": "Loading user…",
+      "passwordChangeRequired": "Password change required",
+      "personalInformation": "Personal information"
+    },
+    "editDialog": {
+      "descriptionGeneric": "Update this user's details.",
+      "noChanges": "No changes to save.",
+      "title": "Edit user"
+    },
+    "empty": {
+      "description": "Add the first account to give someone access to the platform.",
+      "filteredDescription": "Try a different name or email, or clear the filters to see everyone.",
+      "filteredTitle": "No users match your search",
+      "title": "No users yet"
+    },
+    "errors": {
+      "cannotModifyOwn": "You cannot change your own role or account status.",
+      "emailTaken": "A user with this email address already exists.",
+      "listTitle": "Could not load users",
+      "notFound": "This user no longer exists. Refresh the list and try again."
+    },
+    "filters": {
+      "allRoles": "All roles",
+      "allStatuses": "All statuses",
+      "role": "Role",
+      "searchPlaceholder": "Search by name or email",
+      "status": "Status"
+    },
+    "form": {
+      "email": "Email",
+      "firstName": "First name",
+      "firstNamePlaceholder": "Amina",
+      "hidePassword": "Hide password",
+      "lastName": "Last name",
+      "lastNamePlaceholder": "Benali",
+      "password": "Password",
+      "passwordHint": "The user can change it once they sign in.",
+      "passwordPlaceholder": "Choose an initial password",
+      "phone": "Phone",
+      "requirePasswordChange": "Require a password change at first sign-in",
+      "requirePasswordChangeHint": "The user keeps the password above only until they choose their own.",
+      "role": "Role",
+      "selectRole": "Select a role",
+      "selectStatus": "Select a status",
+      "showPassword": "Show password",
+      "status": "Status"
+    },
+    "pagination": {
+      "summary": "{count, plural, =0 {No users} =1 {Showing {from}–{to} of 1 user} other {Showing {from}–{to} of # users}}"
+    },
+    "resetPasswordDialog": {
+      "confirm": "Reset password",
+      "copied": "Temporary password copied.",
+      "copyLabel": "Copy temporary password",
+      "copyRefused": "Copy it manually — the clipboard is unavailable.",
+      "description": "A new temporary password is generated. The user is signed out of every device and must choose a new password before continuing.",
+      "done": "Done",
+      "resetting": "Resetting…",
+      "revealedDescription": "Share this with the user through a trusted channel. It is not shown again.",
+      "revealedTitle": "Temporary password",
+      "title": "Reset password for {name}?"
+    },
+    "roles": {
+      "administrator": "Administrator",
+      "court_representative": "Court Representative",
+      "lawyer": "Lawyer"
+    },
+    "statuses": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "suspended": "Suspended"
+    },
+    "table": {
+      "columns": {
+        "created_at": "Created",
+        "email": "Email",
+        "last_login": "Last sign-in",
+        "name": "Name",
+        "role": "Role",
+        "status": "Status"
+      },
+      "loading": "Loading users"
+    }
+  },
+  "validation": {
+    "assistant": {
+      "nameRequired": "Enter a name for this conversation.",
+      "nameTooLong": "Names are limited to {max} characters.",
+      "noteTooLong": "Notes are limited to {max} characters.",
+      "questionRequired": "Enter a word or a number to ask about.",
+      "questionTooLong": "Questions are limited to {max} characters."
+    },
+    "auth": {
+      "confirmPassword": "Confirm your new password.",
+      "currentPasswordRequired": "Current password is required.",
+      "emailInvalid": "Enter a valid email address.",
+      "emailRequired": "Email is required.",
+      "passwordRequired": "Password is required.",
+      "passwordTooLong": "The password must not exceed {max} bytes.",
+      "passwordTooShort": "The password must be at least {min} characters.",
+      "passwordUnchanged": "Choose a password you have not used here before.",
+      "passwordsDoNotMatch": "The two passwords do not match."
+    },
+    "case": {
+      "caseNumberCharacters": "A case number may contain only letters, digits, and the characters - _ . /",
+      "caseNumberTooLong": "The case number must be at most {max} characters.",
+      "hearingBeforeFiling": "The next hearing date cannot be before the filing date.",
+      "priorityRequired": "Select a priority.",
+      "statusRequired": "Select a status.",
+      "titleRequired": "A title is required."
+    },
+    "dateInvalid": "Enter a valid date.",
+    "document": {
+      "caseRequired": "Select the case this document belongs to.",
+      "categoryRequired": "Select a category.",
+      "fileEmpty": "The selected file is empty.",
+      "fileRequired": "Choose a file to upload.",
+      "fileTooLarge": "The file must be no larger than {max} MB.",
+      "unsupportedType": "Supported file types: {types}."
+    },
+    "maxLength": "Must be at most {max} characters.",
+    "maxLengthDescription": "The description must be at most {max} characters.",
+    "maxLengthTitle": "The title must be at most {max} characters.",
+    "minLength": "Enter at least {min} characters.",
+    "notification": {
+      "announcementTooLong": "Keep the announcement under {max} characters.",
+      "messageRequired": "Write what you want everyone to see."
+    },
+    "report": {
+      "caseRequired": "Choose the case this report is about.",
+      "typeRequired": "Choose a report type."
+    },
+    "required": "Required.",
+    "search": {
+      "queryRequired": "Enter a word or a number to search for.",
+      "queryTooLong": "Queries are limited to {max} characters."
+    },
+    "settings": {
+      "currentPasswordRequired": "Enter your current password.",
+      "firstNameRequired": "Enter your first name.",
+      "lastNameRequired": "Enter your last name.",
+      "noticeTooLong": "Keep the notice under {max} characters.",
+      "urlTooLong": "That address is too long."
+    },
+    "user": {
+      "phoneCharacters": "A phone number may contain only digits, spaces, and the characters + ( ) - . /",
+      "phoneDigits": "A phone number must contain between {min} and {max} digits.",
+      "roleRequired": "Select a role.",
+      "statusRequired": "Select a status."
+    }
+  }
+}

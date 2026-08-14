@@ -18,6 +18,8 @@
 
 import { z } from "zod";
 
+import { vm } from "@/lib/validation/messages";
+
 import { SORT_ORDERS } from "@/types/case-management";
 import { DOCUMENT_SORT_FIELDS } from "@/types/document-management";
 import {
@@ -57,7 +59,7 @@ const optionalDescriptionField = z
   .transform((value) => value.trim())
   .refine(
     (value) => value.length <= MAX_DESCRIPTION_LENGTH,
-    `Description must be at most ${MAX_DESCRIPTION_LENGTH} characters.`,
+    vm("validation.maxLengthDescription", { max: MAX_DESCRIPTION_LENGTH }),
   );
 
 /**
@@ -73,22 +75,24 @@ const optionalDescriptionField = z
  */
 const fileField = z
   .custom<FileList | null | undefined>()
-  .refine((files) => Boolean(files && files.length > 0), "Choose a file to upload.")
+  .refine((files) => Boolean(files && files.length > 0), vm("validation.document.fileRequired"))
   .refine((files) => {
     const file = files?.[0];
     return !file || file.size > 0;
-  }, "The selected file is empty.")
+  }, vm("validation.document.fileEmpty"))
   .refine((files) => {
     const file = files?.[0];
     if (!file) return true;
     return (SUPPORTED_DOCUMENT_EXTENSIONS as readonly string[]).includes(
       fileExtensionOf(file.name),
     );
-  }, `Supported file types: ${SUPPORTED_DOCUMENT_EXTENSIONS.join(", ")}.`)
+  }, vm("validation.document.unsupportedType", {
+      types: SUPPORTED_DOCUMENT_EXTENSIONS.join(", "),
+    }))
   .refine((files) => {
     const file = files?.[0];
     return !file || file.size <= MAX_DOCUMENT_SIZE_BYTES;
-  }, `The file must be no larger than ${MAX_DOCUMENT_SIZE_MB} MB.`);
+  }, vm("validation.document.fileTooLarge", { max: MAX_DOCUMENT_SIZE_MB }));
 
 // --------------------------------------------------------------------------- //
 // Form schemas
@@ -103,8 +107,8 @@ const fileField = z
  * supplied by `defaultValues`.
  */
 export const uploadDocumentFormSchema = z.object({
-  caseId: z.string().min(1, "Select the case this document belongs to."),
-  category: z.enum(DOCUMENT_CATEGORIES, { required_error: "Select a category." }),
+  caseId: z.string().min(1, vm("validation.document.caseRequired")),
+  category: z.enum(DOCUMENT_CATEGORIES, { required_error: vm("validation.document.categoryRequired") }),
   description: optionalDescriptionField,
   file: fileField,
 });
@@ -113,7 +117,7 @@ export type UploadDocumentFormValues = z.infer<typeof uploadDocumentFormSchema>;
 
 /** Metadata edit form — the only two fields the API lets a PATCH change. */
 export const editDocumentFormSchema = z.object({
-  category: z.enum(DOCUMENT_CATEGORIES, { required_error: "Select a category." }),
+  category: z.enum(DOCUMENT_CATEGORIES, { required_error: vm("validation.document.categoryRequired") }),
   description: optionalDescriptionField,
 });
 

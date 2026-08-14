@@ -1,0 +1,2027 @@
+{
+  "assistant": {
+    "caseSection": {
+      "description": "اسأل عن مستندات هذه القضية. تُبنى كل إجابة حصريًا من الملفات المودعة ضمن هذه القضية، وتستشهد بالمستند والصفحة اللذين جاءت منهما.",
+      "title": "المساعد الذكي"
+    },
+    "chat": {
+      "dismissAndRetry": "تجاهل وأعد المحاولة",
+      "documentsUnaffected": "مستنداتك ونصوصها غير متأثرة.",
+      "earlierHidden": "الرسائل الأقدم في هذه المحادثة غير معروضة.",
+      "firstQuestionDescription": "تُبنى الإجابات حصريًا من مستندات القضايا التي يمكنك الوصول إليها، وتحمل كل عبارة الملف والصفحة التي جاءت منها. وإذا لم تدعم المستندات إجابةً ما، يصرّح المساعد بذلك بدل التخمين.",
+      "firstQuestionTitle": "اطرح سؤالك الأول",
+      "noConversationDescription": "ابدأ محادثة جديدة لطرح أسئلة عن مستندات قضاياك. تستشهد كل إجابة بالملف والصفحة اللذين جاءت منهما.",
+      "noConversationTitle": "لا توجد محادثة مفتوحة",
+      "placeholder": "اسأل عن مستنداتك — مثلًا، متى يُستحق الإيجار؟",
+      "placeholderCase": "اسأل عن مستندات هذه القضية…",
+      "transcript": "المحادثة"
+    },
+    "citations": {
+      "hideExcerpt": "إخفاء المقتطف",
+      "label": "المصادر",
+      "match": "تطابق {percent}%",
+      "notCited": "غير مُستشهَد به",
+      "notCitedTitle": "استُرجع، لكن لم يُستشهد به في الإجابة",
+      "openCase": "فتح القضية",
+      "pageAndVersion": "الصفحة {page} · الإصدار {version}",
+      "showExcerpt": "عرض المقتطف",
+      "similarity": "التشابه {score}",
+      "summary": "{sources, plural, zero {لا مصادر} one {مصدر واحد} two {مصدران} few {# مصادر} many {# مصدرًا} other {# مصدر}} من {documents, plural, zero {لا مستندات} one {مستند واحد} two {مستندين} few {# مستندات} many {# مستندًا} other {# مستند}}",
+      "truncated": "اختُصر هذا المقطع ليتّسع ضمن ميزانية سياق الإجابة."
+    },
+    "composer": {
+      "enterQuestion": "أدخل سؤالًا.",
+      "hint": "تأتي الإجابات من مستندات قضاياك فقط، مع استشهاد لكل عبارة. Enter للإرسال · Shift+Enter لسطر جديد.",
+      "label": "اطرح سؤالًا على المساعد",
+      "placeholder": "اسأل عن مستنداتك — مثلًا، متى يُستحق الإيجار؟",
+      "send": "إرسال السؤال"
+    },
+    "conversations": {
+      "actionsFor": "إجراءات {title}",
+      "active": "نشط",
+      "archive": "أرشفة",
+      "archived": "مؤرشف",
+      "emptyArchivedDescription": "تُحفَظ المحادثات التي تؤرشفها هنا وتبقى قابلة للقراءة.",
+      "emptyArchivedTitle": "لا شيء مؤرشف",
+      "emptyDescription": "ابدأ واحدة لطرح أسئلة عن مستندات قضاياك.",
+      "emptySearchDescription": "لا يطابق ذلك اسم أي محادثة.",
+      "emptySearchTitle": "لا توجد محادثات مطابقة",
+      "emptyTitle": "لا توجد محادثات بعد",
+      "label": "المحادثات",
+      "loadFailed": "تعذّر تحميل محادثاتك.",
+      "new": "محادثة جديدة",
+      "noMessages": "لا توجد رسائل بعد",
+      "rename": "إعادة تسمية",
+      "restore": "استعادة",
+      "searchLabel": "ابحث في المحادثات بالاسم",
+      "searchPlaceholder": "ابحث في المحادثات"
+    },
+    "deleteConversation": {
+      "deleting": "جارٍ الحذف…",
+      "description": "لن تظهر المحادثة ولا إجاباتها في أي مكان على المنصة، ولن تتمكن من إعادة فتحها. إن كنت تريد إخراجها من قائمتك فحسب، فأرشِفها بدلًا من ذلك — تبقى المحادثة المؤرشفة قابلة للقراءة.",
+      "title": "حذف «{title}»؟",
+      "titleGeneric": "حذف هذه المحادثة؟"
+    },
+    "errors": {
+      "caseNotFound": "لم تعد هذه القضية موجودة.",
+      "contextOverflow": "يحتاج هذا السؤال إلى سياق أكبر مما يستطيع المساعد استيعابه دفعة واحدة. اطرح سؤالًا أضيق.",
+      "conversationArchived": "هذه المحادثة مؤرشفة. استعِدها أو ابدأ واحدة جديدة للمتابعة.",
+      "conversationFull": "بلغت هذه المحادثة حدّ الرسائل. ابدأ محادثة جديدة للمتابعة.",
+      "conversationNotFound": "لم تعد هذه المحادثة موجودة.",
+      "disabled": "المساعد الذكي معطَّل حاليًا على هذه المنصة.",
+      "filterTooBroad": "يطابق عامل التصفية هذا الكثير بحيث يتعذّر البحث. ضيّقه إلى قضية أو مستند.",
+      "invalidFeedbackTarget": "لا يمكن تقييم سوى إجابات المساعد.",
+      "invalidQuestion": "أدخل سؤالًا من حرفين على الأقل.",
+      "malformedResponse": "أعاد النموذج إجابة تعذّر على المنصة قراءتها. حاول السؤال مجددًا.",
+      "messageNotFound": "لم تعد هذه الرسالة موجودة.",
+      "modelFailure": "أخفق نموذج اللغة في الإجابة. أعد المحاولة بعد لحظات.",
+      "modelUnavailable": "نموذج اللغة غير متاح حاليًا. أعد المحاولة بعد لحظات.",
+      "noCaseAccess": "لا تملك حق الوصول إلى القضية التي سألت عنها.",
+      "retrievalUnavailable": "استرجاع المستندات غير متاح حاليًا، لذا لا يستطيع المساعد تأسيس إجابة.",
+      "timeout": "استغرق المساعد وقتًا طويلًا للإجابة. جرّب سؤالًا أضيق."
+    },
+    "failures": {
+      "context_overflow": "تجاوز سعة السياق",
+      "llm_failure": "عطل في النموذج",
+      "llm_unavailable": "النموذج غير متاح",
+      "malformed_response": "استجابة غير صالحة التنسيق",
+      "retrieval_unavailable": "الاسترجاع غير متاح",
+      "timeout": "انتهت المهلة"
+    },
+    "feedback": {
+      "copyAnswer": "نسخ هذه الإجابة",
+      "helpful": "مفيدة",
+      "notHelpful": "غير مفيدة",
+      "rateHelpful": "قيّم هذه الإجابة بأنها مفيدة",
+      "rateNotHelpful": "قيّم هذه الإجابة بأنها غير مفيدة",
+      "ratedHelpful": "قُيّمت كمفيدة.",
+      "ratedNotHelpful": "قُيّمت كغير مفيدة.",
+      "removeHelpful": "إزالة تقييم «مفيدة»",
+      "removeNotHelpful": "إزالة تقييم «غير مفيدة»"
+    },
+    "message": {
+      "answerInProgress": "إجابة المساعد قيد الإنشاء",
+      "assistantAnswer": "إجابة المساعد",
+      "durationSeconds": "{seconds} ث",
+      "followUp": "سؤال متابعة",
+      "followUpTitle": "قُرئ هذا السؤال في ضوء ما سُئل قبله",
+      "insufficientEvidence": "لم يُعثر على أي مستند داعم لهذا السؤال، لذا لم يستند المساعد إلى شيء في إجابته. تصبح المستندات قابلة للإجابة منها بعد استخراج نصها وفهرسته.",
+      "noPassages": "لم يُعثر على مقاطع مطابقة…",
+      "passageCount": "{count, plural, zero {لا مقاطع} one {مقطع واحد} two {مقطعان} few {# مقاطع} many {# مقطعًا} other {# مقطع}}",
+      "searching": "جارٍ البحث في مستنداتك…",
+      "truncated": "بلغت هذه الإجابة حدّ الطول فانقطعت مبكرًا. اطرح سؤالًا أضيق لرؤية البقية.",
+      "writing": "{count, plural, zero {لم تُقرأ مقاطع} one {قُرئ مقطع واحد} two {قُرئ مقطعان} few {قُرئت # مقاطع} many {قُرئ # مقطعًا} other {قُرئ # مقطع}} — جارٍ كتابة الإجابة…",
+      "yourMessage": "رسالتك"
+    },
+    "metrics": {
+      "activeConversations": "المحادثات النشطة",
+      "averageLength": "متوسط الطول",
+      "averageResponse": "متوسط الاستجابة",
+      "disabled": "المساعد معطَّل في هذا النشر. تبقى المحادثات الحالية قابلة للقراءة؛ ولا يُرفض إلا إنشاء محادثات ورسائل جديدة.",
+      "failed": "فشل",
+      "failuresByCause": "الإخفاقات حسب السبب",
+      "footnote": "تغطي المحادثات والتقييمات المنصة بأكملها. أما أعداد الطلبات والأزمنة فهي من عملية الواجهة البرمجية هذه منذ {at} وتُصفَّر عند إعادة تشغيلها.",
+      "grounded": "مؤسَّس على المصادر",
+      "helpfulOf": "{percent}% من {total}",
+      "messageCount": "{count, plural, zero {لا رسائل} one {رسالة واحدة} two {رسالتان} few {# رسائل} many {# رسالة} other {# رسالة}}",
+      "messagesAnswered": "الرسائل المُجاب عنها",
+      "ratedHelpful": "قُيّمت كمفيدة",
+      "seconds": "{value} ث",
+      "streamed": "مبثوثة",
+      "streamingOff": "البثّ مُعطَّل.",
+      "suggestionsOff": "اقتراحات المتابعة غير متاحة.",
+      "title": "المساعد الذكي"
+    },
+    "rename": {
+      "description": "الاسم وحده يتغيّر. أما أسئلة هذه المحادثة وأجوبتها فتبقى كما هي.",
+      "enterName": "أدخل اسمًا.",
+      "name": "الاسم",
+      "title": "إعادة تسمية المحادثة"
+    },
+    "suggestions": {
+      "askNext": "اسأل بعد ذلك",
+      "label": "أسئلة متابعة مقترحة"
+    },
+    "workspace": {
+      "conversations": "المحادثات",
+      "readOnly": "يمكنك قراءة محادثاتك، لكن دورك لا يسمح بطرح أسئلة جديدة على المساعد الذكي."
+    }
+  },
+  "auth": {
+    "errors": {
+      "accountDisabled": "تم تعطيل هذا الحساب. تواصل مع مدير.",
+      "invalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
+      "tooManyAttempts": "محاولات تسجيل دخول كثيرة جدًا. انتظر بضع دقائق ثم أعد المحاولة."
+    },
+    "login": {
+      "description": "أدخل بيانات اعتمادك للوصول إلى قضاياك.",
+      "email": "البريد الإلكتروني",
+      "emailPlaceholder": "you@example.com",
+      "hidePassword": "إخفاء كلمة المرور",
+      "password": "كلمة المرور",
+      "passwordPlaceholder": "أدخل كلمة المرور",
+      "showPassword": "إظهار كلمة المرور",
+      "signingIn": "جارٍ تسجيل الدخول…",
+      "submit": "تسجيل الدخول",
+      "title": "تسجيل الدخول"
+    },
+    "states": {
+      "checkingAccess": "جارٍ التحقق من صلاحياتك…",
+      "redirecting": "جارٍ التحويل إلى تسجيل الدخول…",
+      "restoringSession": "جارٍ استعادة جلستك…"
+    }
+  },
+  "cases": {
+    "actions": {
+      "archive": "أرشفة",
+      "label": "الإجراءات",
+      "manageAssignments": "إدارة التعيينات",
+      "menuFor": "إجراءات {caseNumber}",
+      "restore": "استعادة",
+      "viewDetails": "عرض التفاصيل"
+    },
+    "archiveDialog": {
+      "archived": "تمت أرشفة القضية {caseNumber}.",
+      "archiving": "جارٍ الأرشفة…",
+      "confirm": "أرشفة",
+      "description": "تخرج القضية من حِمل العمل النشط لكنها تُحفَظ — لا تُحذَف — فتبقى مستنداتها وتسلسلها الزمني وسجلها سليمة. وتظل قابلة للبحث، ويمكنك استعادتها في أي وقت.",
+      "title": "أرشفة {caseNumber}؟",
+      "titleGeneric": "أرشفة هذه القضية؟"
+    },
+    "assignDialog": {
+      "description": "اختر من يعمل على {caseNumber}. اختيار «غير مُعيَّن» يزيل التعيين الحالي.",
+      "descriptionGeneric": "اختر من يعمل على هذه القضية.",
+      "noChanges": "لا توجد تغييرات تعيين للحفظ.",
+      "submit": "حفظ التعيينات",
+      "title": "إدارة التعيينات",
+      "updated": "تم تحديث تعيينات {caseNumber}."
+    },
+    "createDialog": {
+      "created": "تم إنشاء القضية {caseNumber}.",
+      "creating": "جارٍ الإنشاء…",
+      "description": "افتح قضية، واختياريًا عيّن المحامي وممثل المحكمة اللذين سيعملان عليها.",
+      "submit": "إنشاء القضية",
+      "title": "قضية جديدة"
+    },
+    "details": {
+      "assignment": "التعيين",
+      "assignments": "التعيينات",
+      "auditInformation": "معلومات التدقيق",
+      "backToCases": "العودة إلى القضايا",
+      "courtInformation": "معلومات المحكمة",
+      "createdAt": "أُنشئ في",
+      "createdBy": "أنشأه",
+      "generalInformation": "معلومات عامة",
+      "loading": "جارٍ تحميل القضية…",
+      "notProvided": "غير مُقدَّم",
+      "notRecorded": "غير مُسجَّل",
+      "notScheduled": "غير مجدولة",
+      "notSet": "غير محدَّد",
+      "updatedAt": "حُدِّث في",
+      "updatedBy": "حدّثه"
+    },
+    "editDialog": {
+      "description": "حدِّث {caseNumber} — تفاصيلها أو حالتها أو أولويتها أو محكمتها أو تعييناتها.",
+      "descriptionGeneric": "حدِّث هذه القضية.",
+      "noChanges": "لا توجد تغييرات للحفظ.",
+      "title": "تعديل القضية",
+      "updated": "تم تحديث القضية {caseNumber}."
+    },
+    "empty": {
+      "description": "افتح أول قضية لتبدأ تتبّع مسألة عبر دورة حياتها.",
+      "filteredDescription": "جرّب مصطلح بحث أو نطاقًا زمنيًا آخر، أو امسح عوامل التصفية لرؤية كل شيء.",
+      "filteredTitle": "لا توجد قضايا تطابق عوامل التصفية",
+      "title": "لا توجد قضايا بعد"
+    },
+    "errors": {
+      "detailTitle": "تعذّر تحميل هذه القضية",
+      "invalidAssignment": "لا يمكن تعيين المستخدم المُختار في هذا المنصب.",
+      "invalidDates": "هذه التواريخ ليست بترتيب صالح. راجع تاريخي الإيداع والجلسة.",
+      "invalidTransition": "لا يمكن لهذه القضية الانتقال إلى تلك الحالة من وضعها الحالي.",
+      "listTitle": "تعذّر تحميل القضايا",
+      "notFound": "لم تعد هذه القضية موجودة. حدِّث القائمة وأعد المحاولة.",
+      "numberTaken": "توجد بالفعل قضية بهذا الرقم."
+    },
+    "filters": {
+      "allPriorities": "كل الأولويات",
+      "allStatuses": "كل الحالات",
+      "anyCourt": "أي محكمة",
+      "anyLawyer": "أي محامٍ",
+      "anyRepresentative": "أي ممثل",
+      "assignedLawyer": "المحامي المُعيَّن",
+      "assignedRepresentative": "الممثل المُعيَّن",
+      "court": "المحكمة",
+      "filedFrom": "مُودَع من",
+      "filedUntil": "مُودَع حتى",
+      "hearingFrom": "الجلسة من",
+      "hearingUntil": "الجلسة حتى",
+      "priority": "الأولوية",
+      "searchPlaceholder": "ابحث برقم القضية أو العنوان أو الوصف أو المحكمة",
+      "status": "الحالة"
+    },
+    "form": {
+      "assignedLawyer": "المحامي المُعيَّن",
+      "assignedRepresentative": "ممثل المحكمة المُعيَّن",
+      "caseNumber": "رقم القضية",
+      "caseNumberHint": "اتركه فارغًا لتوليد الرقم التالي تلقائيًا.",
+      "caseNumberPlaceholder": "CASE-2026-0001",
+      "category": "الفئة",
+      "categoryHint": "اختياري — مثل: تجاري، عمل، أسرة.",
+      "categoryPlaceholder": "تجاري",
+      "court": "المحكمة",
+      "courtPlaceholder": "المحكمة التجارية بالدار البيضاء",
+      "description": "الوصف",
+      "descriptionPlaceholder": "ملخص المسألة.",
+      "filingDate": "تاريخ الإيداع",
+      "nextHearing": "الجلسة القادمة",
+      "noEligibleAccounts": "لا يوجد بعدُ حساب نشط يحمل هذا الدور.",
+      "priority": "الأولوية",
+      "selectPriority": "اختر أولوية",
+      "selectStatus": "اختر حالة",
+      "status": "الحالة",
+      "statusHint": "لا تُعرض إلا الانتقالات التي يمكن لهذه القضية القيام بها قانونيًا.",
+      "title": "العنوان",
+      "titlePlaceholder": "بنعلي ضد شركة أطلس",
+      "unassigned": "غير مُعيَّن"
+    },
+    "pagination": {
+      "summary": "{count, plural, =0 {لا توجد قضايا} one {عرض {from}–{to} من قضية واحدة} two {عرض {from}–{to} من قضيتين} few {عرض {from}–{to} من # قضايا} many {عرض {from}–{to} من # قضية} other {عرض {from}–{to} من # قضية}}"
+    },
+    "priorities": {
+      "high": "مرتفعة",
+      "low": "منخفضة",
+      "medium": "متوسطة",
+      "urgent": "عاجلة"
+    },
+    "restored": "تمت استعادة القضية {caseNumber}.",
+    "statuses": {
+      "archived": "مؤرشف",
+      "closed": "مُغلقة",
+      "draft": "مسودة",
+      "in_progress": "قيد المعالجة",
+      "open": "مفتوحة",
+      "waiting_for_hearing": "بانتظار جلسة"
+    },
+    "table": {
+      "columns": {
+        "assignedLawyer": "المحامي المُعيَّن",
+        "assignedRepresentative": "الممثل المُعيَّن",
+        "case_number": "رقم القضية",
+        "court": "المحكمة",
+        "filing_date": "تاريخ الإيداع",
+        "next_hearing_date": "الجلسة القادمة",
+        "priority": "الأولوية",
+        "status": "الحالة",
+        "title": "العنوان",
+        "updated_at": "آخر تحديث"
+      },
+      "loading": "جارٍ تحميل القضايا",
+      "notScheduled": "غير مجدولة"
+    },
+    "unassigned": "غير مُعيَّن",
+    "upcoming": {
+      "availability": "متاح في إصدار قادم.",
+      "heading": "قادم إلى هذه القضية",
+      "notes": {
+        "description": "ملاحظات عمل مشتركة بين المدير والفريق المُعيَّن.",
+        "title": "ملاحظات"
+      }
+    }
+  },
+  "common": {
+    "a11y": {
+      "breadcrumb": "مسار التنقل",
+      "collapseSidebar": "طيّ الشريط الجانبي",
+      "dashboardHome": "الصفحة الرئيسية للوحة التحكم",
+      "expandSidebar": "توسيع الشريط الجانبي",
+      "openAccountMenu": "فتح قائمة الحساب",
+      "openNavigation": "فتح قائمة التنقل",
+      "primaryNavigation": "الرئيسي",
+      "sidebar": "الشريط الجانبي",
+      "skipToContent": "تخطَّ إلى المحتوى"
+    },
+    "actions": {
+      "apply": "تطبيق",
+      "cancel": "إلغاء",
+      "clear": "مسح",
+      "clearFilters": "مسح عوامل التصفية",
+      "close": "إغلاق",
+      "confirm": "تأكيد",
+      "copied": "تم النسخ",
+      "copy": "نسخ",
+      "create": "إنشاء",
+      "delete": "حذف",
+      "download": "تنزيل",
+      "edit": "تعديل",
+      "next": "التالي",
+      "openMenu": "فتح القائمة",
+      "previous": "السابق",
+      "refresh": "تحديث",
+      "remove": "إزالة",
+      "retry": "أعد المحاولة",
+      "save": "حفظ",
+      "saveChanges": "حفظ التغييرات",
+      "saving": "جارٍ الحفظ…",
+      "search": "بحث",
+      "send": "إرسال",
+      "view": "عرض"
+    },
+    "languages": {
+      "ar": "العربية",
+      "en": "الإنجليزية",
+      "fr": "الفرنسية",
+      "und": "غير محدَّدة"
+    },
+    "pagination": {
+      "page": "الصفحة {page}",
+      "pageOf": "الصفحة {page} من {total}",
+      "showing": "عرض {from}–{to} من {total}"
+    },
+    "sort": {
+      "sortBy": "الترتيب حسب {column}",
+      "sortedAscending": "مُرتَّب تصاعديًا. فعّل للعكس.",
+      "sortedDescending": "مُرتَّب تنازليًا. فعّل للعكس."
+    },
+    "states": {
+      "emptyTitle": "لا شيء هنا بعد",
+      "errorDescription": "تعذّر تحميل المعلومات.",
+      "errorTitle": "حدث خطأ ما",
+      "loading": "جارٍ التحميل…",
+      "no": "لا",
+      "noResults": "لا توجد نتائج",
+      "notAvailable": "—",
+      "optional": "اختياري",
+      "platformDefault": "(الإعداد الافتراضي للمنصة)",
+      "required": "مطلوب",
+      "unknown": "غير معروف",
+      "yes": "نعم"
+    },
+    "time": {
+      "dateAt": "{date} • {time}",
+      "never": "أبدًا",
+      "todayAt": "اليوم • {time}",
+      "yesterdayAt": "أمس • {time}"
+    }
+  },
+  "dashboard": {
+    "buckets": {
+      "archived": "مؤرشف",
+      "assignment": "التعيين",
+      "case": "القضية",
+      "closed": "مُغلقة",
+      "completed": "مكتمل",
+      "document": "مستند",
+      "draft": "مسودة",
+      "failed": "فشل",
+      "in_progress": "قيد التنفيذ",
+      "not_started": "لم يبدأ",
+      "open": "مفتوحة",
+      "pending": "في قائمة الانتظار",
+      "priority": "الأولوية",
+      "processing": "قيد المعالجة",
+      "skipped": "مُتخطّى",
+      "status": "الحالة",
+      "waiting_for_hearing": "بانتظار جلسة"
+    },
+    "card": {
+      "refreshWidget": "تحديث {widget}",
+      "seeAll": "عرض الكل"
+    },
+    "empty": {
+      "ai_reports": "لم تُنشئ أي تقارير بعد.",
+      "case_status_overview": "لا توجد قضايا بعد.",
+      "my_cases": "لست مُعيَّنًا في أي قضية مفتوحة.",
+      "notifications": "لا توجد إشعارات بعد.",
+      "ocr_status": "لا توجد بعدُ مستندات لاستخراج النص منها.",
+      "recent_activity": "لا يوجد نشاط في قضاياك بعد.",
+      "recent_cases": "لم تُحدَّث أي قضية بعد.",
+      "recent_conversations": "لم تسأل المساعد شيئًا بعد.",
+      "recent_documents": "لم تُرفع أي مستندات بعد.",
+      "timeline_activity": "لم يحدث شيء في هذه الفترة.",
+      "upcoming_hearings": "لا توجد جلسات مجدولة في الـ 30 يومًا القادمة."
+    },
+    "errors": {
+      "disabled": "لوحة التحكم مُعطَّلة حاليًا على هذه المنصة.",
+      "noAccess": "لا تملك حق الوصول إلى لوحة التحكم هذه.",
+      "title": "تعذّر تحميل لوحة تحكمك",
+      "widget": {
+        "budgetExhausted": "تُخطّيت هذه الأداة للحفاظ على استجابة الصفحة. حدِّثها لتحميلها.",
+        "budgetExhaustedShort": "تُخطّي للحفاظ على الاستجابة",
+        "generic": "هذه الأداة غير متاحة حاليًا.",
+        "queryFailed": "تعذّر تحميل هذه الأداة. أما بقية الصفحة فغير متأثرة.",
+        "queryFailedShort": "فشل الاستعلام"
+      },
+      "widgetNotFound": "هذه الأداة غير متاحة لك."
+    },
+    "filters": {
+      "from": "من",
+      "invalidRange": "يجب ألا يسبق تاريخ النهاية تاريخ البداية.",
+      "period": "الفترة الزمنية",
+      "to": "إلى"
+    },
+    "groups": {
+      "ai": "الذكاء الاصطناعي",
+      "cases": "القضايا",
+      "court": "المحكمة",
+      "documents": "المستندات",
+      "general": "نظرة عامة",
+      "system": "النظام",
+      "timeline": "النشاط"
+    },
+    "health": {
+      "activeUsers": "المستخدمون النشطون",
+      "averageLoad": "متوسط التحميل",
+      "averageWidget": "متوسط الأداة",
+      "disabled": "لوحة التحكم معطَّلة في هذا النشر. وكل وحدة أخرى غير متأثرة — فلوحة التحكم لا تملك أي بيانات.",
+      "failuresByCause": "الإخفاقات حسب السبب",
+      "loads": "لوحات التحكم المُحمَّلة",
+      "refreshes": "تحديثات الأدوات",
+      "since": "محسوبة في عملية الواجهة البرمجية هذه منذ {at}. لوحة التحكم لا تخزّن شيئًا، لذا تُصفَّر هذه القيم عند إعادة التشغيل.",
+      "slowestWidgets": "أبطأ الأدوات",
+      "successRate": "معدل النجاح",
+      "title": "سلامة لوحة التحكم",
+      "widgetsFailed": "الأدوات الفاشلة",
+      "widgetsLoaded": "الأدوات المُحمَّلة"
+    },
+    "messageCount": "{count, plural, zero {لا رسائل} one {رسالة واحدة} two {رسالتان} few {# رسائل} many {# رسالة} other {# رسالة}}",
+    "metrics": {
+      "accounts_administrator": "المديرون",
+      "accounts_court_representative": "ممثلو المحكمة",
+      "accounts_lawyer": "المحامون",
+      "active_cases": "نشط",
+      "active_conversations": "نشط",
+      "active_users": "سجّلوا الدخول مؤخرًا",
+      "archived_cases": "مؤرشف",
+      "assistant_messages": "الرسائل",
+      "average_document_bytes": "متوسط الحجم",
+      "closed_cases": "مُغلقة",
+      "closed_in_window": "المُغلقة في الفترة",
+      "conversations": "المحادثات",
+      "conversations_in_window": "التي بدأت في الفترة",
+      "created_in_window": "المفتوحة في الفترة",
+      "disabled_accounts": "معطَّل",
+      "documents": "المستندات",
+      "enabled_accounts": "مُفعَّل",
+      "hearings_next_30_days": "الـ 30 يومًا القادمة",
+      "hearings_next_7_days": "الـ 7 أيام القادمة",
+      "hearings_overdue": "متأخرة",
+      "hearings_today": "اليوم",
+      "indexing_completed": "مفهرس",
+      "indexing_failed": "فشلت الفهرسة",
+      "indexing_pending": "الفهرسة في قائمة الانتظار",
+      "indexing_processing": "جارٍ الفهرسة",
+      "ocr_completed": "النص المستخرج",
+      "ocr_failed": "فشل الاستخراج",
+      "ocr_pending": "الاستخراج في قائمة الانتظار",
+      "ocr_processing": "جارٍ الاستخراج",
+      "queued_total": "في قائمة الانتظار",
+      "reports_failed": "فشل",
+      "reports_generated": "مكتمل",
+      "reports_in_progress": "قيد التنفيذ",
+      "reports_in_window": "المُنشأة في الفترة",
+      "reports_pending": "التقارير في قائمة الانتظار",
+      "reports_processing": "جارٍ كتابة التقارير",
+      "reports_total": "التقارير",
+      "storage_bytes": "التخزين المستخدم",
+      "suspended_accounts": "موقوف",
+      "total_accounts": "الحسابات",
+      "total_cases": "إجمالي القضايا",
+      "total_documents": "المستندات",
+      "uploaded_in_window": "المرفوعة في الفترة",
+      "version_bytes": "الإصدارات السابقة"
+    },
+    "partialFailure": "{count, plural, zero {تعذّر تحميل أي أداة. بقية هذه الصفحة مُحدَّثة.} one {تعذّر تحميل أداة واحدة. بقية هذه الصفحة مُحدَّثة.} two {تعذّر تحميل أداتين. بقية هذه الصفحة مُحدَّثة.} few {تعذّر تحميل # أدوات. بقية هذه الصفحة مُحدَّثة.} many {تعذّر تحميل # أداةً. بقية هذه الصفحة مُحدَّثة.} other {تعذّر تحميل # أداة. بقية هذه الصفحة مُحدَّثة.}}",
+    "quickActions": {
+      "create_case": "قضية جديدة",
+      "generate_report": "إنشاء تقرير",
+      "open_assistant": "اسأل المساعد",
+      "upload_document": "رفع مستند",
+      "view_calendar": "تقويم المحكمة"
+    },
+    "ranges": {
+      "custom": "نطاق مخصص",
+      "last_30_days": "آخر 30 يومًا",
+      "last_7_days": "آخر 7 أيام",
+      "today": "اليوم"
+    },
+    "sectionProgress": "{completed}/{total} أقسام",
+    "subtitle": "حِمل قضاياك، ومستنداتك، وما تعمل عليه المنصة.",
+    "title": "لوحة التحكم",
+    "widgets": {
+      "active_users": {
+        "description": "الحسابات، ومن سجّل الدخول مؤخرًا.",
+        "title": "المستخدمون"
+      },
+      "ai_analytics": {
+        "description": "محادثاتك وتقاريرك الخاصة.",
+        "title": "استخدام الذكاء الاصطناعي"
+      },
+      "ai_reports": {
+        "description": "التقارير التي أنشأتها.",
+        "title": "تقارير الذكاء الاصطناعي"
+      },
+      "case_analytics": {
+        "title": "تحليلات القضايا"
+      },
+      "case_status_overview": {
+        "description": "كيف تتوزّع حِمل قضاياك.",
+        "title": "حالة القضية"
+      },
+      "document_analytics": {
+        "title": "تحليلات المستندات"
+      },
+      "hearing_calendar": {
+        "title": "تقويم الجلسات"
+      },
+      "my_cases": {
+        "description": "القضايا المُسندة إليك، الأكثر إلحاحًا أولًا.",
+        "title": "قضاياي"
+      },
+      "notifications": {
+        "description": "أحدث تنبيهاتك.",
+        "title": "الإشعارات"
+      },
+      "ocr_status": {
+        "description": "أين وصلت مستنداتك في المسار.",
+        "title": "استخراج النص"
+      },
+      "processing_queues": {
+        "description": "العمل الذي قبلته المنصة ولم تُنهه بعد.",
+        "title": "قوائم انتظار المعالجة"
+      },
+      "quick_actions": {
+        "description": "الأشياء التي تفعلها غالبًا.",
+        "title": "إجراءات سريعة"
+      },
+      "recent_activity": {
+        "description": "ما تغيّر عبر قضاياك.",
+        "title": "النشاط الأخير"
+      },
+      "recent_cases": {
+        "title": "القضايا المُحدَّثة مؤخرًا"
+      },
+      "recent_conversations": {
+        "title": "محادثات المساعد"
+      },
+      "recent_documents": {
+        "title": "المستندات الأخيرة"
+      },
+      "storage_usage": {
+        "description": "ما تحتفظ به المنصة.",
+        "title": "التخزين"
+      },
+      "timeline_activity": {
+        "description": "أين ذهب العمل في هذه الفترة.",
+        "title": "توزيع النشاط"
+      },
+      "upcoming_hearings": {
+        "description": "المواعيد القادمة في المحكمة.",
+        "title": "الجلسات القادمة"
+      }
+    }
+  },
+  "documents": {
+    "actions": {
+      "label": "الإجراءات",
+      "menuFor": "إجراءات {filename}",
+      "preview": "معاينة",
+      "replace": "استبدال",
+      "viewDetails": "عرض التفاصيل"
+    },
+    "categories": {
+      "contract": "عقد",
+      "correspondence": "مراسلات",
+      "court_decision": "قرار محكمة",
+      "evidence": "دليل",
+      "identity_document": "وثيقة هوية",
+      "invoice": "فاتورة",
+      "other": "أخرى",
+      "pleading": "مذكرة مرافعة"
+    },
+    "deleteDialog": {
+      "deleted": "تم حذف {filename}.",
+      "deleting": "جارٍ الحذف…",
+      "description": "يُسحَب المستند من القضية ولن يظهر بعد الآن في القوائم أو عمليات البحث أو التنزيلات. ويُحفَظ — لا يُتلَف — مع كل إصدار مخزَّن، لأن المستند القانوني لا يُزال نهائيًا دون تفويض.",
+      "title": "حذف {filename}؟",
+      "titleGeneric": "حذف هذا المستند؟"
+    },
+    "detailsDialog": {
+      "description": "البيانات الوصفية، والقضية التي ينتمي إليها هذا المستند، وكل إصدار رُفع يومًا — وكلها ما زالت قابلة للتنزيل.",
+      "downloadCurrent": "تنزيل الإصدار الحالي",
+      "fields": {
+        "addedToCase": "أُضيف إلى القضية",
+        "case": "القضية",
+        "category": "الفئة",
+        "currentVersion": "الإصدار الحالي",
+        "currentVersionUploaded": "تاريخ رفع الإصدار الحالي",
+        "description": "الوصف",
+        "fileName": "اسم الملف",
+        "size": "الحجم",
+        "type": "النوع",
+        "uploadedBy": "رفعه"
+      },
+      "loadFailed": "تعذّر تحميل هذا المستند",
+      "loading": "جارٍ تحميل المستند…",
+      "notAvailable": "غير متاح",
+      "notProvided": "غير مُقدَّم",
+      "notRecorded": "غير مُسجَّل",
+      "saveDetails": "حفظ التفاصيل",
+      "saved": "تم تحديث تفاصيل المستند.",
+      "title": "تفاصيل المستند",
+      "versionShort": "الإصدار {version}"
+    },
+    "empty": {
+      "description": "ارفع أول عقد أو مذكرة أو دليل لتبدأ بناء ملف القضية.",
+      "filteredDescription": "جرّب مصطلح بحث أو فئة أو نطاقًا زمنيًا آخر، أو امسح عوامل التصفية لرؤية كل شيء.",
+      "filteredTitle": "لا توجد مستندات تطابق عوامل التصفية",
+      "title": "لا توجد مستندات بعد"
+    },
+    "errors": {
+      "caseNotFound": "لم تعد هذه القضية موجودة. حدِّث الصفحة وأعد المحاولة.",
+      "invalidFile": "رُفض هذا الملف. تحقّق من نوعه وحجمه ثم أعد المحاولة.",
+      "listTitle": "تعذّر تحميل المستندات",
+      "notFound": "لم يعد هذا المستند موجودًا. حدِّث القائمة وأعد المحاولة.",
+      "previewUnavailable": "لا يمكن معاينة هذا النوع من الملفات. نزِّله بدلًا من ذلك.",
+      "storageUnavailable": "تخزين المستندات غير متاح مؤقتًا. يرجى المحاولة مرة أخرى.",
+      "versionNotFound": "لم يعد هذا الإصدار من المستند متاحًا."
+    },
+    "filters": {
+      "allCategories": "كل الفئات",
+      "allTypes": "كل الأنواع",
+      "anyone": "أي شخص",
+      "category": "الفئة",
+      "fileType": "نوع الملف",
+      "searchPlaceholder": "ابحث باسم الملف أو الوصف أو الفئة",
+      "uploadedBy": "رفعه",
+      "uploadedFrom": "مرفوع من",
+      "uploadedUntil": "مرفوع حتى"
+    },
+    "pagination": {
+      "summary": "{count, plural, =0 {لا توجد مستندات} one {عرض {from}–{to} من مستند واحد} two {عرض {from}–{to} من مستندين} few {عرض {from}–{to} من # مستندات} many {عرض {from}–{to} من # مستندًا} other {عرض {from}–{to} من # مستند}}"
+    },
+    "preview": {
+      "downloading": "جارٍ التنزيل…",
+      "failedDescription": "{reason} ما زال بإمكانك تنزيله.",
+      "failedTitle": "تعذّر عرض معاينة هذا المستند",
+      "frameTitle": "معاينة {filename}",
+      "imageAlt": "معاينة المستند",
+      "loading": "جارٍ تحميل المعاينة…",
+      "loadingDocument": "جارٍ تحميل المستند…",
+      "title": "معاينة",
+      "versionAndSize": "الإصدار {version} · {size}"
+    },
+    "replaceDialog": {
+      "description": "ارفع إصدارًا جديدًا من {filename}. يُحفَظ الإصدار {version} ويبقى قابلًا للتنزيل من سجل الإصدارات — ولا يُستبدل شيء.",
+      "descriptionGeneric": "ارفع إصدارًا جديدًا. تُحفَظ الإصدارات السابقة وتبقى قابلة للتنزيل.",
+      "newFile": "ملف جديد",
+      "progressLabel": "تقدّم الاستبدال",
+      "replaced": "حُفظ {filename} كإصدار {version}. ولا يزال الإصدار {previous} متاحًا.",
+      "submit": "رفع إصدار جديد",
+      "supportedTypes": "الأنواع المدعومة: {types} — حتى {maxSize} ميغابايت. قد يكون البديل من نوع مختلف عن الملف الذي يستبدله.",
+      "title": "استبدال المستند"
+    },
+    "table": {
+      "columns": {
+        "case": "القضية",
+        "category": "الفئة",
+        "created_at": "تاريخ الرفع",
+        "file_size": "الحجم",
+        "original_filename": "اسم الملف",
+        "uploadedBy": "رفعه",
+        "uploaded_at": "تاريخ الرفع",
+        "version": "الإصدار"
+      },
+      "loading": "جارٍ تحميل المستندات",
+      "versionShort": "الإصدار {version}"
+    },
+    "upload": {
+      "chosenFile": "{name} — {kilobytes} كيلوبايت",
+      "progressLabel": "تقدّم الرفع",
+      "uploading": "جارٍ الرفع…",
+      "uploadingPercent": "جارٍ الرفع… {percent}%"
+    },
+    "uploadDialog": {
+      "case": "القضية",
+      "category": "الفئة",
+      "description": "أرفق ملفًا بقضية. الأنواع المدعومة: {types} — حتى {maxSize} ميغابايت.",
+      "descriptionField": "الوصف (اختياري)",
+      "descriptionPlaceholder": "ما هذا المستند، ولماذا يهمّ القضية.",
+      "file": "الملف",
+      "loadingCases": "جارٍ تحميل القضايا…",
+      "selectCase": "اختر قضية",
+      "selectCategory": "اختر فئة",
+      "submit": "رفع",
+      "title": "رفع مستند",
+      "uploaded": "تم رفع {filename}."
+    },
+    "versions": {
+      "current": "الحالية",
+      "downloadVersion": "تنزيل الإصدار {version}",
+      "downloading": "جارٍ التنزيل…",
+      "none": "لم تُسجَّل أي إصدارات.",
+      "title": "سجل الإصدارات",
+      "version": "الإصدار {version}"
+    }
+  },
+  "errors": {
+    "forbidden": "لا تملك إذنًا للقيام بهذا.",
+    "generic": "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
+    "network": "تعذّر الوصول إلى الخادم. تحقّق من اتصالك وأعد المحاولة.",
+    "notFound": "لم يعد هذا العنصر موجودًا.",
+    "rateLimited": "محاولات كثيرة جدًا. يرجى الانتظار قليلًا ثم المحاولة مرة أخرى.",
+    "sessionExpired": "انتهت جلستك. سجّل الدخول مجددًا للمتابعة.",
+    "unauthorized": "عليك تسجيل الدخول للقيام بهذا.",
+    "unavailable": "هذه الخدمة غير متاحة مؤقتًا. يرجى المحاولة بعد قليل.",
+    "validation": "بعض المعلومات المُدخلة غير صالحة. راجع النموذج وأعد المحاولة."
+  },
+  "indexing": {
+    "build": "الفهرسة للبحث",
+    "errors": {
+      "alreadyRunning": "هذا المستند قيد الفهرسة بالفعل.",
+      "disabled": "فهرسة المستندات معطَّلة حاليًا على هذه المنصة.",
+      "documentNotFound": "لم يعد هذا المستند موجودًا. حدِّث الصفحة وأعد المحاولة.",
+      "notIndexed": "لم يُفهرَس هذا المستند للبحث.",
+      "notReady": "هذا المستند ليس جاهزًا للفهرسة بعد — لم يُستخرج نصه.",
+      "versionNotFound": "لم يعد هذا الإصدار من المستند متاحًا."
+    },
+    "failureNote": "المستند ونصه المستخرج غير متأثرين.",
+    "failures": {
+      "chunking_failure": "تعذّر تقسيم النص",
+      "embedding_failure": "فشلت خدمة التضمين",
+      "invalid_ocr_output": "لا يوجد نص مستخرج",
+      "timeout": "استغرق وقتًا طويلًا",
+      "unknown": "لم يكتمل",
+      "vector_store_unavailable": "فهرس البحث غير متاح"
+    },
+    "metadata": {
+      "attempts": "المحاولات",
+      "characters": "الأحرف",
+      "duration": "المدة",
+      "finished": "انتهى في",
+      "language": "اللغة",
+      "model": "النموذج",
+      "pages": "الصفحات",
+      "passageSize": "حجم المقطع",
+      "passageSizeValue": "{size} حرفًا",
+      "passageSizeWithOverlap": "{size} حرفًا، بتداخل {overlap}",
+      "passages": "المقاطع",
+      "seconds": "{value} ث",
+      "started": "بدأ في"
+    },
+    "metrics": {
+      "averageTime": "متوسط الوقت",
+      "configuration": "{model} · {dimensions} بُعدًا · {chunker} · {chunkSize}/{chunkOverlap} حرفًا · {collection}",
+      "disabled": "فهرسة المستندات معطَّلة في هذا النشر. تبقى الفهارس الحالية قابلة للقراءة، ولا يُجدوَل أي عمل جديد.",
+      "documentsIndexed": "المستندات المفهرسة",
+      "embeddingUnavailable": "تعذّر تحميل نموذج التضمين {model}، لذا ستفشل الفهرسة الجديدة. المستندات ونصوصها المستخرجة غير متأثرة، ويمكن إعادة بناء أي تشغيل بمجرد توفّره.",
+      "failureRate": "معدل الفشل",
+      "failures": "الإخفاقات",
+      "failuresByCause": "الإخفاقات حسب السبب",
+      "passagesIndexed": "المقاطع المفهرسة",
+      "passagesPerDocument": "المقاطع لكل مستند",
+      "seconds": "{value} ث",
+      "successRate": "معدل النجاح",
+      "title": "الفهرسة للبحث",
+      "vectorStoreUnavailable": "تعذّر الوصول إلى فهرس البحث، لذا ستفشل الفهرسة الجديدة. المستندات ونصوصها المستخرجة غير متأثرة.",
+      "vectorsStored": "المتجهات المخزَّنة"
+    },
+    "notApplicable": "تنطبق فهرسة البحث على المستندات التي استُخرج نصها، أي ملفات PDF والصور.",
+    "notIndexed": "لم يُفهرَس هذا المستند للبحث بعد. تبدأ الفهرسة بعد استخراج نصه.",
+    "queued": "أُضيفت فهرسة البحث إلى قائمة الانتظار.",
+    "rebuild": "إعادة بناء الفهرس",
+    "statuses": {
+      "failed": "فشل",
+      "indexed": "قابل للبحث",
+      "indexing": "جارٍ الفهرسة",
+      "pending": "في قائمة الانتظار"
+    },
+    "title": "فهرس البحث",
+    "waitingBuilding": "جارٍ بناء فهرس البحث. تتحدّث هذه الصفحة تلقائيًا.",
+    "waitingQueued": "في قائمة انتظار الفهرسة. تتحدّث هذه الصفحة تلقائيًا."
+  },
+  "monitoring": {
+    "alerts": {
+      "deliveryNote": "تُقيَّم الشروط هنا ولا تُرسَل إلى أي جهة — ما يحوّل التنبيه إلى مكالمة هاتفية هو مدير تنبيهات أو شخص يقرأ هذه الصفحة.",
+      "measured": "قِيست {value} مقابل حدٍّ قدره {threshold}.",
+      "none": "لا يوجد تنبيه مُطلَق.",
+      "title": "التنبيهات"
+    },
+    "errors": {
+      "distinct": "أعطال مميّزة",
+      "evicted": "المجموعات المُزالة",
+      "none": "لم يفشل شيء في هذه الفترة.",
+      "occurrences": "شوهد {count} مرة",
+      "title": "الأخطاء",
+      "total": "التكرارات"
+    },
+    "events": {
+      "account_disabled": "حساب معطَّل",
+      "login_failed": "فشل تسجيل الدخول",
+      "login_locked_out": "محظور مؤقتًا",
+      "login_succeeded": "نجح تسجيل الدخول",
+      "logout": "سُجّل الخروج",
+      "password_changed": "تم تغيير كلمة المرور",
+      "permission_denied": "رُفض الإذن",
+      "rate_limited": "مُقيَّد بالمعدل",
+      "resource_access_denied": "رُفض المورد",
+      "token_expired": "رمز منتهي الصلاحية",
+      "token_invalid": "رمز غير صالح"
+    },
+    "externalNote": "تُذكَر الخدمات الخارجية اعتمادًا على الإعدادات وحدها — فمِجَسّ الجاهزية لا يستدعي نموذجًا مدفوعًا ولا يفتح اتصال بريد.",
+    "generatedAt": "قُرئ في {at}",
+    "health": {
+      "dependencies": "الخدمات الداعمة",
+      "environment": "البيئة",
+      "externalServices": "الخدمات الخارجية",
+      "required": "مطلوب",
+      "threads": "الخيوط",
+      "title": "الحالة الصحية",
+      "uptime": "مدة التشغيل",
+      "version": "الإصدار"
+    },
+    "jobs": {
+      "depthsUnavailable": "تعذّرت قراءة أعماق قوائم الانتظار، لذا لا يُعرض شيء بدل عرض صفر.",
+      "failed": "فشل",
+      "none": "لا يوجد عمل خلفي معلَّق.",
+      "pending": "قيد الانتظار",
+      "processing": "قيد المعالجة",
+      "queue": "قائمة الانتظار",
+      "title": "المهام الخلفية",
+      "workers": "مجموعات العمال"
+    },
+    "latencies": {
+      "api_response": "استجابة الواجهة البرمجية",
+      "background_job": "مهمة خلفية",
+      "database_query": "استعلام قاعدة البيانات",
+      "external_call": "استدعاء خارجي",
+      "span": "العمل المتتبَّع"
+    },
+    "loadFailed": "تعذّرت قراءة الحالة التشغيلية للمنصة.",
+    "partial": "تعذّر تجميع بعض الأقسام: {sections}. أما بقية هذه الصفحة فمُحدَّثة.",
+    "performance": {
+      "average": "المتوسط",
+      "clientErrors": "أخطاء العميل",
+      "count": "العدد",
+      "errorRate": "معدل الأخطاء",
+      "max": "الأبطأ",
+      "measurement": "القياس",
+      "noObservations": "لم يُقَس شيء في هذه الفترة بعد.",
+      "requests": "الطلبات",
+      "serverErrors": "أخطاء الخادم",
+      "slowestRoutes": "أبطأ المسارات",
+      "title": "الأداء"
+    },
+    "queues": {
+      "email": "البريد الإلكتروني",
+      "indexing": "جارٍ الفهرسة",
+      "notifications": "الإشعارات",
+      "ocr": "استخراج النص",
+      "reports": "التقارير",
+      "whatsapp": "واتساب"
+    },
+    "refresh": "تحديث",
+    "rules": {
+      "authentication_failures_high": "محاولات تسجيل الدخول الفاشلة تتجاوز الحد لهذه الفترة.",
+      "background_workers_stopped": "إحدى مجموعات العمال الخلفية متوقفة، لذا لن تُفرَّغ قائمة انتظارها أبدًا.",
+      "cache_unavailable": "تعذّر الوصول إلى Redis، لذا لا يمكن فرض تسجيل الخروج ولا تقييد محاولات الدخول.",
+      "database_unavailable": "تعذّر الوصول إلى PostgreSQL.",
+      "error_rate_high": "عدد كبير جدًا من الطلبات يُجاب بخطأ خادم.",
+      "latency_high": "الطلبات أبطأ مما يسمح به الحد.",
+      "queue_backlog": "تحتوي إحدى قوائم انتظار المهام الخلفية على عمل يتجاوز الحد المسموح به.",
+      "storage_unavailable": "تعذّر الوصول إلى MinIO، لذا لا يمكن تخزين المستندات أو تقديمها.",
+      "vector_unavailable": "تعذّر الوصول إلى Qdrant، لذا يرفض البحث الدلالي ومسار الذكاء الاصطناعي الطلبات."
+    },
+    "security": {
+      "attempts": "محاولات تسجيل الدخول",
+      "failureRate": "معدل الفشل",
+      "failures": "محاولات تسجيل دخول فاشلة",
+      "none": "لا توجد أحداث أمنية في هذه الفترة.",
+      "privacyNote": "لا يُسجَّل أي حساب ولا أي عنوان — فالمصدر بصمة مُملَّحة خاصيتها المقروءة الوحيدة هي عدد المصادر المميّزة.",
+      "sources": "مصادر مميّزة",
+      "title": "الأمان"
+    },
+    "severities": {
+      "critical": "حرج",
+      "info": "معلومة",
+      "warning": "تحذير"
+    },
+    "states": {
+      "degraded": "متدهور",
+      "disabled": "معطَّل",
+      "healthy": "سليم",
+      "unhealthy": "غير سليم",
+      "unknown": "غير معروف"
+    },
+    "traces": {
+      "dropped": "الفترات المُهمَلة",
+      "failed": "فشل",
+      "failedTrace": "فشل",
+      "none": "لم تُسجَّل أي تتبّعات بعد.",
+      "recorded": "التتبّعات",
+      "spanSummary": "{count} فترة",
+      "spans": "الفترات",
+      "title": "التتبّعات"
+    }
+  },
+  "navigation": {
+    "descriptions": {
+      "aiAssistant": "أسئلة وأجوبة وملخصات حول المستندات القانونية",
+      "cases": "إدارة القضايا القانونية",
+      "courtUpdates": "الجلسات وقرارات المحكمة",
+      "dashboard": "مؤشرات القضايا الرئيسية في لمحة",
+      "documents": "المستندات والملفات القانونية",
+      "lawyers": "المحامون المُعيَّنون",
+      "monitoring": "سلامة المنصة وتشغيلها",
+      "notifications": "التنبيهات والتذكيرات",
+      "reports": "تقارير قانونية من إنشاء الذكاء الاصطناعي",
+      "search": "ابحث عن مقاطع في المستندات المفهرسة",
+      "settings": "تفضيلات مساحة العمل",
+      "users": "حسابات المنصة وأدوارها"
+    },
+    "items": {
+      "aiAssistant": "المساعد الذكي",
+      "cases": "القضايا",
+      "courtUpdates": "تحديثات المحكمة",
+      "dashboard": "لوحة التحكم",
+      "documents": "المستندات",
+      "lawyers": "المحامون",
+      "monitoring": "المراقبة",
+      "notifications": "الإشعارات",
+      "reports": "التقارير",
+      "search": "بحث",
+      "settings": "الإعدادات",
+      "users": "المستخدمون"
+    },
+    "routes": {
+      "accessDenied": "تم رفض الوصول",
+      "aiAssistant": "المساعد الذكي",
+      "cases": "القضايا",
+      "courtUpdates": "تحديثات المحكمة",
+      "dashboard": "لوحة التحكم",
+      "documents": "المستندات",
+      "lawyers": "المحامون",
+      "monitoring": "المراقبة",
+      "notifications": "الإشعارات",
+      "reports": "التقارير",
+      "search": "بحث",
+      "settings": "الإعدادات",
+      "signIn": "تسجيل الدخول",
+      "users": "المستخدمون"
+    },
+    "sections": {
+      "workspace": "مساحة العمل"
+    }
+  },
+  "notifications": {
+    "announcement": {
+      "characterCount": "{used} / {max} حرفًا",
+      "description": "تُرسَل إلى كل حساب نشط كإشعار داخل التطبيق. ولا يُبلَّغ من أوقفوا إعلانات المنصة.",
+      "kind": "النوع",
+      "kindHint": "تُرسَل الصيانة كتحذير عالي الأولوية؛ أما الإعلان فهو خبر اعتيادي.",
+      "kinds": {
+        "announcement": "إعلان",
+        "maintenance": "صيانة مجدولة"
+      },
+      "message": "الرسالة",
+      "messagePlaceholder": "ستكون المنصة للقراءة فقط يوم الأحد بين 08:00 و10:00.",
+      "sending": "جارٍ الإرسال…",
+      "sent": "{count, plural, zero {لم تُرسَل الإعلان إلى أحد.} one {أُرسل الإعلان إلى شخص واحد.} two {أُرسل الإعلان إلى شخصين.} few {أُرسل الإعلان إلى # أشخاص.} many {أُرسل الإعلان إلى # شخصًا.} other {أُرسل الإعلان إلى # شخص.}}",
+      "skipped": "{count, plural, zero {لا أحد أوقف إعلانات المنصة.} one {شخص واحد أوقف إعلانات المنصة.} two {شخصان أوقفا إعلانات المنصة.} few {# أشخاص أوقفوا إعلانات المنصة.} many {# شخصًا أوقفوا إعلانات المنصة.} other {# شخص أوقفوا إعلانات المنصة.}}",
+      "submit": "إرسال الإعلان",
+      "title": "إعلان المنصة"
+    },
+    "categories": {
+      "ai": "المساعد",
+      "case": "القضايا",
+      "document": "المستندات",
+      "hearing": "الجلسات",
+      "ocr": "استخراج النص",
+      "report": "التقارير",
+      "system": "المنصة",
+      "user": "الحساب"
+    },
+    "center": {
+      "all": "كل الإشعارات",
+      "announce": "إعلان",
+      "preferences": "التفضيلات"
+    },
+    "channels": {
+      "email": "البريد الإلكتروني",
+      "inApp": "داخل التطبيق",
+      "whatsapp": "واتساب"
+    },
+    "errors": {
+      "disabled": "الإشعارات مُعطَّلة حاليًا على هذه المنصة.",
+      "notFound": "لم يعد هذا الإشعار متاحًا."
+    },
+    "feed": {
+      "emptyDescription": "ستظهر هنا تحديثات القضايا ونشاط المستندات والجلسات ونتائج الذكاء الاصطناعي.",
+      "emptyFiltered": "لا توجد إشعارات تطابق عوامل التصفية هذه.",
+      "emptyTitle": "لا شيء هنا",
+      "loadFailed": "تعذّر تحميل إشعاراتك",
+      "markCategoryRead": "تعليم هذه الفئة كمقروءة",
+      "totalCount": "{count, plural, zero {لا إشعارات} one {إشعار واحد} two {إشعاران} few {# إشعارات} many {# إشعارًا} other {# إشعار}}"
+    },
+    "filters": {
+      "allCategories": "كل الفئات",
+      "allPriorities": "كل الأولويات",
+      "allTypes": "كل الأنواع",
+      "byCategory": "تصفية حسب الفئة",
+      "byPriority": "تصفية حسب الأولوية",
+      "byType": "تصفية حسب النوع",
+      "unreadOnly": "غير المقروءة فقط"
+    },
+    "item": {
+      "markRead": "تعليم كمقروء",
+      "markReadFor": "تعليم «{title}» كمقروء"
+    },
+    "panel": {
+      "empty": "لا توجد إشعارات بعد.",
+      "loading": "جارٍ تحميل الإشعارات…",
+      "markAllRead": "تعليم الكل كمقروء",
+      "marking": "جارٍ التعليم…",
+      "moreThan": "أكثر من {count}",
+      "nothingUnread": "لا شيء غير مقروء.",
+      "showAll": "عرض الكل",
+      "title": "الإشعارات",
+      "unreadLabel": "الإشعارات، {count} غير مقروءة",
+      "unreadOnly": "غير المقروءة فقط",
+      "viewAll": "عرض الكل"
+    },
+    "preferences": {
+      "account_activity": {
+        "description": "إعادة تعيين كلمات المرور، وتغييرات الأدوار، وتفعيل الحسابات.",
+        "title": "نشاط الحساب"
+      },
+      "ai_report_completion": {
+        "description": "عندما يصبح تقرير طلبته جاهزًا، وعندما يفشل إنشاؤه.",
+        "title": "تقارير الذكاء الاصطناعي"
+      },
+      "case_updates": {
+        "description": "القضايا الجديدة، وتغيّرات الحالة والأولوية، والأرشفة، والتعيينات.",
+        "title": "تحديثات القضايا"
+      },
+      "document_updates": {
+        "description": "الملفات المرفوعة أو المستبدلة أو المسحوبة في قضاياك.",
+        "title": "تحديثات المستندات"
+      },
+      "hearing_updates": {
+        "description": "مواعيد الجلسات وتواريخ الإيداع والقضايا التي تنتقل إلى انتظار جلسة.",
+        "title": "الجلسات"
+      },
+      "ocr_completion": {
+        "description": "عندما يصبح مستند ممسوح ضوئيًا قابلًا للقراءة، وعندما يفشل الاستخراج.",
+        "title": "استخراج النص"
+      },
+      "system_announcements": {
+        "description": "نوافذ الصيانة وإعلانات المديرين لديك.",
+        "title": "إعلانات المنصة"
+      }
+    },
+    "preferencesForm": {
+      "channelToggle": "{preference} — {channel}",
+      "description": "اختر ما تُعلمك به المنصة، وكيف يصلك. إيقاف أي بند يوقف الإشعارات الجديدة من ذلك النوع — أما الموجودة في سجلك فتبقى كما هي. تُرسَل التحديثات المهمة فقط عبر البريد الإلكتروني أو واتساب؛ ويبقى النشاط الاعتيادي داخل التطبيق مهما اخترت هنا، ويتطلب واتساب رقم هاتف على حسابك.",
+      "loading": "جارٍ تحميل تفضيلاتك…",
+      "title": "تفضيلات الإشعارات"
+    },
+    "priorities": {
+      "critical": "حرج",
+      "high": "مرتفعة",
+      "low": "منخفضة",
+      "normal": "عادية"
+    },
+    "types": {
+      "error": "خطأ",
+      "information": "معلومة",
+      "success": "نجاح",
+      "warning": "تحذير"
+    }
+  },
+  "ocr": {
+    "errors": {
+      "alreadyRunning": "استخراج النص جارٍ بالفعل لهذا المستند.",
+      "disabled": "استخراج النص معطَّل حاليًا على هذه المنصة.",
+      "documentNotFound": "لم يعد هذا المستند موجودًا. حدِّث الصفحة وأعد المحاولة.",
+      "notProcessed": "لم تُجرَ عملية استخراج نص لهذا المستند.",
+      "unsupportedFormat": "لا ينطبق استخراج النص على هذا النوع من الملفات.",
+      "versionNotFound": "لم يعد هذا الإصدار من المستند متاحًا."
+    },
+    "extract": "استخراج النص",
+    "failureNote": "المستند نفسه غير متأثر وما زال قابلًا للتنزيل.",
+    "failures": {
+      "corrupted_document": "تعذّرت قراءة الملف",
+      "engine_failure": "فشلت خدمة الاستخراج",
+      "storage_failure": "الملف المخزَّن غير متاح",
+      "timeout": "استغرق وقتًا طويلًا",
+      "unknown": "لم يكتمل",
+      "unreadable_document": "لم يُعثر على شيء قابل للقراءة",
+      "unsupported_format": "نوع ملف غير مدعوم"
+    },
+    "hideText": "إخفاء النص المستخرج",
+    "metadata": {
+      "attempts": "المحاولات",
+      "confidence": "درجة الثقة",
+      "duration": "المدة",
+      "engine": "المحرك",
+      "finished": "انتهى في",
+      "language": "اللغة",
+      "pages": "الصفحات",
+      "percent": "{value}%",
+      "seconds": "{value} ث",
+      "started": "بدأ في"
+    },
+    "metrics": {
+      "averageTime": "متوسط الوقت",
+      "disabled": "استخراج النص معطَّل في هذا النشر. تبقى النتائج الحالية قابلة للقراءة، ولا يُجدوَل أي عمل جديد.",
+      "engineUnavailable": "تعذّر الوصول إلى محرك {engine}، لذا ستفشل عمليات الاستخراج الجديدة. المستندات المرفوعة غير متأثرة، ويمكن إعادة محاولة أي تشغيل بعد تثبيته.",
+      "failureRate": "معدل الفشل",
+      "failuresByCause": "الإخفاقات حسب السبب",
+      "runs": "عمليات التشغيل",
+      "seconds": "{value} ث",
+      "successRate": "معدل النجاح"
+    },
+    "notApplicable": "ينطبق استخراج النص على ملفات PDF والصور. هذا النوع من الملفات يحمل أصلًا نصًا قابلًا للقراءة آليًا.",
+    "notProcessed": "لم تتم معالجة هذا المستند بعد.",
+    "queued": "أُضيف استخراج النص إلى قائمة الانتظار.",
+    "retry": "إعادة محاولة الاستخراج",
+    "statuses": {
+      "completed": "مكتمل",
+      "failed": "فشل",
+      "pending": "في قائمة الانتظار",
+      "processing": "جارٍ الاستخراج"
+    },
+    "text": {
+      "confidence": "ثقة {value}%",
+      "copyAll": "نسخ كل النص",
+      "copyRefused": "لم يسمح متصفحك بالنسخ. حدِّد النص بدلًا من ذلك.",
+      "emptyDescription": "لم يُنتج هذا المستند أي نص قابل للقراءة. قد يكون مسحًا ضوئيًا فارغًا أو يحتوي على صور فقط.",
+      "emptyPage": "لم تُنتج هذه الصفحة أي نص.",
+      "emptyTitle": "لم يُستخرج أي نص",
+      "page": "الصفحة {number}",
+      "summary": "{pages, plural, zero {لا صفحات} one {صفحة واحدة} two {صفحتان} few {# صفحات} many {# صفحة} other {# صفحة}} · {characters} حرفًا"
+    },
+    "title": "استخراج النص",
+    "viewText": "عرض النص المستخرج",
+    "waitingQueued": "في قائمة انتظار الاستخراج. تتحدّث هذه الصفحة تلقائيًا.",
+    "waitingReading": "جارٍ قراءة المستند. تتحدّث هذه الصفحة تلقائيًا."
+  },
+  "pages": {
+    "aiAssistant": {
+      "description": "اطرح أسئلة عن مستندات قضاياك. تستشهد كل إجابة بالملف والصفحة اللذين جاءت منهما، ويصرّح المساعد عندما لا تدعم المستندات إجابةً.",
+      "title": "المساعد الذكي"
+    },
+    "caseDetails": {
+      "description": "معلومات عامة، والتعيين، ومعلومات المحكمة، وسجل التدقيق.",
+      "title": "تفاصيل القضية"
+    },
+    "cases": {
+      "description": "أنشئ القضايا القانونية ونظّمها وتابعها عبر دورة حياتها.",
+      "title": "القضايا"
+    },
+    "courtUpdates": {
+      "description": "تابع الجلسات وقرارات المحكمة ومواعيد القضايا النهائية.",
+      "emptyDescription": "سيُنفَّذ تتبّع الجلسات وقرارات المحكمة في ميزة قادمة.",
+      "emptyTitle": "لا توجد تحديثات من المحكمة بعد",
+      "title": "تحديثات المحكمة"
+    },
+    "dashboard": {
+      "description": "قضاياك وجلساتك ومستنداتك ونشاطك — تُحدَّث فور وقوع الأحداث.",
+      "title": "لوحة التحكم"
+    },
+    "documents": {
+      "description": "ارفع الملفات المرتبطة بقضاياك ونظّمها وأصدِر نسخها واسترجعها.",
+      "title": "المستندات"
+    },
+    "lawyers": {
+      "description": "أدر المحامين وتعييناتهم في القضايا.",
+      "emptyDescription": "ستُنفَّذ إدارة المحامين في ميزة قادمة.",
+      "emptyTitle": "لا يوجد محامون بعد",
+      "title": "المحامون"
+    },
+    "monitoring": {
+      "description": "كيف يتصرّف هذا النشر: السلامة، وزمن الاستجابة، والعمل الخلفي، والإخفاقات، ونشاط الأمان.",
+      "title": "المراقبة"
+    },
+    "notFound": {
+      "description": "الصفحة التي تبحث عنها غير موجودة أو ربما نُقلت.",
+      "title": "الصفحة غير موجودة"
+    },
+    "notifications": {
+      "description": "تحديثات القضايا وقرارات المحكمة ونشاط المستندات ونتائج الذكاء الاصطناعي.",
+      "title": "الإشعارات"
+    },
+    "reports": {
+      "description": "أنشئ تقارير قانونية منظَّمة وموثَّقة من مستندات القضية المفهرسة. يُكتب كل تقرير في الخلفية، قسمًا بعد قسم، ولا تظهر هنا إلا التقارير التي أنشأتها أنت.",
+      "title": "التقارير"
+    },
+    "search": {
+      "description": "اطرح سؤالًا بكلماتك واعثر على المقاطع التي تجيب عنه، عبر مستندات قضاياك.",
+      "title": "بحث"
+    },
+    "settings": {
+      "description": "أدر ملفك الشخصي وأمان حسابك وكيفية تصرّف هذه المنصة معك.",
+      "title": "الإعدادات"
+    },
+    "userDetails": {
+      "description": "الملف الشخصي والدور وحالة الحساب والنشاط.",
+      "title": "تفاصيل المستخدم"
+    },
+    "users": {
+      "description": "أدر المديرين والمحامين وممثلي المحكمة.",
+      "title": "المستخدمون"
+    }
+  },
+  "realtime": {
+    "connecting": {
+      "detail": "جارٍ الاتصال بالتحديثات المباشرة.",
+      "label": "جارٍ الاتصال"
+    },
+    "offline": {
+      "detail": "التحديثات المباشرة غير متاحة. كل شيء ما زال يعمل، لكن تغييرات الآخرين لن تظهر حتى تُحدِّث الصفحة.",
+      "label": "التحديثات متوقفة"
+    },
+    "reconnecting": {
+      "detail": "انقطعت التحديثات المباشرة. جارٍ إعادة الاتصال — الصفحة ما زالت تعمل.",
+      "label": "جارٍ إعادة الاتصال"
+    },
+    "retry": "إعادة محاولة الاتصال بالتحديثات المباشرة"
+  },
+  "reports": {
+    "actions": {
+      "menuFor": "إجراءات {title}",
+      "open": "مفتوحة",
+      "queuedAgain": "أُعيدت إضافة التقرير إلى قائمة الانتظار.",
+      "regenerate": "إعادة الإنشاء"
+    },
+    "caseSection": {
+      "description": "تقارير منظَّمة وموثَّقة مُنشأة من مستندات هذه القضية المفهرسة. لا تظهر هنا إلا التقارير التي أنشأتها أنت.",
+      "title": "التقارير"
+    },
+    "deleteDialog": {
+      "confirm": "حذف التقرير",
+      "deleted": "تم حذف التقرير.",
+      "deleting": "جارٍ الحذف…",
+      "description": "يغادر سجلك ولا يمكن فتحه أو تصديره بعد الآن. أما القضية ومستنداتها وتسلسلها الزمني فتبقى كما هي. ويظل بإمكانك إنشاء التقرير من جديد في أي وقت.",
+      "title": "حذف هذا التقرير؟"
+    },
+    "detail": {
+      "failureFallback": "تعذّر إنشاء التقرير. حاول إنشاءه مرة أخرى.",
+      "generatedAt": "أُنشئ في {at}",
+      "groundedSummary": "{grounded} من {sections, plural, zero {لا أقسام} one {قسم واحد} two {قسمين} few {# أقسام} many {# قسمًا} other {# قسم}} مؤسَّسة على {documents, plural, zero {لا مستندات} one {مستند واحد} two {مستندين} few {# مستندات} many {# مستندًا} other {# مستند}}",
+      "loading": "جارٍ تحميل التقرير.",
+      "openFailed": "تعذّر فتح هذا التقرير",
+      "progressNote": "يُسترجَع كل قسم ويُكتب على حدة، لذا يستغرق الملف الكبير بضع دقائق. يمكنك إغلاق هذه النافذة — سيتابع التقرير البناء.",
+      "queuedAgain": "أُعيدت إضافة التقرير إلى قائمة الانتظار. سيتحدّث أثناء إعادة كتابته.",
+      "title": "التقرير",
+      "typeAndRequested": "{type} · طُلب في {at}"
+    },
+    "empty": {
+      "description": "أنشئ تقريرًا منظَّمًا وموثَّقًا من مستندات هذه القضية المفهرسة. يُكتب في الخلفية، قسمًا بعد قسم.",
+      "filteredDescription": "لا يوجد تقرير في سجلك يطابق عوامل التصفية هذه.",
+      "filteredTitle": "لا توجد تقارير مطابقة",
+      "title": "لا توجد تقارير بعد"
+    },
+    "errors": {
+      "alreadyRunning": "هذا التقرير قيد الإنشاء بالفعل.",
+      "caseNotFound": "لم تعد هذه القضية موجودة. حدِّث الصفحة وأعد المحاولة.",
+      "disabled": "إنشاء التقارير معطَّل حاليًا على هذه المنصة.",
+      "exportUnavailable": "صيغة التصدير هذه غير متاحة في هذا النشر. جرّب الأخرى.",
+      "listTitle": "تعذّر تحميل التقارير",
+      "noGenerateAccess": "لا تملك إذنًا لإنشاء تقارير لهذه القضية.",
+      "notFound": "لم يعد هذا التقرير متاحًا.",
+      "notReady": "لم يكتمل هذا التقرير بعد. يمكن تصديره بعد اكتماله.",
+      "tooManyActive": "لديك بالفعل عدة تقارير قيد الإنشاء. انتظر انتهاء أحدها."
+    },
+    "export": {
+      "exported": "تم تصدير التقرير بصيغة {format}.",
+      "label": "تصدير"
+    },
+    "failures": {
+      "export_failure": "فشل التصدير",
+      "insufficient_context": "لا شيء يُكتب عنه",
+      "llm_failure": "فشل خدمة الذكاء الاصطناعي",
+      "llm_unavailable": "خدمة الذكاء الاصطناعي غير متاحة",
+      "malformed_response": "استجابة غير قابلة للاستخدام",
+      "retrieval_unavailable": "تعذّر استرجاع المستندات",
+      "timeout": "استغرق وقتًا طويلًا",
+      "unknown": "لم يكتمل"
+    },
+    "filters": {
+      "all": "الكل",
+      "allStatuses": "كل الحالات",
+      "allTypes": "كل الأنواع",
+      "searchPlaceholder": "ابحث في عناوين التقارير",
+      "status": "الحالة",
+      "type": "النوع"
+    },
+    "generateDialog": {
+      "case": "القضية",
+      "description": "يُكتب التقرير من مستندات هذه القضية المفهرسة، قسمًا بعد قسم، مع استشهاد لكل استنتاج. يجري الإنشاء في الخلفية — يمكنك إغلاق هذه النافذة والعودة لاحقًا.",
+      "language": "اللغة",
+      "languageHint": "يُكتب كل قسم بهذه اللغة، مهما كانت لغة المستندات.",
+      "loadingCases": "جارٍ تحميل القضايا…",
+      "loadingTypes": "جارٍ تحميل أنواع التقارير…",
+      "queued": "أُضيف التقرير إلى قائمة الانتظار. سيظهر أثناء كتابته.",
+      "queueing": "جارٍ الإضافة إلى قائمة الانتظار…",
+      "reportType": "نوع التقرير",
+      "sectionPreview": "{count, plural, zero {لن يحتوي هذا التقرير على أقسام} one {سيحتوي هذا التقرير على قسم واحد} two {سيحتوي هذا التقرير على قسمين} few {سيحتوي هذا التقرير على # أقسام} many {سيحتوي هذا التقرير على # قسمًا} other {سيحتوي هذا التقرير على # قسم}}",
+      "selectCase": "اختر قضية",
+      "selectLanguage": "اختر لغة",
+      "selectType": "اختر نوعًا",
+      "submit": "إنشاء",
+      "title": "إنشاء تقرير",
+      "titleField": "العنوان (اختياري)",
+      "titlePlaceholder": "اتركه فارغًا لتسميته حسب نوع التقرير ورقم القضية",
+      "uncoveredNote": "القسم الذي لا يغطيه ملف القضية يُصرَّح بذلك بدل ملئه."
+    },
+    "metrics": {
+      "averageSize": "متوسط الحجم",
+      "averageTime": "متوسط الوقت",
+      "characters": "{value} حرفًا",
+      "disabled": "إنشاء التقارير معطَّل في هذا النشر. تبقى التقارير الحالية قابلة للقراءة والتصدير، ولا تُضاف تقارير جديدة إلى قائمة الانتظار.",
+      "exports": "عمليات التصدير",
+      "failures": "الإخفاقات",
+      "failuresByCause": "الإخفاقات حسب السبب",
+      "footnote": "صيغ التصدير المتاحة هنا: {formats}. مجموعة القوالب الإصدار {version}.",
+      "llmUnavailable": "لا يمكن الوصول إلى أي مزوّد ذكاء اصطناعي، لذا ستفشل التقارير الجديدة. القضايا والمستندات والتقارير الحالية غير متأثرة، ويمكن إعادة إنشاء أي تشغيل بمجرد توفّر الخدمة.",
+      "noFormats": "لا شيء",
+      "promptUnavailable": "تعذّر تحميل قالب الإجابة الخاص بالمسار، لذا سيفشل كل قسم — فقسم التقرير هو تشغيل للمسار. القضايا والمستندات غير متأثرة.",
+      "reportsByType": "التقارير حسب النوع",
+      "reportsGenerated": "التقارير المُنشأة",
+      "seconds": "{value} ث",
+      "sectionsGrounded": "الأقسام المؤسَّسة على المصادر",
+      "successRate": "معدل النجاح",
+      "title": "إنشاء التقارير بالذكاء الاصطناعي",
+      "tokensUsed": "الرموز المستخدمة"
+    },
+    "pagination": {
+      "summary": "{count, plural, =0 {لا توجد تقارير} one {عرض {from}–{to} من تقرير واحد} two {عرض {from}–{to} من تقريرين} few {عرض {from}–{to} من # تقارير} many {عرض {from}–{to} من # تقريرًا} other {عرض {from}–{to} من # تقرير}}"
+    },
+    "progress": {
+      "label": "تقدّم إنشاء التقرير",
+      "preparing": "جارٍ التحضير",
+      "queued": "في قائمة الانتظار — بانتظار عامل",
+      "writingSection": "جارٍ كتابة القسم {current} من {total}"
+    },
+    "sections": {
+      "notCovered": "غير مُغطّى",
+      "sources": "المصادر: {markers}",
+      "stopsEarly": "ينقطع مبكرًا"
+    },
+    "statuses": {
+      "completed": "جاهز",
+      "failed": "فشل",
+      "pending": "في قائمة الانتظار",
+      "processing": "جارٍ الإنشاء"
+    },
+    "table": {
+      "columns": {
+        "case": "القضية",
+        "created_at": "طُلب في",
+        "report": "التقرير",
+        "requested": "طُلب في",
+        "sections": "الأقسام",
+        "status": "الحالة",
+        "title": "التقرير"
+      },
+      "groundedOf": "{grounded}/{total} مؤسَّسة",
+      "loading": "جارٍ تحميل التقارير",
+      "openCase": "فتح القضية"
+    },
+    "types": {
+      "case_summary": "ملخص القضية",
+      "chronological_timeline": "التسلسل الزمني",
+      "evidence_summary": "ملخص الأدلة",
+      "executive_summary": "ملخص تنفيذي",
+      "hearing_preparation": "التحضير للجلسة"
+    }
+  },
+  "search": {
+    "bestMatch": "أفضل تطابق {percent}",
+    "caseSection": {
+      "description": "اطرح سؤالًا بكلماتك واعثر على المقاطع التي تجيب عنه، مع الملف والصفحة اللذين جاءت منهما.",
+      "title": "ابحث في هذه القضية"
+    },
+    "documentsUnaffected": "مستنداتك ونصوصها غير متأثرة.",
+    "durationMs": "{value} م.ث",
+    "empty": {
+      "noResultsDescription": "لا شيء في المستندات التي يمكنك الوصول إليها قريب من هذا السؤال. جرّب صياغة أخرى، أو وسّع عوامل التصفية. تصبح المستندات قابلة للبحث بعد استخراج نصها وفهرسته.",
+      "noResultsTitle": "لا توجد مقاطع مطابقة",
+      "notSearchedDescription": "اطرح سؤالًا بكلماتك. النتائج مقاطع من مستندات القضايا التي يمكنك الوصول إليها، مع الملف والصفحة ودرجة الصلة لكل منها.",
+      "notSearchedTitle": "لم يُبحث عن شيء بعد"
+    },
+    "enterQuery": "أدخل استعلام بحث.",
+    "errors": {
+      "caseNotFound": "لم تعد هذه القضية موجودة. امسح عامل التصفية وأعد البحث.",
+      "disabled": "البحث الدلالي معطَّل حاليًا على هذه المنصة.",
+      "documentNotFound": "لم يعد هذا المستند موجودًا. امسح عامل التصفية وأعد البحث.",
+      "embeddingUnavailable": "نموذج البحث غير متاح حاليًا، لذا لا يمكن مطابقة سؤال مع مستنداتك.",
+      "filterTooBroad": "يطابق عامل التصفية هذا الكثير بحيث يتعذّر البحث. ضيّقه إلى قضية أو مستند.",
+      "invalidQuery": "أدخل استعلام بحث من حرفين على الأقل.",
+      "noFilterAccess": "لا تملك حق الوصول إلى القضية أو المستند الذي صفّيت به.",
+      "vectorStoreUnavailable": "فهرس البحث غير قابل للوصول حاليًا، لذا لا يمكن مطابقة أي شيء مع مستنداتك."
+    },
+    "failures": {
+      "embedding_unavailable": "نموذج البحث غير متاح",
+      "unknown": "لم يكتمل البحث",
+      "vector_store_unavailable": "فهرس البحث غير متاح"
+    },
+    "filters": {
+      "allCases": "كل القضايا",
+      "allCategories": "كل الفئات",
+      "allLanguages": "كل اللغات",
+      "allTypes": "كل الأنواع",
+      "case": "القضية",
+      "category": "الفئة",
+      "fileType": "نوع الملف",
+      "language": "اللغة"
+    },
+    "heading": "البحث الدلالي",
+    "hint": "بلغة طبيعية، بالعربية أو الفرنسية أو الإنجليزية — سؤال بلغة واحدة يعثر على مقاطع مكتوبة باللغات الأخرى.",
+    "label": "ابحث في مستنداتك",
+    "labelCase": "ابحث في مستندات هذه القضية",
+    "metrics": {
+      "averageRelevance": "متوسط الصلة",
+      "averageTime": "متوسط الوقت",
+      "configuration": "{model} · {dimensions} بُعدًا · ترتيب {ranker} · {collection} · حتى {maxLimit} نتيجة",
+      "disabled": "البحث الدلالي معطَّل في هذا النشر. المستندات المفهرسة غير متأثرة؛ البحث فيها وحده هو المرفوض.",
+      "embeddingUnavailable": "تعذّر تحميل نموذج التضمين {model}، لذا ستفشل كل عمليات البحث. المستندات وفهارسها غير متأثرة.",
+      "failureRate": "معدل الفشل",
+      "failures": "الإخفاقات",
+      "failuresByCause": "الإخفاقات حسب السبب",
+      "milliseconds": "{value} م.ث",
+      "passagesReturned": "المقاطع المُرجَعة",
+      "resultsPerSearch": "النتائج لكل بحث",
+      "searches": "عمليات البحث",
+      "since": "محسوبة على نسخة الواجهة البرمجية هذه منذ {at}.",
+      "successRate": "معدل النجاح",
+      "title": "البحث الدلالي",
+      "vectorStoreUnavailable": "تعذّر الوصول إلى فهرس البحث، لذا ستفشل كل عمليات البحث. المستندات ونصوصها المستخرجة غير متأثرة."
+    },
+    "placeholder": "اسأل بكلماتك — مثلًا، متى يُستحق الإيجار؟",
+    "result": {
+      "document": "مستند",
+      "match": "تطابق {percent}%",
+      "openCase": "فتح القضية",
+      "provenance": "الصفحة {page} · المقطع {passage} · الإصدار {version}",
+      "rank": "النتيجة {rank}",
+      "similarity": "التشابه {score}"
+    },
+    "resultCount": "{count, plural, zero {لا مقاطع لـ} one {مقطع واحد لـ} two {مقطعان لـ} few {# مقاطع لـ} many {# مقطعًا لـ} other {# مقطع لـ}}",
+    "searching": "جارٍ البحث"
+  },
+  "settings": {
+    "administration": {
+      "description": "إعدادات النظام، والقيم الافتراضية التي يتبعها كل حساب لم يُبدِ تفضيلًا.",
+      "loading": "جارٍ تحميل إعدادات المنصة…",
+      "notice": "تنطبق هذه الإعدادات على الجميع. وكل قيمة افتراضية أدناه هي ما يتبعه أي حساب لم يختر لنفسه قط — وتغيير إحداها يصل إلى كل حساب كهذا فورًا. ويعرض وضع الصيانة إشعارًا لكل من سجّل الدخول؛ ولا يُغلق المنصة.",
+      "title": "إعدادات المنصة"
+    },
+    "definitions": {
+      "ai_citations": {
+        "description": "كيفية عرض مصادر الإجابة. تظل الإجابات مؤسَّسة على مستنداتك دائمًا — هذا يغيّر العرض فقط.",
+        "title": "الاستشهادات"
+      },
+      "ai_default_citations": {
+        "description": "للحسابات التي لم تختر واحدًا.",
+        "title": "العرض الافتراضي للاستشهادات"
+      },
+      "ai_default_response_length": {
+        "description": "للحسابات التي لم تختر واحدًا.",
+        "title": "طول الإجابة الافتراضي"
+      },
+      "ai_default_streaming": {
+        "description": "للحسابات التي لم تختر واحدًا.",
+        "title": "بثّ الإجابات افتراضيًا"
+      },
+      "ai_response_length": {
+        "description": "مقدار التفصيل الذي تُعرَض به إجابات المساعد.",
+        "title": "طول الإجابة"
+      },
+      "ai_streaming": {
+        "description": "اعرض الإجابة أثناء كتابتها بدل انتظار اكتمالها.",
+        "title": "بثّ الإجابات"
+      },
+      "dashboard_range": {
+        "description": "الفترة التي تُفتح عليها تحليلات لوحة تحكمك.",
+        "title": "النطاق الزمني الافتراضي"
+      },
+      "dashboard_widgets": {
+        "description": "اختر البطاقات التي تظهر. اترك كل شيء غير محدَّد لعرض جميع الأدوات التي يسمح بها دورك، بما فيها ما يُضاف لاحقًا.",
+        "title": "الأدوات الظاهرة"
+      },
+      "date_format": {
+        "description": "كيف يُكتب التاريخ.",
+        "title": "تنسيق التاريخ"
+      },
+      "default_date_format": {
+        "description": "للحسابات التي لم تختر واحدًا.",
+        "title": "تنسيق التاريخ الافتراضي"
+      },
+      "default_language": {
+        "description": "للحسابات التي لم تختر واحدًا.",
+        "title": "اللغة الافتراضية"
+      },
+      "default_theme": {
+        "description": "للحسابات التي لم تختر واحدًا.",
+        "title": "السمة الافتراضية"
+      },
+      "default_time_format": {
+        "description": "للحسابات التي لم تختر واحدًا.",
+        "title": "تنسيق الوقت الافتراضي"
+      },
+      "default_timezone": {
+        "description": "للحسابات التي لم تختر واحدًا.",
+        "title": "المنطقة الزمنية الافتراضية"
+      },
+      "language": {
+        "description": "الواجهة، واللغة التي تُكتب بها إجابات الذكاء الاصطناعي.",
+        "title": "اللغة"
+      },
+      "maintenance_message": {
+        "description": "ما يراه الجميع أثناء تفعيل وضع الصيانة.",
+        "title": "إشعار الصيانة"
+      },
+      "maintenance_mode": {
+        "description": "يعرض إشعارًا لكل من سجّل الدخول. يُعلن عن صيانة؛ ولا يُغلق المنصة.",
+        "title": "وضع الصيانة"
+      },
+      "theme": {
+        "description": "الوضع الداكن هو التجربة المصمَّمة للمنصة. أما «النظام» فيتبع جهازك.",
+        "title": "السمة"
+      },
+      "time_format": {
+        "description": "نظام 24 ساعة أو 12 ساعة.",
+        "title": "تنسيق الوقت"
+      },
+      "timezone": {
+        "description": "تُعرَض أوقات الجلسات والمواعيد النهائية بهذه المنطقة الزمنية.",
+        "title": "المنطقة الزمنية"
+      }
+    },
+    "errors": {
+      "forbidden": "لا تملك إذنًا لتغيير هذا.",
+      "invalidValue": "هذه القيمة غير مقبولة لهذا الإعداد. راجع ما أدخلته.",
+      "unavailable": "الإعدادات غير متاحة مؤقتًا. يرجى المحاولة مرة أخرى.",
+      "wrongPassword": "كلمة مرورك الحالية غير صحيحة."
+    },
+    "failures": {
+      "bad_current_password": "كلمة المرور الحالية غير صحيحة",
+      "invalid_value": "قيمة غير صالحة",
+      "persistence_failed": "تعذّر الحفظ",
+      "unknown": "غير معروف",
+      "unknown_setting": "إعداد غير معروف"
+    },
+    "preferenceSections": {
+      "communication": {
+        "description": "اختر كيف تصلك الإشعارات خارج التطبيق. تُرسَل التحديثات المهمة فقط عبر البريد الإلكتروني أو واتساب — أما النشاط الاعتيادي فيبقى داخل التطبيق مهما اخترت هنا، ويتطلب واتساب رقم هاتف على حسابك.",
+        "title": "التواصل"
+      },
+      "notifications": {
+        "description": "اختر ما تُعلمك به المنصة. إيقاف أي بند يوقف الإشعارات الجديدة من ذلك النوع — أما الموجودة في سجلك فتبقى كما هي.",
+        "title": "الإشعارات"
+      }
+    },
+    "profile": {
+      "description": "كيف تظهر لزملائك على هذه المنصة. يحدّد المدير بريدك الإلكتروني ودورك، ويُعرَضان هنا للاطلاع.",
+      "discard": "تجاهل",
+      "emailAddress": "عنوان البريد الإلكتروني",
+      "firstName": "الاسم الأول",
+      "jobTitle": "المسمى الوظيفي",
+      "jobTitleHint": "اختياري. وصف يراه زملاؤك بجوار اسمك.",
+      "jobTitlePlaceholder": "محامٍ أول",
+      "lastName": "اسم العائلة",
+      "phone": "رقم الهاتف",
+      "phoneHint": "اختياري. يُستخدم لتنبيهات واتساب إن فعّلتها.",
+      "profilePicture": "صورة الملف الشخصي",
+      "profilePictureHint": "اختياري. رابط إلى صورة.",
+      "role": "الدور",
+      "saved": "تم تحديث ملفك الشخصي.",
+      "title": "الملف الشخصي"
+    },
+    "sections": {
+      "administration": {
+        "description": "إعدادات على مستوى المنصة. للمديرين فقط.",
+        "title": "الإدارة"
+      },
+      "ai": {
+        "description": "كيف تُعرَض عليك إجابات المساعد.",
+        "title": "المساعد الذكي"
+      },
+      "appearance": {
+        "description": "السمة التي تُرسَم بها هذه المنصة.",
+        "title": "المظهر"
+      },
+      "communication": {
+        "description": "كيف تصلك تلك الإشعارات.",
+        "title": "التواصل"
+      },
+      "dashboard": {
+        "description": "ما تُفتح عليه صفحتك الرئيسية.",
+        "title": "لوحة التحكم"
+      },
+      "language": {
+        "description": "لغتك ومنطقتك الزمنية وكيفية كتابة التواريخ والأوقات.",
+        "title": "اللغة والمنطقة"
+      },
+      "notifications": {
+        "description": "ما تُعلمك به المنصة.",
+        "title": "الإشعارات"
+      },
+      "profile": {
+        "description": "كيف تظهر لزملائك على هذه المنصة.",
+        "title": "الملف الشخصي"
+      },
+      "security": {
+        "description": "كلمة مرورك والأجهزة التي سجّلت الدخول منها.",
+        "title": "الحساب والأمان"
+      }
+    },
+    "security": {
+      "activeSessions": "الجلسات النشطة",
+      "changePassword": "تغيير كلمة المرور",
+      "currentPassword": "كلمة المرور الحالية",
+      "hidePasswords": "إخفاء كلمات المرور",
+      "loadingSessions": "جارٍ تحميل جلساتك…",
+      "newPassword": "كلمة المرور الجديدة",
+      "newPasswordHint": "8 أحرف على الأقل.",
+      "noOtherDevices": "لا توجد أجهزة أخرى مسجَّلة الدخول.",
+      "repeatPassword": "أعد كتابة كلمة المرور الجديدة",
+      "showPasswords": "إظهار كلمات المرور",
+      "thisDevice": "هذا الجهاز",
+      "unknownDevice": "جهاز غير معروف"
+    },
+    "values": {
+      "balanced": "متوازن",
+      "concise": "موجز",
+      "dark": "داكن",
+      "day_month_year": "31/12/2026",
+      "detailed": "مفصّل",
+      "hidden": "علامات فقط، والقائمة مطوية",
+      "hour_12": "12 ساعة (2:32 م)",
+      "hour_24": "24 ساعة (14:32)",
+      "inline": "علامات مضمَّنة فقط",
+      "last_30_days": "آخر 30 يومًا",
+      "last_7_days": "آخر 7 أيام",
+      "light": "فاتح",
+      "list": "علامات وقائمة مصادر",
+      "long": "31 ديسمبر 2026",
+      "month_day_year": "12/31/2026",
+      "system": "النظام",
+      "today": "اليوم",
+      "year_month_day": "2026-12-31"
+    },
+    "widgets": {
+      "active_users": "المستخدمون النشطون",
+      "ai_analytics": "تحليلات الذكاء الاصطناعي",
+      "ai_reports": "تقارير الذكاء الاصطناعي",
+      "case_analytics": "تحليلات القضايا",
+      "case_status_overview": "نظرة عامة على حالات القضايا",
+      "document_analytics": "تحليلات المستندات",
+      "hearing_calendar": "تقويم الجلسات",
+      "my_cases": "قضاياي",
+      "notifications": "الإشعارات",
+      "ocr_status": "حالة استخراج النص",
+      "processing_queues": "قوائم انتظار المعالجة",
+      "quick_actions": "إجراءات سريعة",
+      "recent_activity": "النشاط الأخير",
+      "recent_cases": "القضايا الأخيرة",
+      "recent_conversations": "المحادثات الأخيرة",
+      "recent_documents": "المستندات الأخيرة",
+      "storage_usage": "استخدام التخزين",
+      "timeline_activity": "توزيع النشاط",
+      "upcoming_hearings": "الجلسات القادمة"
+    },
+    "workspace": {
+      "loadFailed": "تعذّر تحميل الإعدادات",
+      "loading": "جارٍ تحميل إعداداتك…",
+      "maintenanceFallback": "هذه المنصة في وضع الصيانة حاليًا.",
+      "sectionsLabel": "أقسام الإعدادات"
+    }
+  },
+  "shared": {
+    "accessDenied": {
+      "backToDashboard": "العودة إلى لوحة التحكم",
+      "description": "لا تملك إذنًا لعرض هذه الصفحة. إن كنت ترى أن هذا خطأ، فتواصل مع مدير.",
+      "title": "تم رفض الوصول"
+    },
+    "error": {
+      "description": "حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.",
+      "title": "حدث خطأ ما"
+    },
+    "loading": {
+      "label": "جارٍ التحميل…"
+    },
+    "spinner": {
+      "label": "جارٍ التحميل"
+    }
+  },
+  "shell": {
+    "brand": {
+      "homeLabel": "منصة إدارة القضايا القانونية — لوحة التحكم",
+      "name": "المنصة القانونية",
+      "tagline": "إدارة القضايا"
+    },
+    "footer": {
+      "copyright": "© {year} منصة إدارة القضايا القانونية",
+      "tagline": "تعاون قانوني مدعوم بالذكاء الاصطناعي"
+    },
+    "language": {
+      "change": "تغيير اللغة",
+      "current": "اللغة الحالية: {language}",
+      "label": "اللغة"
+    },
+    "search": {
+      "label": "ابحث في القضايا والمستندات (قريبًا)",
+      "placeholder": "ابحث في القضايا والمستندات…"
+    },
+    "sidebar": {
+      "collapse": "طيّ"
+    },
+    "userMenu": {
+      "profile": "الملف الشخصي",
+      "settings": "الإعدادات",
+      "signOut": "تسجيل الخروج",
+      "signingOut": "جارٍ تسجيل الخروج…"
+    }
+  },
+  "timeline": {
+    "empty": {
+      "description": "كل ما يحدث لهذه القضية — التحديثات والتعيينات والمستندات — سيُسجَّل هنا تلقائيًا.",
+      "filteredDescription": "جرّب مصطلح بحث أو نوع نشاط أو نطاقًا زمنيًا آخر، أو امسح عوامل التصفية لرؤية السجل كاملًا.",
+      "filteredTitle": "لا يوجد نشاط يطابق عوامل التصفية",
+      "title": "لا يوجد نشاط بعد"
+    },
+    "errors": {
+      "caseNotFound": "لم تعد هذه القضية موجودة. حدِّث الصفحة وأعد المحاولة.",
+      "entryNotFound": "لم يعد هذا السجل من النشاط موجودًا.",
+      "invalidFilters": "عوامل التصفية هذه غير صالحة. امسحها وأعد المحاولة.",
+      "loadTitle": "تعذّر تحميل نشاط هذه القضية",
+      "noAccess": "لا تملك إذنًا لعرض نشاط هذه القضية."
+    },
+    "events": {
+      "case_archived": "أُرشفت القضية",
+      "case_created": "أُنشئت القضية",
+      "case_restored": "استُعيدت القضية",
+      "case_updated": "حُدِّثت القضية",
+      "document_deleted": "حُذف المستند",
+      "document_downloaded": "نُزِّل المستند",
+      "document_replaced": "استُبدل المستند",
+      "document_updated": "حُدِّث المستند",
+      "document_uploaded": "رُفع المستند",
+      "lawyer_assigned": "تم تعيين محامٍ",
+      "lawyer_removed": "أُزيل المحامي",
+      "ocr_completed": "اكتمل استخراج النص",
+      "ocr_failed": "فشل استخراج النص",
+      "ocr_retried": "أُعيدت محاولة استخراج النص",
+      "ocr_started": "بدأ استخراج النص",
+      "priority_changed": "تغيّرت الأولوية",
+      "representative_assigned": "تم تعيين ممثل",
+      "representative_removed": "أُزيل الممثل",
+      "status_changed": "تغيّرت الحالة"
+    },
+    "filters": {
+      "activityType": "نوع النشاط",
+      "allActivity": "كل النشاط",
+      "anyone": "أي شخص",
+      "from": "من",
+      "newestFirst": "الأحدث أولًا",
+      "oldestFirst": "الأقدم أولًا",
+      "performedBy": "نفّذه",
+      "search": "البحث في النشاط",
+      "searchPlaceholder": "ابحث بما حدث",
+      "sortNewestFirst": "ترتيب من الأحدث إلى الأقدم",
+      "sortOldestFirst": "ترتيب من الأقدم إلى الأحدث",
+      "until": "حتى"
+    },
+    "loading": "جارٍ تحميل النشاط",
+    "pagination": {
+      "summary": "{count, plural, =0 {لا يوجد نشاط} one {عرض {from}–{to} من سجل واحد} two {عرض {from}–{to} من سجلّين} few {عرض {from}–{to} من # سجلات} many {عرض {from}–{to} من # سجلًا} other {عرض {from}–{to} من # سجل}}"
+    },
+    "system": "النظام",
+    "title": "التسلسل الزمني"
+  },
+  "users": {
+    "actions": {
+      "activate": "تفعيل",
+      "activated": "تم تفعيل {name}.",
+      "deactivate": "تعطيل",
+      "label": "الإجراءات",
+      "menuFor": "إجراءات {name}",
+      "resetPassword": "إعادة تعيين كلمة المرور",
+      "viewDetails": "عرض التفاصيل"
+    },
+    "createDialog": {
+      "creating": "جارٍ الإنشاء…",
+      "submit": "إنشاء المستخدم",
+      "title": "إضافة مستخدم"
+    },
+    "deactivateDialog": {
+      "confirm": "تعطيل",
+      "deactivated": "تم تعطيل {name}.",
+      "deactivating": "جارٍ التعطيل…",
+      "title": "تعطيل {name}؟",
+      "titleGeneric": "تعطيل هذا المستخدم؟"
+    },
+    "details": {
+      "access": "الوصول",
+      "accountActivity": "نشاط الحساب",
+      "backToUsers": "العودة إلى المستخدمين",
+      "canSignIn": "يمكنه تسجيل الدخول",
+      "contactInformation": "معلومات الاتصال",
+      "created": "تاريخ الإنشاء",
+      "lastSignIn": "آخر تسجيل دخول",
+      "lastUpdated": "آخر تحديث",
+      "loadFailed": "تعذّر تحميل هذا المستخدم",
+      "loading": "جارٍ تحميل المستخدم…",
+      "passwordChangeRequired": "يلزم تغيير كلمة المرور",
+      "personalInformation": "المعلومات الشخصية"
+    },
+    "editDialog": {
+      "descriptionGeneric": "حدِّث بيانات هذا المستخدم.",
+      "noChanges": "لا توجد تغييرات للحفظ.",
+      "title": "تعديل المستخدم"
+    },
+    "empty": {
+      "description": "أضف أول حساب لمنح شخص ما حق الوصول إلى المنصة.",
+      "filteredDescription": "جرّب اسمًا أو بريدًا إلكترونيًا آخر، أو امسح عوامل التصفية لرؤية الجميع.",
+      "filteredTitle": "لا يوجد مستخدمون يطابقون بحثك",
+      "title": "لا يوجد مستخدمون بعد"
+    },
+    "errors": {
+      "cannotModifyOwn": "لا يمكنك تغيير دورك أو حالة حسابك.",
+      "emailTaken": "يوجد بالفعل مستخدم بهذا البريد الإلكتروني.",
+      "listTitle": "تعذّر تحميل المستخدمين",
+      "notFound": "لم يعد هذا المستخدم موجودًا. حدِّث القائمة وأعد المحاولة."
+    },
+    "filters": {
+      "allRoles": "كل الأدوار",
+      "allStatuses": "كل الحالات",
+      "role": "الدور",
+      "searchPlaceholder": "ابحث بالاسم أو البريد الإلكتروني",
+      "status": "الحالة"
+    },
+    "form": {
+      "email": "البريد الإلكتروني",
+      "firstName": "الاسم الأول",
+      "firstNamePlaceholder": "أمينة",
+      "hidePassword": "إخفاء كلمة المرور",
+      "lastName": "اسم العائلة",
+      "lastNamePlaceholder": "بنعلي",
+      "password": "كلمة المرور",
+      "passwordHint": "يمكن للمستخدم تغييرها بعد تسجيل الدخول.",
+      "passwordPlaceholder": "اختر كلمة مرور أولية",
+      "phone": "الهاتف",
+      "requirePasswordChange": "اشتراط تغيير كلمة المرور عند أول تسجيل دخول",
+      "requirePasswordChangeHint": "يحتفظ المستخدم بكلمة المرور أعلاه حتى يختار كلمته الخاصة فقط.",
+      "role": "الدور",
+      "selectRole": "اختر دورًا",
+      "selectStatus": "اختر حالة",
+      "showPassword": "إظهار كلمة المرور",
+      "status": "الحالة"
+    },
+    "pagination": {
+      "summary": "{count, plural, =0 {لا يوجد مستخدمون} one {عرض {from}–{to} من مستخدم واحد} two {عرض {from}–{to} من مستخدمَين} few {عرض {from}–{to} من # مستخدمين} many {عرض {from}–{to} من # مستخدمًا} other {عرض {from}–{to} من # مستخدم}}"
+    },
+    "resetPasswordDialog": {
+      "confirm": "إعادة تعيين كلمة المرور",
+      "copied": "تم نسخ كلمة المرور المؤقتة.",
+      "copyLabel": "نسخ كلمة المرور المؤقتة",
+      "copyRefused": "انسخها يدويًا — الحافظة غير متاحة.",
+      "description": "يتم إنشاء كلمة مرور مؤقتة جديدة. سيُسجَّل خروج المستخدم من جميع الأجهزة وعليه اختيار كلمة مرور جديدة قبل المتابعة.",
+      "done": "تم",
+      "resetting": "جارٍ إعادة التعيين…",
+      "revealedDescription": "شارِكها مع المستخدم عبر قناة موثوقة. لن تُعرض مرة أخرى.",
+      "revealedTitle": "كلمة مرور مؤقتة",
+      "title": "إعادة تعيين كلمة مرور {name}؟"
+    },
+    "roles": {
+      "administrator": "مدير",
+      "court_representative": "ممثل المحكمة",
+      "lawyer": "محامٍ"
+    },
+    "statuses": {
+      "active": "نشط",
+      "inactive": "غير نشط",
+      "suspended": "موقوف"
+    },
+    "table": {
+      "columns": {
+        "created_at": "تاريخ الإنشاء",
+        "email": "البريد الإلكتروني",
+        "last_login": "آخر تسجيل دخول",
+        "name": "الاسم",
+        "role": "الدور",
+        "status": "الحالة"
+      },
+      "loading": "جارٍ تحميل المستخدمين"
+    }
+  },
+  "validation": {
+    "assistant": {
+      "nameRequired": "أدخل اسمًا لهذه المحادثة.",
+      "nameTooLong": "الأسماء محدودة بـ {max} حرفًا.",
+      "noteTooLong": "الملاحظات محدودة بـ {max} حرفًا.",
+      "questionRequired": "أدخل كلمة أو رقمًا لتسأل عنه.",
+      "questionTooLong": "الأسئلة محدودة بـ {max} حرفًا."
+    },
+    "auth": {
+      "confirmPassword": "أكّد كلمة المرور الجديدة.",
+      "currentPasswordRequired": "كلمة المرور الحالية مطلوبة.",
+      "emailInvalid": "أدخل عنوان بريد إلكتروني صالحًا.",
+      "emailRequired": "البريد الإلكتروني مطلوب.",
+      "passwordRequired": "كلمة المرور مطلوبة.",
+      "passwordTooLong": "يجب ألا تتجاوز كلمة المرور {max} بايت.",
+      "passwordTooShort": "يجب أن تتكوّن كلمة المرور من {min} حرفًا على الأقل.",
+      "passwordUnchanged": "اختر كلمة مرور لم تستخدمها هنا من قبل.",
+      "passwordsDoNotMatch": "كلمتا المرور غير متطابقتين."
+    },
+    "case": {
+      "caseNumberCharacters": "لا يجوز أن يحتوي رقم القضية إلا على حروف وأرقام والرموز - _ . /",
+      "caseNumberTooLong": "يجب ألا يتجاوز رقم القضية {max} حرفًا.",
+      "hearingBeforeFiling": "لا يمكن أن يسبق تاريخ الجلسة القادمة تاريخ الإيداع.",
+      "priorityRequired": "اختر أولوية.",
+      "statusRequired": "اختر حالة.",
+      "titleRequired": "العنوان مطلوب."
+    },
+    "dateInvalid": "أدخل تاريخًا صالحًا.",
+    "document": {
+      "caseRequired": "اختر القضية التي ينتمي إليها هذا المستند.",
+      "categoryRequired": "اختر فئة.",
+      "fileEmpty": "الملف المُختار فارغ.",
+      "fileRequired": "اختر ملفًا للرفع.",
+      "fileTooLarge": "يجب ألا يتجاوز حجم الملف {max} ميغابايت.",
+      "unsupportedType": "أنواع الملفات المدعومة: {types}."
+    },
+    "maxLength": "يجب ألا يتجاوز {max} حرفًا.",
+    "maxLengthDescription": "يجب ألا يتجاوز الوصف {max} حرفًا.",
+    "maxLengthTitle": "يجب ألا يتجاوز العنوان {max} حرفًا.",
+    "minLength": "أدخل {min} حرفًا على الأقل.",
+    "notification": {
+      "announcementTooLong": "أبقِ الإعلان دون {max} حرفًا.",
+      "messageRequired": "اكتب ما تريد أن يراه الجميع."
+    },
+    "report": {
+      "caseRequired": "اختر القضية التي يتناولها هذا التقرير.",
+      "typeRequired": "اختر نوع التقرير."
+    },
+    "required": "مطلوب.",
+    "search": {
+      "queryRequired": "أدخل كلمة أو رقمًا للبحث عنه.",
+      "queryTooLong": "الاستعلامات محدودة بـ {max} حرفًا."
+    },
+    "settings": {
+      "currentPasswordRequired": "أدخل كلمة مرورك الحالية.",
+      "firstNameRequired": "أدخل اسمك الأول.",
+      "lastNameRequired": "أدخل اسم عائلتك.",
+      "noticeTooLong": "أبقِ الإشعار دون {max} حرفًا.",
+      "urlTooLong": "هذا العنوان طويل جدًا."
+    },
+    "user": {
+      "phoneCharacters": "لا يجوز أن يحتوي رقم الهاتف إلا على أرقام ومسافات والرموز + ( ) - . /",
+      "phoneDigits": "يجب أن يحتوي رقم الهاتف على ما بين {min} و{max} رقمًا.",
+      "roleRequired": "اختر دورًا.",
+      "statusRequired": "اختر حالة."
+    }
+  }
+}

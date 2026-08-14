@@ -2,24 +2,127 @@
 @import "tw-animate-css";
 
 /*
- * Dark-mode-only design system.
+ * Design system.
  * See context/feature-specs/00-design-system.md and context/ui-context.md.
  *
  * Platform color tokens are declared once (from ui-context.md) and shadcn/ui
  * semantic tokens are mapped onto those same values so every generated
  * component inherits the platform theme. No custom colors are introduced.
+ *
+ * **Both themes render.** `00-design-system.md` shipped the platform dark-only;
+ * `ui-context.md` has always said it supports Dark and Light with Dark as the
+ * default, and `20-settings.md`'s Appearance section is what required the second
+ * palette to exist. Dark is still the default and still the designed experience.
+ *
+ * The two palettes are declared as **platform tokens only**. The shadcn/ui
+ * mapping below is written once, in terms of `var(--bg-base)` and friends, and is
+ * never repeated per theme: `.dark` is applied to `<html>`, which *is* `:root`, so
+ * redefining the platform tokens there re-resolves every semantic token on the
+ * same element. A second copy of the mapping is how one theme ends up with a
+ * border colour the other does not have.
  */
 
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Both :root and .dark carry the identical dark palette. The application is
- * dark-only, so no light theme can ever render regardless of the `dark`
- * class applied by the theme provider.
+ * Light palette.
+ *
+ * Derived from the same Tailwind slate/blue families the dark palette in
+ * `ui-context.md` is drawn from, so the two are recognisably one design rather
+ * than two. The accents step *down* rather than up (blue-600 where dark uses
+ * blue-500) because the same hue needs more weight to hold contrast against
+ * white, and every foreground/background pair here clears WCAG AA — which
+ * `ui-context.md`'s Accessibility section requires of the interface, not of one
+ * theme of it.
  */
-:root,
+:root {
+  --bg-base: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-card: #ffffff;
+  --bg-sidebar: #f1f5f9;
+
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+
+  --accent-primary: #2563eb;
+  --accent-secondary: #1d4ed8;
+
+  --border-default: #e2e8f0;
+
+  --state-success: #16a34a;
+  --state-warning: #d97706;
+  --state-error: #dc2626;
+  --state-info: #0284c7;
+
+  /* Text drawn *on* an accent or a state colour.
+     Its own token rather than `--text-primary`, which is the one thing the
+     dark-only palette could get away with and a two-theme one cannot: in dark
+     mode the primary text colour happens to be near-white and reads fine on
+     blue, while in light mode it is near-black and would be unreadable there. */
+  --text-on-accent: #ffffff;
+
+  /* Base corner radius (buttons/inputs use rounded-md; cards/panels/dialogs
+     opt into larger radii per ui-context.md). */
+  --radius: 0.5rem;
+
+  /* --- shadcn/ui semantic tokens mapped onto the platform palette --- */
+  --background: var(--bg-base);
+  --foreground: var(--text-primary);
+
+  --card: var(--bg-card);
+  --card-foreground: var(--text-primary);
+
+  --popover: var(--bg-surface);
+  --popover-foreground: var(--text-primary);
+
+  --primary: var(--accent-primary);
+  --primary-foreground: var(--text-on-accent);
+
+  --secondary: var(--bg-surface);
+  --secondary-foreground: var(--text-primary);
+
+  --muted: var(--bg-surface);
+  --muted-foreground: var(--text-muted);
+
+  --accent: var(--border-default);
+  --accent-foreground: var(--text-primary);
+
+  --destructive: var(--state-error);
+  --destructive-foreground: var(--text-on-accent);
+
+  --border: var(--border-default);
+  --input: var(--border-default);
+  --ring: var(--accent-primary);
+
+  /* Chart palette drawn from platform accent + state colors. */
+  --chart-1: var(--accent-primary);
+  --chart-2: var(--state-info);
+  --chart-3: var(--state-success);
+  --chart-4: var(--state-warning);
+  --chart-5: var(--state-error);
+
+  /* Sidebar surface (ui-context.md main layout). */
+  --sidebar: var(--bg-sidebar);
+  --sidebar-foreground: var(--text-secondary);
+  --sidebar-primary: var(--accent-primary);
+  --sidebar-primary-foreground: var(--text-on-accent);
+  --sidebar-accent: var(--border-default);
+  --sidebar-accent-foreground: var(--text-primary);
+  --sidebar-border: var(--border-default);
+  --sidebar-ring: var(--accent-primary);
+}
+
+/*
+ * Dark palette — the platform's default and designed experience, exactly the
+ * values `ui-context.md` tabulates.
+ *
+ * **Platform tokens only.** Every semantic token above is written in terms of
+ * these, and `.dark` lands on the same element `:root` matches, so redefining
+ * them here re-resolves the whole mapping. Declared after `:root` because the two
+ * selectors have identical specificity and source order decides.
+ */
 .dark {
-  /* --- Platform tokens (source of truth: ui-context.md) --- */
   --bg-base: #0f172a;
   --bg-surface: #1e293b;
   --bg-card: #1e293b;
@@ -39,55 +142,7 @@
   --state-error: #ef4444;
   --state-info: #38bdf8;
 
-  /* Base corner radius (buttons/inputs use rounded-md; cards/panels/dialogs
-     opt into larger radii per ui-context.md). */
-  --radius: 0.5rem;
-
-  /* --- shadcn/ui semantic tokens mapped onto the platform palette --- */
-  --background: var(--bg-base);
-  --foreground: var(--text-primary);
-
-  --card: var(--bg-card);
-  --card-foreground: var(--text-primary);
-
-  --popover: var(--bg-surface);
-  --popover-foreground: var(--text-primary);
-
-  --primary: var(--accent-primary);
-  --primary-foreground: var(--text-primary);
-
-  --secondary: var(--border-default);
-  --secondary-foreground: var(--text-primary);
-
-  --muted: var(--bg-surface);
-  --muted-foreground: var(--text-muted);
-
-  --accent: var(--border-default);
-  --accent-foreground: var(--text-primary);
-
-  --destructive: var(--state-error);
-  --destructive-foreground: var(--text-primary);
-
-  --border: var(--border-default);
-  --input: var(--border-default);
-  --ring: var(--accent-primary);
-
-  /* Chart palette drawn from platform accent + state colors. */
-  --chart-1: var(--accent-primary);
-  --chart-2: var(--state-info);
-  --chart-3: var(--state-success);
-  --chart-4: var(--state-warning);
-  --chart-5: var(--state-error);
-
-  /* Sidebar surface (ui-context.md main layout). */
-  --sidebar: var(--bg-sidebar);
-  --sidebar-foreground: var(--text-secondary);
-  --sidebar-primary: var(--accent-primary);
-  --sidebar-primary-foreground: var(--text-primary);
-  --sidebar-accent: var(--bg-surface);
-  --sidebar-accent-foreground: var(--text-primary);
-  --sidebar-border: var(--border-default);
-  --sidebar-ring: var(--accent-primary);
+  --text-on-accent: #f8fafc;
 }
 
 /*
@@ -162,5 +217,52 @@
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  /* ----------------------------------------------------------------------- *
+   * Right-to-left
+   *
+   * `21-localization.md` requires RTL layouts, navigation, forms, dialogs, and
+   * typography for Arabic, **coexisting** with the left-to-right languages. Almost
+   * all of that is bought by two decisions elsewhere and needs no CSS at all:
+   * `components/i18n/locale-provider.tsx` writes `dir` onto the document element,
+   * and every component uses Tailwind's *logical* utilities (`ms-`/`me-`,
+   * `ps-`/`pe-`, `start-`/`end-`, `text-start`/`text-end`, `border-s`/`border-e`),
+   * which resolve against that attribute. There is no mirrored stylesheet, because
+   * a second layout is a second thing to keep in step.
+   *
+   * What is left here is the handful of things a logical property cannot express.
+   * ----------------------------------------------------------------------- */
+
+  /* Geist has no Arabic coverage, so an Arabic page would otherwise render in
+     whatever the browser substitutes — usually a face that does not match the
+     Latin text beside it in weight or height. The stack keeps Geist first (so a
+     case number, a filename, and a citation still look like the rest of the
+     platform) and falls through to the system's own Arabic faces, which every
+     target platform ships. No web font is loaded: an interface that waited on a
+     ~200 KB Arabic font before it could paint would be slower for the readers it
+     is meant to serve. */
+  :root[dir="rtl"] body {
+    font-family:
+      var(--font-geist-sans), "Segoe UI", Tahoma, "Geeza Pro", "Noto Sans Arabic",
+      "Arial", sans-serif;
+    /* Arabic script sits taller than Latin at the same size, so the default
+       leading crowds it. */
+    line-height: 1.7;
+  }
+
+  /* An icon that points at *forward* has to turn around; one that points at a
+     direction in the world does not. Chevrons in breadcrumbs, pagination, and
+     "next" controls are the first kind — a `›` between crumbs pointing left in an
+     Arabic trail reads as "back". Marked with `data-flip-rtl` at the call site
+     rather than matched by icon name, so a component opts in deliberately. */
+  :root[dir="rtl"] [data-flip-rtl] {
+    transform: scaleX(-1);
+  }
+
+  /* A progress bar fills from the reading edge. The primitive positions its
+     indicator with a transform, which is a physical axis. */
+  :root[dir="rtl"] [data-slot="progress-indicator"] {
+    transform-origin: right center;
   }
 }

@@ -96,6 +96,11 @@ from services.email_metrics import (
 from services.email_provider import EmailProvider, OutgoingEmail
 from services.email_templates import EmailTemplateError, EmailTemplateRenderer
 from services.job_queue import JobQueue, NullJobQueue
+from services.localization import (
+    LanguageDirectory,
+    StaticLanguageDirectory,
+    build_language_directory,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -161,6 +166,7 @@ class EmailDeliveryService:
         queue: JobQueue[EmailJob] | None = None,
         *,
         metrics: EmailMetricsRecorder | None = None,
+        languages: LanguageDirectory | None = None,
     ) -> None:
         self._deliveries = deliveries
         self._notifications = notifications
@@ -168,6 +174,13 @@ class EmailDeliveryService:
         self._templates = templates
         self._queue: JobQueue[EmailJob] = queue or NullJobQueue(name="email")
         self._metrics = metrics or NullEmailMetrics()
+        # Defaults to the deployment's own answer for everybody, which is exactly
+        # what this channel did before `21-localization.md` shipped — so a service
+        # constructed by a script or a unit test needs no settings table to compose
+        # a message, and the localized path is additive rather than a rewrite.
+        self._languages: LanguageDirectory = languages or StaticLanguageDirectory(
+            settings.EMAIL_DEFAULT_LANGUAGE
+        )
 
     # --------------------------------------------------------------- queue #
 
@@ -388,9 +401,16 @@ class EmailDeliveryService:
         :attr:`~models.email.EmailDelivery.recipient_email` for why a join would
         rewrite history.
         """
-        profiles = self._deliveries.recipient_profiles(
-            [entry.recipient_id for entry in notifications]
-        )
+        recipient_ids = [entry.recipient_id for entry in notifications]
+        profiles = self._deliveries.recipient_profiles(recipient_ids)
+        # One query for the whole batch, resolved **before** anything is queued and
+        # snapshotted onto each row — for the same reason the address is. A
+        # language read at *send* time would rewrite history: somebody who changed
+        # their preference between a hearing update being queued and the relay
+        # accepting it would receive a message in a language the platform decided
+        # after the fact, and a retry three attempts later would differ from the
+        # first.
+        languages = self._languages.languages_for(recipient_ids)
 
         rows: list[EmailDelivery] = []
         missing = 0
@@ -418,7 +438,9 @@ class EmailDeliveryService:
                     category=entry.category,
                     template=rule.template,
                     template_version=rule.version,
-                    language=resolve_email_language(settings.EMAIL_DEFAULT_LANGUAGE),
+                    language=resolve_email_language(
+                        languages.get(entry.recipient_id)
+                    ),
                     status=EmailDeliveryStatus.PENDING,
                 )
             )
@@ -733,6 +755,13 @@ def build_delivery_service(
     places that have nothing else in common — a request dependency, the
     notification worker's thread, and the email worker's own thread — and each
     assembling it by hand is three places for the collaborator list to drift.
+
+    The language directory is built on the **same session**, so resolving a
+    hundred recipients' languages costs one query on the connection that is
+    already open — and it is handed over as the one-method
+    :class:`~services.localization.LanguageDirectory`, never as a settings
+    repository, which is the deliberate answer to the open question this channel
+    recorded when it shipped.
     """
     return EmailDeliveryService(
         EmailDeliveryRepository(session),
@@ -741,6 +770,9 @@ def build_delivery_service(
         templates,
         queue,
         metrics=metrics,
+        languages=build_language_directory(
+            session, channel_default=settings.EMAIL_DEFAULT_LANGUAGE
+        ),
     )
 
 

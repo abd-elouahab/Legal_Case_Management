@@ -28,8 +28,8 @@ export default function SearchPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Search"
-        description="Ask a question in your own words and find the passages that answer it, across the documents on your cases."
+        titleKey="search.title"
+        descriptionKey="search.description"
       />
       <SemanticSearch />
     </PageContainer>

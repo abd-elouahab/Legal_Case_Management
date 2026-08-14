@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { Eye, KeyRound, MoreHorizontal, Pencil, UserCheck, UserX } from "lucide-react";
 
 import { Protected } from "@/components/auth/protected";
@@ -42,6 +43,9 @@ export function UserRowActions({
   onDeactivate: (user: ManagedUser) => void;
   onActivate: (user: ManagedUser) => void;
 }) {
+  const t = useTranslations("users.actions");
+  const tActions = useTranslations("common.actions");
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -49,31 +53,31 @@ export function UserRowActions({
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          aria-label={`Actions for ${user.fullName}`}
+          aria-label={t("menuFor", { name: user.fullName })}
         >
           <MoreHorizontal className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("label")}</DropdownMenuLabel>
 
         <DropdownMenuItem asChild>
           <Link href={userRoute(user.id)}>
             <Eye className="h-4 w-4" />
-            View details
+            {t("viewDetails")}
           </Link>
         </DropdownMenuItem>
 
         <Protected permission={PERMISSION.usersUpdate}>
           <DropdownMenuItem onSelect={() => onEdit(user)}>
             <Pencil className="h-4 w-4" />
-            Edit
+            {tActions("edit")}
           </DropdownMenuItem>
 
           <DropdownMenuItem onSelect={() => onResetPassword(user)}>
             <KeyRound className="h-4 w-4" />
-            Reset password
+            {t("resetPassword")}
           </DropdownMenuItem>
         </Protected>
 
@@ -88,14 +92,14 @@ export function UserRowActions({
                   onSelect={() => onDeactivate(user)}
                 >
                   <UserX className="h-4 w-4" />
-                  Deactivate
+                  {t("deactivate")}
                 </DropdownMenuItem>
               </Protected>
             ) : (
               <Protected permission={PERMISSION.usersUpdate}>
                 <DropdownMenuItem onSelect={() => onActivate(user)}>
                   <UserCheck className="h-4 w-4" />
-                  Activate
+                  {t("activate")}
                 </DropdownMenuItem>
               </Protected>
             )}

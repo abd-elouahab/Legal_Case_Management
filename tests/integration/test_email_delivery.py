@@ -33,6 +33,8 @@ from sqlalchemy.orm import Session
 
 from core.config import settings
 from core.events import DomainEvent, DomainEventType, case_topic, user_topic
+from core.localization import default_language
+from core.notifications import NotificationCategory, render_notification
 from models.email import EmailDeliveryStatus
 from models.user import UserRole
 
@@ -180,7 +182,11 @@ class TestDeliveryPath:
         )
 
         message = email_provider.sent[0]
-        assert message.subject == "Dossier attribué"
+        assert message.subject == render_notification(
+            rule_key="case.assigned",
+            category=NotificationCategory.CASE,
+            language=default_language(),
+        ).title
         assert "CASE-2026-0001" in message.text_body
         assert "CASE-2026-0001" in message.html_body
         assert message.html_body.startswith("<html")

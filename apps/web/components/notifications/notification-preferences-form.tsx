@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -8,12 +9,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import {
-  notificationErrorMessage,
+  useNotificationErrorMessage,
   useNotificationPreferences,
   useUpdateNotificationPreferences,
 } from "@/hooks/use-notifications";
 import {
-  NOTIFICATION_PREFERENCE_LABELS,
   type NotificationChannel,
   type NotificationPreferenceKey,
 } from "@/types/notification";
@@ -39,22 +39,32 @@ import {
  * page has no stored row at all, and showing a switch as on without saying it is
  * the platform's choice would suggest somebody made it.
  *
- * Note what the email column does **not** promise: switching it on does not mean
- * every notification of that kind arrives by email. Only the kinds the platform
- * marks for email delivery travel on that channel — a case assignment and a
- * hearing change do, a document upload deliberately does not — which the
- * description below the heading says rather than leaving somebody to discover.
+ * Note what the outbound columns do **not** promise: switching one on does not
+ * mean every notification of that kind arrives there. Only the kinds the platform
+ * marks for that channel travel on it — a case assignment and a hearing change
+ * do, a document upload deliberately does not — and WhatsApp additionally needs a
+ * phone number on the account, which is optional here. The description below the
+ * heading says both rather than leaving somebody to discover them.
  */
 
 /** The columns, in the order they are rendered. */
-const CHANNELS: ReadonlyArray<{ key: NotificationChannel; label: string }> = [
-  { key: "inApp", label: "In app" },
-  { key: "email", label: "Email" },
-];
+/**
+ * The delivery channels, in column order.
+ *
+ * Keys only: the column headings live in `notifications.channels`, because "In
+ * app" is a phrase and `WhatsApp` is a product name that stays as it is in every
+ * language — which is a distinction only a catalogue can express.
+ */
+const CHANNELS: readonly NotificationChannel[] = ["inApp", "email", "whatsapp"];
 
 export function NotificationPreferencesForm() {
   const { data, isPending, isError, error } = useNotificationPreferences();
   const update = useUpdateNotificationPreferences();
+  const t = useTranslations("notifications.preferencesForm");
+  const tPreferences = useTranslations("notifications.preferences");
+  const tChannels = useTranslations("notifications.channels");
+  const tStates = useTranslations("common.states");
+  const errorMessage = useNotificationErrorMessage();
 
   const onToggle = React.useCallback(
     (
@@ -63,10 +73,10 @@ export function NotificationPreferencesForm() {
       enabled: boolean,
     ) => {
       update.mutate([{ preferenceKey, [channel]: enabled }], {
-        onError: (failure) => toast.error(notificationErrorMessage(failure)),
+        onError: (failure) => toast.error(errorMessage(failure)),
       });
     },
-    [update],
+    [errorMessage, update],
   );
 
   if (isPending) {
@@ -74,7 +84,7 @@ export function NotificationPreferencesForm() {
       <Card>
         <CardContent className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-          Loading your preferences…
+          {t("loading")}
         </CardContent>
       </Card>
     );
@@ -85,7 +95,7 @@ export function NotificationPreferencesForm() {
       <Card>
         <CardContent className="py-8">
           <p role="alert" className="text-sm text-destructive">
-            {notificationErrorMessage(error)}
+            {errorMessage(error)}
           </p>
         </CardContent>
       </Card>
@@ -95,58 +105,62 @@ export function NotificationPreferencesForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Notification preferences</CardTitle>
-        <CardDescription>
-          Choose what the platform tells you about, and how it reaches you. Switching
-          something off stops new notifications of that kind — the ones already in your
-          feed stay where they are. Only important updates are sent by email; routine
-          activity stays in the app whatever you choose here.
-        </CardDescription>
+        <CardTitle>{t("title")}</CardTitle>
+        <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-1 p-0">
         <div className="flex items-center gap-4 px-6 pb-1 text-xs font-medium text-muted-foreground">
-          <span className="flex-1" />
+          <span className="min-w-0 flex-1" />
           {CHANNELS.map((channel) => (
-            <span key={channel.key} className="w-16 text-center" aria-hidden="true">
-              {channel.label}
+            // `shrink-0`, because a third column arrived: without it the labels
+            // compress before the description does, and "WhatsApp" is the first
+            // one to wrap.
+            <span key={channel} className="w-16 shrink-0 text-center" aria-hidden="true">
+              {tChannels(channel)}
             </span>
           ))}
         </div>
 
         {data.map((preference, index) => {
-          const labels = NOTIFICATION_PREFERENCE_LABELS[preference.preferenceKey];
+          // A preference key the server added and this build has no copy for
+          // resolves through the provider's fallback to a humanized form of
+          // itself, so a new preference is legible before it is translated.
+          const title = tPreferences(`${preference.preferenceKey}.title`);
           const rowId = `notification-preference-${preference.preferenceKey}`;
 
           return (
             <React.Fragment key={preference.preferenceKey}>
               {index > 0 ? <Separator /> : null}
               <div className="flex items-start gap-4 px-6 py-4">
-                <div className="flex flex-1 flex-col gap-0.5">
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span id={`${rowId}-label`} className="text-sm font-medium">
-                    {labels?.title ?? preference.preferenceKey}
+                    {title}
                   </span>
                   <p id={`${rowId}-description`} className="text-sm text-muted-foreground">
-                    {labels?.description}
-                    {preference.isDefault ? " (platform default)" : ""}
+                    {tPreferences(`${preference.preferenceKey}.description`)}
+                    {preference.isDefault ? ` ${tStates("platformDefault")}` : ""}
                   </p>
                 </div>
 
                 {CHANNELS.map((channel) => (
-                  <div key={channel.key} className="flex w-16 justify-center pt-0.5">
+                  <div key={channel} className="flex w-16 shrink-0 justify-center pt-0.5">
                     <Checkbox
-                      id={`${rowId}-${channel.key}`}
-                      checked={preference[channel.key]}
+                      id={`${rowId}-${channel}`}
+                      checked={preference[channel]}
                       disabled={update.isPending}
                       onCheckedChange={(checked) =>
-                        onToggle(preference.preferenceKey, channel.key, checked === true)
+                        onToggle(preference.preferenceKey, channel, checked === true)
                       }
                       // The visible column heading is decorative (this is a grid
                       // rather than a table, so there is no header relationship a
                       // screen reader could follow), which is why each checkbox
                       // carries its full name — the preference *and* the channel —
                       // rather than relying on one.
-                      aria-label={`${labels?.title ?? preference.preferenceKey} — ${channel.label}`}
+                      aria-label={t("channelToggle", {
+                        preference: title,
+                        channel: tChannels(channel),
+                      })}
                       aria-describedby={`${rowId}-description`}
                     />
                   </div>

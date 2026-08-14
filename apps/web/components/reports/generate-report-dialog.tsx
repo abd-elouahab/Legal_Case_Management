@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslations } from "next-intl";
 import { Sparkles } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
@@ -26,9 +27,10 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/shared/spinner";
 import { useDocumentCases } from "@/hooks/use-document-cases";
+import { useFieldError } from "@/hooks/use-field-error";
 import {
-  reportErrorMessage,
   useGenerateReport,
+  useReportErrorMessage,
   useReportTemplates,
 } from "@/hooks/use-reports";
 import {
@@ -36,18 +38,13 @@ import {
   generateReportSchema,
   type GenerateReportValues,
 } from "@/lib/validation/report";
-import {
-  REPORT_LANGUAGES,
-  REPORT_LANGUAGE_LABELS,
-  type ReportLanguage,
-  type ReportType,
-} from "@/types/report";
+import { REPORT_LANGUAGES, type ReportLanguage, type ReportType } from "@/types/report";
 
 /**
  * Generate-report dialog: choose a case, a report type, and a language.
  *
  * Owns nothing but presentation and form state: the request, cache invalidation,
- * and error translation all live in `useGenerateReport` / `reportErrorMessage`,
+ * and error translation all live in `useGenerateReport` / `useReportErrorMessage`,
  * per the standard that components carry no business logic.
  *
  * **The report types come from the server**, not from a list in this file. Adding
@@ -89,6 +86,11 @@ export function GenerateReportDialog({
 }) {
   const generate = useGenerateReport();
   const cases = useDocumentCases({ enabled: open && !caseId });
+  const t = useTranslations("reports.generateDialog");
+  const tLanguages = useTranslations("common.languages");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useReportErrorMessage();
+  const fieldError = useFieldError();
   const [formError, setFormError] = React.useState<string | null>(null);
 
   const defaults = React.useMemo<GenerateReportValues>(
@@ -157,11 +159,11 @@ export function GenerateReportDialog({
       // Deliberately not "your report is ready": it is queued, and a toast that
       // said otherwise would send the user looking for a document that does not
       // exist yet.
-      toast.success("Report queued. It will appear as it is written.");
+      toast.success(t("queued"));
       onOpenChange(false);
       onGenerated?.(report.id);
     } catch (error) {
-      setFormError(reportErrorMessage(error));
+      setFormError(errorMessage(error));
     }
   });
 
@@ -171,12 +173,8 @@ export function GenerateReportDialog({
     <Dialog open={open} onOpenChange={isPending ? undefined : onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Generate report</DialogTitle>
-          <DialogDescription>
-            The report is written from this case&apos;s indexed documents, section by
-            section, with a citation for every finding. Generation runs in the background —
-            you can close this and come back.
-          </DialogDescription>
+          <DialogTitle>{t("title")}</DialogTitle>
+          <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
@@ -189,7 +187,7 @@ export function GenerateReportDialog({
 
             {caseId ? null : (
               <div className="flex flex-col gap-2">
-                <Label htmlFor="generate-report-case">Case</Label>
+                <Label htmlFor="generate-report-case">{t("case")}</Label>
                 <Select
                   value={selectedCaseId || undefined}
                   onValueChange={(value) => setValue("caseId", value, { shouldValidate: true })}
@@ -197,7 +195,7 @@ export function GenerateReportDialog({
                 >
                   <SelectTrigger id="generate-report-case">
                     <SelectValue
-                      placeholder={cases.isLoading ? "Loading cases…" : "Select a case"}
+                      placeholder={cases.isLoading ? t("loadingCases") : t("selectCase")}
                     />
                   </SelectTrigger>
                   <SelectContent>
@@ -210,14 +208,14 @@ export function GenerateReportDialog({
                 </Select>
                 {errors.caseId ? (
                   <p role="alert" className="text-sm text-destructive">
-                    {errors.caseId.message}
+                    {fieldError(errors.caseId.message)}
                   </p>
                 ) : null}
               </div>
             )}
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="generate-report-type">Report type</Label>
+              <Label htmlFor="generate-report-type">{t("reportType")}</Label>
               <Select
                 value={reportType}
                 onValueChange={(value) =>
@@ -227,7 +225,7 @@ export function GenerateReportDialog({
               >
                 <SelectTrigger id="generate-report-type">
                   <SelectValue
-                    placeholder={templates.isLoading ? "Loading report types…" : "Select a type"}
+                    placeholder={templates.isLoading ? t("loadingTypes") : t("selectType")}
                   />
                 </SelectTrigger>
                 <SelectContent>
@@ -243,13 +241,13 @@ export function GenerateReportDialog({
               ) : null}
               {errors.reportType ? (
                 <p role="alert" className="text-sm text-destructive">
-                  {errors.reportType.message}
+                  {fieldError(errors.reportType.message)}
                 </p>
               ) : null}
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="generate-report-language">Language</Label>
+              <Label htmlFor="generate-report-language">{t("language")}</Label>
               <Select
                 value={language ?? "fr"}
                 onValueChange={(value) =>
@@ -258,34 +256,31 @@ export function GenerateReportDialog({
                 disabled={isPending}
               >
                 <SelectTrigger id="generate-report-language">
-                  <SelectValue placeholder="Select a language" />
+                  <SelectValue placeholder={t("selectLanguage")} />
                 </SelectTrigger>
                 <SelectContent>
                   {REPORT_LANGUAGES.map((option) => (
                     <SelectItem key={option} value={option}>
-                      {REPORT_LANGUAGE_LABELS[option]}
+                      {tLanguages(option)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">
-                Every section is written in this language, whatever language the
-                documents are in.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("languageHint")}</p>
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="generate-report-title">Title (optional)</Label>
+              <Label htmlFor="generate-report-title">{t("titleField")}</Label>
               <Input
                 id="generate-report-title"
                 maxLength={MAX_TITLE_LENGTH}
                 disabled={isPending}
-                placeholder="Leave empty to name it after the report type and case number"
+                placeholder={t("titlePlaceholder")}
                 {...register("title")}
               />
               {errors.title ? (
                 <p role="alert" className="text-sm text-destructive">
-                  {errors.title.message}
+                  {fieldError(errors.title.message)}
                 </p>
               ) : null}
             </div>
@@ -293,8 +288,7 @@ export function GenerateReportDialog({
             {selected && selected.sections.length > 0 ? (
               <div className="rounded-lg border border-border bg-muted/40 p-3">
                 <p className="text-xs font-medium text-foreground">
-                  This report will contain {selected.sectionCount} section
-                  {selected.sectionCount === 1 ? "" : "s"}
+                  {t("sectionPreview", { count: selected.sectionCount })}
                 </p>
                 <ol className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   {selected.sections.map((section, index) => (
@@ -304,8 +298,7 @@ export function GenerateReportDialog({
                   ))}
                 </ol>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  A section the case file does not cover says so, rather than being
-                  filled in.
+                  {t("uncoveredNote")}
                 </p>
               </div>
             ) : null}
@@ -318,18 +311,18 @@ export function GenerateReportDialog({
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              {tActions("cancel")}
             </Button>
             <Button type="submit" disabled={isPending}>
               {isPending ? (
                 <>
                   <Spinner className="h-4 w-4 text-current" />
-                  Queueing…
+                  {t("queueing")}
                 </>
               ) : (
                 <>
                   <Sparkles className="h-4 w-4" />
-                  Generate
+                  {t("submit")}
                 </>
               )}
             </Button>

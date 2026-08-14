@@ -11,6 +11,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import en from "@/messages/en.json";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -578,7 +579,10 @@ describe("CreateUserDialog", () => {
     renderWithQuery(<CreateUserDialog open onOpenChange={vi.fn()} />);
     await user.click(screen.getByRole("button", { name: /Create user/ }));
 
-    expect(await screen.findByText("First name is required.")).toBeInTheDocument();
+    // Both name fields complain, and both say the same thing: the field's own
+    // name left the message when the schemas stopped taking an English label as
+    // a parameter, so "Required." renders directly beneath each input.
+    expect(await screen.findAllByText(en.validation.required)).not.toHaveLength(0);
     expect(userRequests(requests)).toHaveLength(0);
   });
 
@@ -871,7 +875,7 @@ describe("ResetPasswordDialog", () => {
     await user.click(screen.getByRole("button", { name: /Reset password/ }));
 
     expect(
-      await screen.findByText("You do not have permission to perform this action."),
+      await screen.findByText(en.errors.forbidden),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Done" })).not.toBeInTheDocument();
   });

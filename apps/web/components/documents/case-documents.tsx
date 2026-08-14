@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { FileStack } from "lucide-react";
 
 import { DocumentList } from "@/components/documents/document-list";
@@ -17,6 +18,8 @@ import { DocumentList } from "@/components/documents/document-list";
  * while the module was unbuilt.
  */
 export function CaseDocuments({ caseId }: { caseId: string }) {
+  const t = useTranslations("pages.documents");
+
   return (
     <section className="flex flex-col gap-4" aria-labelledby="case-documents">
       <h3
@@ -24,7 +27,7 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
         className="flex items-center gap-2 text-sm font-medium text-foreground"
       >
         <FileStack className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-        Documents
+        {t("title")}
       </h3>
 
       <DocumentList caseId={caseId} />

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Info, Scissors } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,8 @@ export function ReportSections({
   sections: ReportSection[];
   language: string;
 }) {
+  const t = useTranslations("reports.sections");
+
   if (sections.length === 0) return null;
 
   const rtl = isRtlLanguage(language);
@@ -51,7 +54,7 @@ export function ReportSections({
             {section.grounded ? null : (
               <Badge variant="outline" className="gap-1.5 border-warning/30 bg-warning/10 text-warning">
                 <Info className="h-3.5 w-3.5" aria-hidden="true" />
-                Not covered
+                {t("notCovered")}
               </Badge>
             )}
             {/* A section cut off at the model's output ceiling is the one way
@@ -64,7 +67,7 @@ export function ReportSections({
                 className="gap-1.5 border-warning/30 bg-warning/10 text-warning"
               >
                 <Scissors className="h-3.5 w-3.5" aria-hidden="true" />
-                Stops early
+                {t("stopsEarly")}
               </Badge>
             ) : null}
           </div>
@@ -78,8 +81,11 @@ export function ReportSections({
 
           {section.grounded && section.citationMarkers.length > 0 ? (
             <p className="text-xs text-muted-foreground" dir="auto">
-              Sources:{" "}
-              {section.citationMarkers.map((marker) => `[${marker}]`).join(" ")}
+              {t("sources", {
+                markers: section.citationMarkers
+                  .map((marker) => `[${marker}]`)
+                  .join(" "),
+              })}
             </p>
           ) : null}
         </section>

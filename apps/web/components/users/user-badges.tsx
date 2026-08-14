@@ -1,6 +1,10 @@
+"use client";
+
+import { useTranslations } from "next-intl";
+
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { ROLE_LABELS, STATUS_LABELS, type UserRole, type UserStatus } from "@/types/user";
+import { roleMessageKey, type UserRole, type UserStatus } from "@/types/user";
 
 /**
  * Role and status badges.
@@ -24,9 +28,11 @@ export function UserStatusBadge({
   status: UserStatus;
   className?: string;
 }) {
+  const t = useTranslations("users.statuses");
+
   return (
     <Badge variant="outline" className={cn(STATUS_STYLES[status], className)}>
-      {STATUS_LABELS[status]}
+      {t(status)}
     </Badge>
   );
 }
@@ -38,6 +44,8 @@ export function UserStatusBadge({
  * the single most consequential thing in this table.
  */
 export function UserRoleBadge({ role, className }: { role: UserRole; className?: string }) {
+  const t = useTranslations("users.roles");
+
   return (
     <Badge
       variant="outline"
@@ -46,7 +54,7 @@ export function UserRoleBadge({ role, className }: { role: UserRole; className?:
         className,
       )}
     >
-      {ROLE_LABELS[role]}
+      {t(roleMessageKey(role))}
     </Badge>
   );
 }

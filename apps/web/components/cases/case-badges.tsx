@@ -1,11 +1,10 @@
+"use client";
+
+import { useTranslations } from "next-intl";
+
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import {
-  CASE_PRIORITY_LABELS,
-  CASE_STATUS_LABELS,
-  type CasePriority,
-  type CaseStatus,
-} from "@/types/case";
+import type { CasePriority, CaseStatus } from "@/types/case";
 
 /**
  * Status and priority badges.
@@ -15,6 +14,11 @@ import {
  * hardcoded hex value. Each badge also carries its label as text, so state is
  * never conveyed by colour alone — a WCAG requirement, and the reason these are
  * not bare dots.
+ *
+ * **The colour is here and the word is not.** A style is a fact about the
+ * platform's palette and is identical in every language; the label is read aloud
+ * and belongs in `cases.statuses` / `cases.priorities`. Keeping them apart is why
+ * these are client components now: a badge has to reach the catalogue.
  */
 
 const STATUS_STYLES: Record<CaseStatus, string> = {
@@ -35,9 +39,11 @@ export function CaseStatusBadge({
   status: CaseStatus;
   className?: string;
 }) {
+  const t = useTranslations("cases.statuses");
+
   return (
     <Badge variant="outline" className={cn(STATUS_STYLES[status], className)}>
-      {CASE_STATUS_LABELS[status]}
+      {t(status)}
     </Badge>
   );
 }
@@ -63,9 +69,11 @@ export function CasePriorityBadge({
   priority: CasePriority;
   className?: string;
 }) {
+  const t = useTranslations("cases.priorities");
+
   return (
     <Badge variant="outline" className={cn(PRIORITY_STYLES[priority], className)}>
-      {CASE_PRIORITY_LABELS[priority]}
+      {t(priority)}
     </Badge>
   );
 }

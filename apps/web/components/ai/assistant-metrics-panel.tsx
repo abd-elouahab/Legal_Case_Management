@@ -1,10 +1,13 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Bot } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAssistantMetrics } from "@/hooks/use-assistant";
+import { useDateFormat } from "@/hooks/use-date-format";
+import { useNumberFormat } from "@/hooks/use-number-format";
 import { usePermissions } from "@/hooks/use-permissions";
 import { PERMISSION } from "@/types/authorization";
 
@@ -46,6 +49,13 @@ export function AssistantMetricsPanel() {
   const { can, isLoading: sessionLoading } = usePermissions();
   const allowed = !sessionLoading && can(PERMISSION.aiMonitor);
   const { data, isLoading, isError } = useAssistantMetrics({ enabled: allowed });
+  const t = useTranslations("assistant.metrics");
+  // The pipeline's own failure vocabulary, shared with the chat's error banner:
+  // a code the catalogues do not name still renders, through the provider's
+  // fallback, as the humanized words the old `code.replace(/_/g, " ")` produced.
+  const tFailures = useTranslations("assistant.failures");
+  const { formatNumber, formatPercent } = useNumberFormat();
+  const { formatDateTime } = useDateFormat();
 
   // Gated here rather than by the page, so every surface that wants the panel
   // gets the check with it — and so the request is never sent by a caller the
@@ -57,7 +67,7 @@ export function AssistantMetricsPanel() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm">
           <Bot className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-          AI assistant
+          {t("title")}
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -71,54 +81,68 @@ export function AssistantMetricsPanel() {
           <>
             {!data.enabled ? (
               <p className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
-                The assistant is disabled on this deployment. Existing conversations stay
-                readable; only new ones and new messages are refused.
+                {t("disabled")}
               </p>
             ) : null}
 
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <Stat label="Active conversations" value={String(data.activeConversations)} />
               <Stat
-                label="Average length"
+                label={t("activeConversations")}
+                value={formatNumber(data.activeConversations)}
+              />
+              <Stat
+                label={t("averageLength")}
                 value={
                   data.averageConversationLength === null
                     ? "—"
-                    : `${data.averageConversationLength} messages`
+                    : t("messageCount", { count: data.averageConversationLength })
                 }
               />
               <Stat
-                label="Average response"
+                label={t("averageResponse")}
                 value={
                   data.averageResponseSeconds === null
                     ? "—"
-                    : `${data.averageResponseSeconds.toFixed(1)}s`
+                    : t("seconds", {
+                        value: formatNumber(
+                          Math.round(data.averageResponseSeconds * 10) / 10,
+                        ),
+                      })
                 }
               />
-              <Stat label="Grounded" value={`${data.groundingRate}%`} />
+              <Stat
+                label={t("grounded")}
+                value={formatPercent(data.groundingRate, { decimals: 0 })}
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <Stat label="Messages answered" value={String(data.successfulRequests)} />
-              <Stat label="Failed" value={String(data.failedRequests)} />
-              <Stat label="Streamed" value={String(data.streamedRequests)} />
               <Stat
-                label="Rated helpful"
+                label={t("messagesAnswered")}
+                value={formatNumber(data.successfulRequests)}
+              />
+              <Stat label={t("failed")} value={formatNumber(data.failedRequests)} />
+              <Stat label={t("streamed")} value={formatNumber(data.streamedRequests)} />
+              <Stat
+                label={t("ratedHelpful")}
                 value={
                   data.helpfulRate === null
                     ? "—"
-                    : `${data.helpfulRate}% of ${data.totalFeedback}`
+                    : t("helpfulOf", {
+                        percent: data.helpfulRate,
+                        total: data.totalFeedback,
+                      })
                 }
               />
             </div>
 
             {Object.keys(data.failuresByCode).length > 0 ? (
               <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">Failures by cause</span>
+                <span className="text-xs text-muted-foreground">{t("failuresByCause")}</span>
                 <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
                   {Object.entries(data.failuresByCode).map(([code, count]) => (
                     <li key={code} className="text-secondary-foreground">
-                      {code.replace(/_/g, " ")}:{" "}
-                      <span className="tabular-nums">{count}</span>
+                      {tFailures(code)}: <span className="tabular-nums">{count}</span>
                     </li>
                   ))}
                 </ul>
@@ -126,11 +150,9 @@ export function AssistantMetricsPanel() {
             ) : null}
 
             <p className="text-xs text-muted-foreground">
-              Conversations and ratings cover the whole platform. Request counts and
-              timings are from this API process since{" "}
-              {new Date(data.since).toLocaleString()} and reset when it restarts.
-              {data.suggestionsEnabled ? null : " Follow-up suggestions are unavailable."}
-              {data.streamingEnabled ? null : " Streaming is turned off."}
+              {t("footnote", { at: formatDateTime(data.since) })}
+              {data.suggestionsEnabled ? null : ` ${t("suggestionsOff")}`}
+              {data.streamingEnabled ? null : ` ${t("streamingOff")}`}
             </p>
           </>
         )}

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 import {
   Tooltip,
@@ -34,6 +35,12 @@ export function SidebarNav({
 }) {
   const isActive = useActiveRoute();
   const { allows } = usePermissions();
+  // Two namespaces rather than one interpolated path, because `useTranslations`
+  // is scoped and a section label and an item label are different vocabularies
+  // that happen to sit beside each other.
+  const t = useTranslations("navigation.items");
+  const tSection = useTranslations("navigation.sections");
+  const tA11y = useTranslations("common.a11y");
 
   const sections = sidebarNavigation
     .map((section) => ({
@@ -43,18 +50,19 @@ export function SidebarNav({
     .filter((section) => section.items.length > 0);
 
   return (
-    <nav aria-label="Primary" className="flex flex-col gap-4">
+    <nav aria-label={tA11y("primaryNavigation")} className="flex flex-col gap-4">
       {sections.map((section, index) => (
-        <div key={section.title ?? `section-${index}`} className="flex flex-col gap-1">
-          {section.title && !collapsed ? (
+        <div key={section.titleKey ?? `section-${index}`} className="flex flex-col gap-1">
+          {section.titleKey && !collapsed ? (
             <p className="px-3 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {section.title}
+              {tSection(section.titleKey)}
             </p>
           ) : null}
           <ul className="flex flex-col gap-1">
             {section.items.map((item) => {
               const active = isActive(item.href);
               const Icon = item.icon;
+              const label = t(item.titleKey);
 
               const link = (
                 <Link
@@ -70,8 +78,8 @@ export function SidebarNav({
                   )}
                 >
                   <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
-                  {!collapsed ? <span className="truncate">{item.title}</span> : null}
-                  {collapsed ? <span className="sr-only">{item.title}</span> : null}
+                  {!collapsed ? <span className="truncate">{label}</span> : null}
+                  {collapsed ? <span className="sr-only">{label}</span> : null}
                 </Link>
               );
 
@@ -80,7 +88,7 @@ export function SidebarNav({
                   {collapsed ? (
                     <Tooltip>
                       <TooltipTrigger asChild>{link}</TooltipTrigger>
-                      <TooltipContent side="right">{item.title}</TooltipContent>
+                      <TooltipContent side="right">{label}</TooltipContent>
                     </Tooltip>
                   ) : (
                     link

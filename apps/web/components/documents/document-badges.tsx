@@ -1,9 +1,12 @@
+"use client";
+
+import { useTranslations } from "next-intl";
 import type { LucideIcon } from "lucide-react";
 import { File, FileImage, FileText, FileType } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { DOCUMENT_CATEGORY_LABELS, type DocumentCategory } from "@/types/document";
+import type { DocumentCategory } from "@/types/document";
 
 /**
  * Category badge and file-type icon.
@@ -35,9 +38,11 @@ export function DocumentCategoryBadge({
   category: DocumentCategory;
   className?: string;
 }) {
+  const t = useTranslations("documents.categories");
+
   return (
     <Badge variant="outline" className={cn(CATEGORY_STYLES[category], className)}>
-      {DOCUMENT_CATEGORY_LABELS[category]}
+      {t(category)}
     </Badge>
   );
 }

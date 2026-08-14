@@ -310,8 +310,10 @@ class NotificationPreference(Base):
       open registry like ``timeline_events.event_type``;
     * a **second channel** — email, WhatsApp, push — is one boolean column beside
       :attr:`in_app`, and every row already exists to receive it. That prediction
-      has since been cashed: :attr:`email` is that column, added by
-      ``17-email-delivery-channel.md`` with no new table and no backfill.
+      has since been cashed **twice**: :attr:`email` is that column, added by
+      ``17-email-delivery-channel.md``, and :attr:`whatsapp` is the second, added
+      by ``18-whatsapp-delivery-channel.md`` — both with no new table, no new
+      key, and no backfill.
 
     A row is written only when somebody actually changes something. An account
     that has never opened the settings page has no rows at all and follows
@@ -364,12 +366,26 @@ class NotificationPreference(Base):
     #: column would make "the user has not chosen" and "the user chose on" two
     #: different stored states for the same behaviour, and every reader would have
     #: to collapse them — while the platform already has a perfectly good
-    #: representation of "has not chosen": **no row at all**. ``whatsapp``,
-    #: ``push``, and ``sms`` join this the same way when those channels land.
+    #: representation of "has not chosen": **no row at all**. ``push`` and
+    #: ``sms`` join this the same way when those channels land.
     #:
     #: Note that this only ever *narrows*: a notification kind with no entry in
     #: :data:`~core.email.EMAIL_RULES` is never emailed however this is set.
     email: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+
+    #: Whether WhatsApp messages of this kind are delivered.
+    #:
+    #: **The third channel, and it cost exactly what the second did** — one
+    #: column, no new table, no new key, no backfill. That is now a demonstrated
+    #: property of this table's shape rather than a prediction made about it.
+    #:
+    #: ``NOT NULL DEFAULT true`` for the reason :attr:`email` is, and it narrows
+    #: the same way — twice over, in fact: a notification kind with no entry in
+    #: :data:`~core.whatsapp.WHATSAPP_RULES` never travels on this channel however
+    #: this is set, and an account with no usable phone number never does either.
+    whatsapp: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
 
@@ -383,7 +399,8 @@ class NotificationPreference(Base):
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return (
             f"<NotificationPreference user_id={self.user_id!s} "
-            f"key={self.preference_key!r} in_app={self.in_app} email={self.email}>"
+            f"key={self.preference_key!r} in_app={self.in_app} email={self.email} "
+            f"whatsapp={self.whatsapp}>"
         )
 
 

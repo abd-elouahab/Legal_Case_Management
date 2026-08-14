@@ -1,4 +1,7 @@
+"use client";
+
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { Scale } from "lucide-react";
 
 /**
@@ -13,6 +16,8 @@ export default function AuthLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const t = useTranslations("shell.brand");
+
   return (
     <div className="flex min-h-svh flex-col items-center justify-center gap-8 bg-background px-4 py-12">
       <div className="flex items-center gap-2.5">
@@ -20,10 +25,8 @@ export default function AuthLayout({
           <Scale className="h-6 w-6" />
         </span>
         <div className="flex flex-col leading-tight">
-          <span className="text-sm font-semibold text-foreground">
-            Legal Platform
-          </span>
-          <span className="text-xs text-muted-foreground">Case Management</span>
+          <span className="text-sm font-semibold text-foreground">{t("name")}</span>
+          <span className="text-xs text-muted-foreground">{t("tagline")}</span>
         </div>
       </div>
       <div className="w-full max-w-sm">{children}</div>

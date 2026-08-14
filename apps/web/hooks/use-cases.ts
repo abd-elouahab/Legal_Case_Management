@@ -19,7 +19,8 @@ import {
   updateCaseAssignments,
 } from "@/lib/api/cases";
 import { timelineKeys } from "@/hooks/use-timeline";
-import { ApiError, NetworkError } from "@/lib/api/errors";
+import { ApiError } from "@/lib/api/errors";
+import { useErrorMessage, type ErrorCodeMap } from "@/hooks/use-error-message";
 import type { LegalCase } from "@/types/case";
 import type {
   CaseListQuery,
@@ -61,41 +62,28 @@ export const caseKeys = {
  * Translate a failure into a message safe to show the user.
  *
  * Branches on the API's machine-readable `code` rather than on message text,
- * which is localizable and may change. Two of these codes carry the server's own
- * message through verbatim, because only the server knows the specifics: which
- * transition was refused, and which date was out of order.
+ * which is localizable and may change.
+ *
+ * **Two codes used to carry the server's own message through verbatim** — an
+ * invalid transition and an out-of-order date pair — on the grounds that only the
+ * server knows the specifics. `21-localization.md` is what ends that: the server's
+ * sentence is written in English by a process that has never seen the reader's
+ * language preference, so passing it through put an English sentence on an Arabic
+ * screen at exactly the moment somebody needed to understand what went wrong.
+ * Both now resolve to a key here; the specifics they carried (which transition,
+ * which date) are visible in the form itself, and the log keeps the server's text.
  */
-export function caseErrorMessage(error: unknown): string {
-  if (error instanceof NetworkError) return error.message;
+const CASE_ERRORS: ErrorCodeMap = {
+  case_number_already_exists: "numberTaken",
+  case_not_found: "notFound",
+  invalid_case_transition: "invalidTransition",
+  invalid_case_dates: "invalidDates",
+  invalid_assignment: "invalidAssignment",
+  missing_token: "sessionExpired",
+};
 
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case "case_number_already_exists":
-        return "A case with this case number already exists.";
-      case "case_not_found":
-        return "This case no longer exists. Refresh the list and try again.";
-      case "invalid_case_transition":
-      case "invalid_case_dates":
-        return error.message;
-      case "invalid_assignment":
-        return (
-          error.details[0]?.message ??
-          "The selected user cannot be assigned to that position."
-        );
-      case "validation_error":
-        return error.details[0]?.message ?? "Check the details you entered.";
-      case "forbidden":
-        return "You do not have permission to perform this action.";
-      case "invalid_token":
-      case "token_expired":
-      case "missing_token":
-        return "Your session has expired. Sign in again to continue.";
-      default:
-        return error.message || "Something went wrong. Please try again.";
-    }
-  }
-
-  return "Something went wrong. Please try again.";
+export function useCaseErrorMessage(): (error: unknown) => string {
+  return useErrorMessage("cases.errors", CASE_ERRORS);
 }
 
 /**

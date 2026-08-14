@@ -351,38 +351,63 @@ def _delivery_channels(session: Session) -> Sequence[NotificationDispatcher]:
     """Build the delivery channels a created batch is offered to.
 
     The **worker-thread counterpart** of :func:`api.deps.get_notification_channels`,
-    and deliberately assembled from the same shared provider, renderer, queue, and
-    metrics recorder a request would get — which is what makes an email produced by
-    this worker identical to one produced by any other path.
+    and deliberately assembled from the same shared providers, renderers, queues,
+    and metrics recorders a request would get — which is what makes a message
+    produced by this worker identical to one produced by any other path. The two
+    functions exist separately because a worker thread has no request to resolve a
+    dependency from, so **both have to be right**; a test asserts that each wires
+    every channel.
 
     Imported inside the function rather than at module scope, and that placement is
     the interesting part: this module is the *notification* subscriber, and a
-    top-level import of the email service would put a mail provider into the import
-    graph of every unit test that touches notifications. It also keeps the
-    dependency pointing the way it should — nothing in the email channel imports
-    anything from here.
+    top-level import of a delivery service would put a mail provider and an HTTP
+    provider into the import graph of every unit test that touches notifications.
+    It also keeps the dependency pointing the way it should — nothing in either
+    channel imports anything from here.
 
-    Returns nothing at all when the channel is switched off, so a deployment with
-    ``EMAIL_ENABLED=false`` does not construct a delivery service per event.
+    **Each channel is built only when it is switched on**, so a deployment with
+    ``EMAIL_ENABLED=false`` and ``WHATSAPP_ENABLED=false`` constructs nothing at
+    all per event — and one with only one of them on pays for only that one. The
+    order is email then WhatsApp, matching :func:`api.deps.get_notification_channels`
+    so that the two paths cannot differ even in something that does not matter.
     """
-    if not settings.EMAIL_ENABLED:
-        return ()
+    channels: list[NotificationDispatcher] = []
 
-    from services.email_delivery import build_delivery_service
-    from services.email_metrics import get_email_metrics
-    from services.email_provider import get_email_provider
-    from services.email_templates import get_email_template_renderer
-    from services.email_worker import email_queue
+    if settings.EMAIL_ENABLED:
+        from services.email_delivery import build_delivery_service
+        from services.email_metrics import get_email_metrics
+        from services.email_provider import get_email_provider
+        from services.email_templates import get_email_template_renderer
+        from services.email_worker import email_queue
 
-    return (
-        build_delivery_service(
-            session,
-            provider=get_email_provider(),
-            templates=get_email_template_renderer(),
-            queue=email_queue,
-            metrics=get_email_metrics(),
-        ),
-    )
+        channels.append(
+            build_delivery_service(
+                session,
+                provider=get_email_provider(),
+                templates=get_email_template_renderer(),
+                queue=email_queue,
+                metrics=get_email_metrics(),
+            )
+        )
+
+    if settings.WHATSAPP_ENABLED:
+        from services.whatsapp_delivery import build_whatsapp_delivery_service
+        from services.whatsapp_metrics import get_whatsapp_metrics
+        from services.whatsapp_provider import get_whatsapp_provider
+        from services.whatsapp_templates import get_whatsapp_template_renderer
+        from services.whatsapp_worker import whatsapp_queue
+
+        channels.append(
+            build_whatsapp_delivery_service(
+                session,
+                provider=get_whatsapp_provider(),
+                templates=get_whatsapp_template_renderer(),
+                queue=whatsapp_queue,
+                metrics=get_whatsapp_metrics(),
+            )
+        )
+
+    return tuple(channels)
 
 
 #: The one subscriber the process shares.

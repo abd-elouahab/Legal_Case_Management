@@ -1,8 +1,11 @@
+"use client";
+
+import { useTranslations } from "next-intl";
 import { CheckCircle2, Clock, Loader2, TriangleAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { OCR_STATUS_LABELS, type OcrStatus } from "@/types/ocr";
+import type { OcrStatus } from "@/types/ocr";
 
 /**
  * Status badge for one text-extraction run.
@@ -39,6 +42,7 @@ export function OcrStatusBadge({
   className?: string;
 }) {
   const Icon = STATUS_ICONS[status];
+  const t = useTranslations("ocr.statuses");
 
   return (
     <Badge variant="outline" className={cn("gap-1.5", STATUS_STYLES[status], className)}>
@@ -46,7 +50,7 @@ export function OcrStatusBadge({
         className={cn("h-3.5 w-3.5", status === "processing" && "animate-spin")}
         aria-hidden="true"
       />
-      {OCR_STATUS_LABELS[status]}
+      {t(status)}
     </Badge>
   );
 }

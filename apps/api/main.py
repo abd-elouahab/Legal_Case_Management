@@ -19,7 +19,7 @@ from core.config import settings
 from core.exceptions import register_exception_handlers
 from core.lifespan import lifespan
 from core.logging import configure_logging
-from core.middleware import RequestLoggingMiddleware
+from core.middleware import ObservabilityMiddleware
 
 
 def create_app() -> FastAPI:
@@ -46,8 +46,14 @@ def create_app() -> FastAPI:
 
 def _register_middleware(app: FastAPI) -> None:
     """Register middleware. Added last runs outermost (first on each request)."""
-    # Innermost: per-request correlation id + access logging.
-    app.add_middleware(RequestLoggingMiddleware)
+    # Innermost: per-request correlation id, trace, log context, and metrics.
+    #
+    # Innermost deliberately, and it is the one ordering decision here that
+    # matters: a latency measured outside CORS and host validation would include
+    # the time spent rejecting a request that never reached the application, and
+    # the route template — which every metric label depends on — is only resolved
+    # by the router underneath this.
+    app.add_middleware(ObservabilityMiddleware)
 
     # CORS for the web frontend.
     app.add_middleware(

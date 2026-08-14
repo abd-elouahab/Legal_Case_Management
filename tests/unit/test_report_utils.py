@@ -16,6 +16,7 @@ import uuid
 
 import pytest
 
+from core.localization import default_language
 from core.reports import (
     MIN_SECTION_CHARACTERS,
     REPORT_TEMPLATE_VERSION,
@@ -179,11 +180,15 @@ class TestLanguage:
         assert resolve_report_language("  AR  ") == "ar"
 
     @pytest.mark.parametrize("requested", [None, "", "de", "klingon"])
-    def test_anything_else_falls_back_to_french(self, requested: str | None) -> None:
+    def test_anything_else_falls_back_to_the_application_default(
+        self, requested: str | None
+    ) -> None:
         """There is no question to detect from, so there is nothing to detect —
-        only a choice to honour, and the language `project-overview.md` names
-        alongside Arabic to fall back to."""
-        assert resolve_report_language(requested) == "fr"
+        only a choice to honour, and the application default to fall back to. The
+        requester's own preference is applied one layer up, by `ReportService`,
+        because a preference is a fact about an account and `core.reports` has no
+        account to read one from."""
+        assert resolve_report_language(requested) == default_language()
 
     @pytest.mark.parametrize("language", LANGUAGES)
     def test_every_language_has_the_platforms_own_sentences(self, language: str) -> None:

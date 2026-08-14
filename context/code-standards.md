@@ -118,10 +118,11 @@ rather than by review:
 - Notification delivery failures must be retried automatically.
 - Scheduled reminders must execute through background workers.
 
-Implemented per `16-notifications.md` (in-app) and `17-email-delivery-channel.md`
-(email). WhatsApp, push, SMS, and scheduled reminders remain unbuilt. The rules
-that follow are what those six mean in this codebase, and each is enforced by a
-type or a boundary rather than by review:
+Implemented per `16-notifications.md` (in-app), `17-email-delivery-channel.md`
+(email), and `18-whatsapp-delivery-channel.md` (WhatsApp). Push, SMS, and
+scheduled reminders remain unbuilt. The rules that follow are what those six mean
+in this codebase, and each is enforced by a type or a boundary rather than by
+review:
 
 - **Never call the Notification Service from a business module.** There is no
   import to write: notifications are created by `NotificationEventSubscriber`,
@@ -153,8 +154,11 @@ type or a boundary rather than by review:
   one off stops creation and leaves the existing feed alone, which is the only
   behaviour that makes the choice reversible.
 
-The email channel adds four more, and every one of them is about the *boundary*
-rather than about mail:
+The email channel added four more, every one of them about the *boundary* rather
+than about mail — which is why the WhatsApp channel needed none of its own and
+obeys all four unchanged. They are stated as rules for **a delivery channel**
+rather than for email, and a third channel arriving without amending them is the
+evidence that they were the right rules:
 
 - **A delivery channel consumes notifications, never events.** A channel
   implements `NotificationDispatcher` — one method, taking rows the Notification
@@ -165,20 +169,152 @@ rather than about mail:
   dispatcher is a mistake; that is the Notification Service's job and only its
   job.
 - **Which notifications travel on a channel is a table, keyed by notification
-  rule.** `EMAIL_RULES` in `core/email.py`; a channel cannot express "deliver
-  this *event*", because an event is not something it can name. Adding a
-  supported type is one entry, and a rule that is absent produces nothing —
-  silently and correctly.
+  rule.** `EMAIL_RULES` in `core/email.py`, `WHATSAPP_RULES` in
+  `core/whatsapp.py`; a channel cannot express "deliver this *event*", because an
+  event is not something it can name. Adding a supported type is one entry, and a
+  rule that is absent produces nothing — silently and correctly.
 - **Compose from `core/notifications.py`, never from a copy of the wording.**
   The subject is the notification's rendered title and the body's lead is its
   rendered message, in the recipient's language. A channel that restated a
   sentence would be a second place for the platform's wording to drift, and an
-  Arabic recipient would find out first.
+  Arabic recipient would find out first. **This binds hardest where the wording
+  could most easily escape**: a WhatsApp template is approved in Meta's console
+  and could hold the sentences, so the approved template is deliberately a thin
+  envelope and `apps/api/whatsapp/*.params.j2` says only which values fill it.
 - **A channel's failures are its own.** Delivery runs on its own worker with its
   own persisted lifecycle and its own retry schedule; the notification, the case,
   and the document are untouched however a send ends, because the channel writes
   to one table. `dispatch()` must not raise and must not block — it is called on
-  the notification worker's thread, after that batch has already committed.
+  the notification worker's thread, after that batch has already committed. **Its
+  own worker pool, too**: channels fail differently — a relay greylists per
+  sender, the Cloud API rate-limits per business number — so sharing one would
+  make each channel's backlog the other's latency.
+
+---
+
+## Dashboards and read-only views
+
+Implemented per `19-dashboard-analytics.md`. The dashboard is the platform's
+first **read across every module**, and the rules below are what that shape
+requires. They are stated as rules for *a view over other features* rather than
+for the dashboard, because the next one — a supervisor overview, an export, a
+report of reports — will need every one of them:
+
+- **A view owns no data.** No table, no migration, no event, no worker. It reads
+  through repositories and returns, so switching it off removes a page and
+  nothing else. A view that needed to persist something has stopped being a view.
+- **Never re-derive an authorization rule; ask the policy that owns the rows.**
+  `services/dashboard_access.py` deliberately contains **no rules** — it returns
+  `CaseAccessPolicy.visibility_scope` for cases and the caller's own identifier
+  for the private histories (reports, conversations, notifications). A wrong scope
+  in a view is invisible in a way a wrong document read is not, because a view
+  shows a *number*: nobody notices that a total is four instead of three.
+- **Scope is a parameter with no default.** Every query in
+  `repositories/dashboard.py` takes `visible_to`, and there is no unscoped
+  convenience variant to reach for by accident. The predicate is
+  `repositories.case.assigned_case_scope`, imported rather than re-written.
+- **An aggregate requires *every* capability it draws on, not any.** A widget
+  reporting uploads, extraction, and indexing that was shown to somebody holding
+  one of the three would report the other two as zero — and a zero is
+  information. *"Aggregated metrics must never leak unauthorized information"*
+  fails through arithmetic, not through rows.
+- **Compute nothing the caller may not see.** The permission check runs *before*
+  the loader, so an unauthorized widget is never computed. Computing and then
+  filtering leaves a query against forbidden rows one logging change away from
+  being visible.
+- **A unit of work is a widget, never a page.** One aggregated endpoint loops over
+  the same loaders the single-widget endpoint calls. That is what lets the API be
+  one request per page *and* one request per refresh without two code paths that
+  can disagree.
+- **Every unit fails alone.** A loader runs inside its own `try`; a failure marks
+  that widget unavailable with a **code**, is counted, is logged with its
+  traceback server-side, and the response is still a 200. A view that returned 500
+  because one figure was unavailable would be a view nobody could rely on.
+- **Shed load rather than block.** Units are loaded against a wall-clock budget
+  checked between them; past it the rest are returned unavailable rather than
+  attempted. A budget rather than a per-query timeout, because it behaves
+  identically on every database.
+- **Cache only what does not depend on who asked.** Eligibility is the
+  `platform_wide` flag, never cost — a per-caller figure in a shared cache shows
+  one person another's data, and no setting may permit it.
+- **Never invent a figure.** `COUNT`, `SUM`, or a bounded `SELECT` over rows that
+  exist. No data is a measured zero; no observations is `null`, which a client
+  renders as an em dash. There are no trends, projections, or smoothed series and
+  nowhere for one to come from.
+- **Count persisted state, not process state.** A queue depth comes from rows in a
+  `pending` status, not from a thread pool's size: a pool is one API instance's
+  opinion and resets on deploy.
+- **A view returns keys, never prose.** Widgets, metrics, and buckets carry stable
+  identifiers; the words live in the client's own copy. An API response is a place
+  a translation cannot live, which is the same reason a notification stores no
+  sentence.
+- **Let the server describe staleness.** A widget declares the domain events after
+  which it is stale and the API serves that list, so the browser refreshes what an
+  event touched without a table of its own. This is the one sanctioned exception
+  to `lib/realtime/sync.ts` being the single place the frontend decides what an
+  event invalidates — and it exists because a table there would have to be edited
+  every time a widget was added, which is precisely the redesign the spec forbids.
+
+---
+
+## Settings and configuration
+
+Implemented per `20-settings.md`. The rules below are what *"each feature should
+own its configuration; the Settings module simply presents and manages those
+configurations"* means in this codebase, and each is enforced by a boundary
+rather than by review:
+
+- **Two kinds of configuration, and they never meet.** `core/config.py` is the
+  *deployment's*: environment variables, read once at import, never written, the
+  same for everybody. `core/settings.py` is a *person's* or *the platform's*:
+  changed at runtime, stored per account or per deployment, and served over the
+  API. A value never crosses — nothing in the settings registries is read from
+  the environment, and nothing in `Settings` is editable through a route.
+- **Never store a secret in a settings registry.** *"Sensitive values remain
+  protected"* is honoured by not holding any: the password lives in
+  `users.hashed_password` and credentials live in the environment. A setting that
+  needed encrypting is a setting that belongs in the deployment's configuration
+  instead.
+- **A setting is one row per `(owner, key)`, never a column.** The shape
+  `notification_preferences` proved twice. A new setting is one entry in
+  `core/settings.py` with **no migration**, and *"no stored row"* is the only
+  representation of "has not chosen" — which is what lets a default change reach
+  every untouched account without a backfill.
+- **Validate the whole batch before writing any of it.** *"Invalid configuration
+  should never corrupt stored preferences"* is a property of ordering, not of a
+  transaction: a rejected entry means no statement was issued for any of them.
+  Report **every** offending key, so a form can mark all its bad fields at once.
+- **Do not write a value that is already stored.** *"Minimize unnecessary
+  updates"* / *"avoid duplicate persistence"*, and it is what keeps `updated_at`
+  meaning *when this setting changed* rather than *when somebody opened the page*.
+- **Scope by the absence of a parameter, not by a policy module.** No settings
+  method and no settings route takes a user identifier; the account is always the
+  authenticated caller. That is why there is no `settings_access.py` — the
+  question a per-resource policy would answer cannot be asked.
+- **Administrator configuration is a different table, registry, and
+  permission.** `settings:manage` is not a wider `settings:update`. A key must
+  appear in exactly one registry, so no lookup can resolve a platform value as
+  somebody's preference by taking the wrong map.
+- **Present other features' configuration; never restate it.** Notification
+  preferences are read and written through `/notifications/preferences`; the
+  password goes through `AuthService`; the profile writes the `users` row through
+  the repository User Management owns — never through its administrative service,
+  which can change a role. A second endpoint for one stored thing is how two
+  answers to one question start to disagree.
+- **Serve keys and definitions, never words.** A section, a setting, and a
+  permitted value each travel as a stable identifier, and the client renders a
+  control from the served *definition*. That is what makes a setting added on the
+  server appear in a browser nobody redeployed, and it is the same rule the
+  dashboard's widget catalog and the notification feed's stored prose follow.
+- **Log what changed, never what it changed to.** The spec asks for *profile
+  updated*, *password changed*, *preferences changed*; the logs carry
+  identifiers, section names, setting **keys**, and counts. Which theme somebody
+  chose is not a secret, but a log line carrying their time zone, their language,
+  and their working hours is a small profile of a person assembled by accident.
+- **Count by section, never by setting and never by person.** *"Appearance: 41
+  changes"* is a throughput figure an operator can act on; *"theme: dark, 41"* is
+  a statement about what people chose, and a per-account breakdown would be a
+  live index of who configures what.
 
 ---
 
@@ -186,10 +322,199 @@ rather than about mail:
 
 - Never hardcode user-facing strings.
 - Every text must use translation keys.
-- Support both Arabic and French.
+- Support English, French, and Arabic.
 - Arabic pages must support Right-to-Left (RTL).
 - Dates, numbers, and currencies must follow locale formatting.
 - AI responses must preserve the selected language.
+
+Implemented per `21-localization.md`. The rules that follow are what those six
+mean in this codebase, and each is enforced by a boundary, a type, or a test
+rather than by review:
+
+- **Resolve a language in one place.** `core.localization.resolve_language` takes
+  candidates in priority order and returns one the platform serves; every
+  resolver on the platform delegates to it. Writing a second fallback — even a
+  correct one — is how an email and an interface start disagreeing about
+  somebody's language, and the reader who notices is the one being written to in
+  the wrong one.
+- **Ask for a *choice* or for a *resolution*, and know which you need.**
+  `LanguageDirectory.language_for` always answers, because a message must be
+  written in some language. `chosen_language_for` answers `None` when nobody has
+  chosen, because a surface with text to detect from — the assistant, the RAG
+  endpoint — has something better than a deployment default. Using the first
+  where the second belongs silently disables language detection.
+- **A delivery channel gets a directory, never a settings repository.** One
+  method, no writes. The same reasoning that gives the Notification Service a
+  one-method `NotificationDispatcher`: a collaborator that can answer exactly one
+  question cannot acquire an opinion about anything else.
+- **Snapshot the language onto the row before queueing.** An address, a phone
+  number, and a language are all resolved when a delivery is created, not when it
+  is sent — otherwise a preference changed mid-retry rewrites history, and on
+  WhatsApp it asks the provider for a template that was never approved in that
+  language.
+- **Never put a sentence in an API response.** A section, a widget, a metric, a
+  bucket, a setting, a permitted value, and a language all travel as **stable
+  identifiers**; the words live in `apps/web/messages/*.json`. This is the same
+  rule the dashboard's widget catalog, the settings registry, and the
+  notification feed's stored prose already follow, and Localization is what makes
+  the reason concrete: one API response is read in three languages.
+- **Name physical edges nowhere.** Use logical utilities — `ms-`/`me-`,
+  `ps-`/`pe-`, `start-`/`end-`, `text-start`/`text-end`, `border-s`/`border-e` —
+  so one layout serves both directions. A mirrored stylesheet is a second layout
+  to keep in step, and the day it drifts is the day an Arabic screen looks
+  broken to somebody who cannot report which class is wrong. `components/ui/*` is
+  exempt: those are generated primitives, which `ai-workflow-rules.md` protects.
+- **Never format a date or a number by hand.** `useDateFormat` and
+  `useNumberFormat` apply the reader's language, zone, and styles; a module-level
+  `Intl` formatter cannot read a setting, and string concatenation cannot write
+  `1 024`.
+- **A missing translation is a fallback, never a branch and never a key.** The
+  active catalogue is merged onto the default one before it is used, so every key
+  resolves; a key in no catalogue renders a humanized form of itself. A component
+  that writes `t(key) ?? "Something"` has written the fallback twice.
+- **Report keys, never text.** The client may tell the platform *which* key was
+  missing. It may never send the string that key would have rendered to, because
+  that string may name a case, a court, or a person — both ends discard anything
+  that is not a short, whitespace-free identifier.
+- **Localization changes presentation only.** No permission, no scope, no query,
+  and no route depends on a language. If a change to this feature requires
+  touching an access policy, a repository filter, or a router, it is not a
+  localization change.
+
+The rules below were added when the **interface** half shipped — the ~590 English
+literals that were still inside feature components when the server half was
+declared done. Each removed a *category* of hardcoded string rather than a list of
+them, and each is now the shape a new feature is expected to follow:
+
+- **A label map in `types/` is a hardcoded string.** `Record<Enum, string>`
+  constants — `CASE_STATUS_LABELS`, `ROLE_LABELS`, `OCR_STATUS_LABELS`, and the
+  eleven others — read the same in every language because a module constant cannot
+  read a setting. The *values* belong in `types/` (a lifecycle is a fact about the
+  platform); the *sentences* belong in a namespace, and the call site is
+  `t(value)`. A status added on the server then renders through
+  `getMessageFallback` as a humanized form of itself rather than as a blank cell.
+- **Never display the server's `message`.** `lib/api/errors.ts` already says
+  clients branch on `error.code`; this carries it one step further. The code
+  selects a key, the key selects a sentence, and the server's prose reaches the
+  log and nothing else — it is written in English by a process that has never seen
+  the reader's preference, so passing it through makes an interface that is
+  translated everywhere except when something goes wrong. `useErrorMessage`
+  (`hooks/use-error-message.ts`) is the one implementation; a module supplies the
+  codes that are *its own* and inherits the shared `errors.*` vocabulary.
+- **A Zod schema emits a key, never a sentence.** A schema is a module-level
+  constant built at import, so it cannot call `useTranslations` and cannot be
+  rebuilt per render without breaking the resolver's identity. `vm(key, values)`
+  (`lib/validation/messages.ts`) travels through Zod and React Hook Form as an
+  opaque marker, and `useFieldError` decodes it at the input. Anything it does not
+  recognise passes through unchanged, which is what keeps a server-supplied 422
+  detail rendering.
+- **A field's own name does not belong in its validation message.** *"Required."*
+  beneath the First name input says everything *"First name is required."* did, in
+  one catalogue entry rather than one per field — and a label passed into a schema
+  is an English word a translator cannot reach.
+- **A component takes a key, not a sentence, whenever the words are copy rather
+  than data.** `PageHeader` takes `titleKey`; `EmptyState` takes
+  `titleKey`/`descriptionKey`. Both keep a plain-string prop for the other case: a
+  page named after a **row** (a case's title, a user's name) and an empty state
+  naming a **query** are data, arrive resolved from the API, and could not have a
+  key.
+- **Interpolate, never concatenate.** A sentence assembled from JSX fragments or a
+  template literal cannot be reordered, and Arabic reorders. `t("archived", {
+  caseNumber })`, not `` `Case ${n} was archived.` ``.
+- **A count takes an ICU plural, never a ternary and never a trailing "s".**
+  English has two forms, French agrees on one boundary and not the other, and
+  Arabic has six. A conditional in a component encodes English grammar.
+- **Use `t.has(key)` to test for a key, never `??`.** A missing key does not return
+  `undefined` — it returns the humanized fallback — so a `??` chain never reaches
+  its second branch. This is a real defect the interface work found, not a
+  hypothetical.
+- **Some strings must *not* be translated, and the reason is never laziness.** A
+  language's own name (`Français`, `العربية`) — a selector that translated its
+  options would show an Arabic reader the word "French" in Arabic. A unit symbol
+  (`MB`, `ms`, `s`, `d`) — identical in all three languages, and translating one
+  makes a latency unreadable to the colleague reading the same screen in another.
+  A product or format name (`PDF`, `Markdown`, `WhatsApp`). And a value that only
+  *looks* like a language code: OCR's `detectedLanguage` is a Tesseract model list
+  (`eng+fra+ara`), not ISO 639-1.
+- **Two screens are structurally untranslatable, and only two.**
+  `app/global-error.tsx` catches a failure of the root layout — the layout that
+  mounts `LocaleProvider` — so there is no catalogue to reach for; and page
+  `metadata` is rendered by a server that, because the platform deliberately has no
+  locale in the URL, does not know the reader's language. Everything else is
+  translated, including `app/not-found.tsx`, which sits *inside* that layout.
+
+---
+
+## Monitoring and observability
+
+Implemented per `22-monitoring.md`. The rules below are what *"build monitoring
+as a cross-cutting concern without coupling it to business logic"* means in this
+codebase. They are stated as rules for **instrumentation** rather than for
+monitoring, because the next thing to be observed — an audit exporter, a billing
+meter, a quality evaluation — will need every one of them:
+
+- **Observe at an edge the platform already has.** The HTTP middleware, the
+  exception handlers, the SQLAlchemy engine, the lifespan. A business module may
+  *emit* a log line, a metric, or a span; it may not hold a recorder, branch on
+  one, or know that monitoring exists. If instrumenting something requires
+  changing a service's signature, instrument the boundary underneath it instead.
+- **Never let an observation fail an operation.** Every recording site is inside a
+  `try` that swallows, every recorder is a protocol with a null implementation,
+  and the null one is what a switched-off deployment gets from `api/deps.py` — so
+  recording code stays a plain call with no `if enabled` guard at every site. The
+  only acceptable failure mode is *"an observation was not taken"*.
+- **Declare a metric before recording it.** `core/observability.py` holds the name,
+  the type, the unit, the component, and the closed list of labels. A recording
+  site names a member, so a typo is a static error rather than a metric nobody
+  ever sees again — and an exporter renders the platform's metrics without any
+  call site telling it what they mean.
+- **Every label is bounded, and a route label is a *template*.**
+  `/cases/{case_id}` is one series; `/cases/9f2c…` is one per case, which is both
+  a cardinality problem and a slow leak of which matters are being worked on. An
+  undeclared label is dropped and the observation kept; a series past the ceiling
+  is refused **and counted**, because a monitoring page that is quietly incomplete
+  is worse than one that says so.
+- **Never record what you would not log.** A recorder's method signature is the
+  guarantee: it takes counts, durations, and enum members, and has no parameter
+  for a user, a case, a document, a query, or a body. A recorder that *cannot be
+  handed* an identifier cannot leak one — which is a stronger claim than any
+  amount of care at the call sites.
+- **Redact by field name, in the pipeline, last.** `redact_mapping` runs as the
+  final structlog processor over every entry from every module, including the ones
+  libraries emit. A value-based scrubber has to recognise a token; a name-based
+  one refuses `password` before seeing what was in it. Over-redaction is the right
+  way to be wrong.
+- **Count a thing once.** Eleven features ship their own metrics recorder;
+  `services/monitoring.py` *reads* them and writes to none. Two numbers for one
+  question drift the first time one call site moves, and the spec forbids
+  duplicate collection in as many words.
+- **Group failures, never list them.** A fingerprint is the exception's type and
+  location — never its message, which carries the identifier of whatever was being
+  worked on. The useful sentence is *"`IntegrityError` in `case.py:118`, 240 times
+  since 09:14"*, and a list of occurrences is a log with extra steps.
+- **A count of people is a cardinality, never a list.** An address or an identity
+  that must be counted is folded into a **salted digest** whose salt is random per
+  process and never leaves it. *"Three distinct sources"* is actionable; *"three
+  IP addresses"* is a record of who was refused.
+- **Pull gauges when a page is assembled; never sample on a timer.** A gauge is
+  meaningful at the instant it is read, and a background thread sampling one every
+  few seconds is a thread the platform runs for a page that may never be opened.
+- **Probe an external service's *configuration*, not its liveness.** A readiness
+  endpoint an orchestrator hits every few seconds must never call a metered model
+  or open a mail connection. Whether a provider is up is already answered by the
+  delivery rows every send writes.
+- **Distinguish required from optional when aggregating health.** A subsystem is
+  as healthy as its worst *required* part; an optional one being down is
+  `degraded`, and a switched-off one is `disabled` rather than a fault. A platform
+  that is 80 % working must not report itself as down, or an orchestrator will take
+  it out of rotation.
+- **Evaluate alerts; deliver none.** Thresholds live in configuration, rules live
+  in `core/observability.py`, and a rate alert requires a floor of observations
+  before it may fire. Nothing in the platform reads a firing alert.
+- **A monitoring surface is administrator-only and scopes nothing.** There is no
+  `monitoring_access.py`, because a p95 and a queue depth have no owner. That is
+  the reason the permission is the whole of the authorization story here, and the
+  reason there is no narrower version of it to grant anybody.
 
 ---
 
@@ -292,17 +617,63 @@ rather than about mail:
 - `modules/cases/` — Case lifecycle management.
 - `modules/documents/` — Document management and OCR.
 - `modules/reports/` — Report generation and exports.
-- `modules/notifications/` — Notification service (In-App and **Email**; WhatsApp,
-  push, and SMS are the channels the preference model's remaining columns are
-  shaped to receive). Implemented inside `apps/api` and `apps/web` like every
-  other module; `services/notification_events.py` is its **one** connection to
-  the rest of the platform, and it points inward — nothing imports the
-  notification service. The email channel is `core/email.py`,
+- `modules/notifications/` — Notification service (In-App, **Email**, and
+  **WhatsApp**; push and SMS are the channels the preference model's remaining
+  columns are shaped to receive). Implemented inside `apps/api` and `apps/web`
+  like every other module; `services/notification_events.py` is its **one**
+  connection to the rest of the platform, and it points inward — nothing imports
+  the notification service. The email channel is `core/email.py`,
   `models/email.py`, `repositories/email.py`, `services/email_*.py`, and the
-  templates in `apps/api/emails/`; it imports the notification vocabulary and
-  nothing in the notification module imports it back.
+  templates in `apps/api/emails/`; the WhatsApp channel is the same shape one file
+  at a time (`core/whatsapp.py`, `models/whatsapp.py`, `repositories/whatsapp.py`,
+  `services/whatsapp_*.py`, and the descriptors in `apps/api/whatsapp/`). Both
+  import the notification vocabulary, nothing in the notification module imports
+  either back, and **the two channels do not import each other** — two delivery
+  channels that shared a module would be one channel with two exits.
+- `modules/dashboard/` — The landing page: widgets, role layouts, operational
+  analytics, and quick actions. Implemented inside `apps/api` (`core/dashboard.py`,
+  `repositories/dashboard.py`, `services/dashboard*.py`, `schemas/dashboard.py`,
+  `api/v1/dashboard/`) and `apps/web` (`components/dashboard/`,
+  `hooks/use-dashboard.ts`, `lib/api/dashboard.ts`) like every other module —
+  **with no model and no migration**, because it owns no data. Its dependencies
+  point at every other module and none of theirs points back: nothing imports the
+  dashboard.
+- `modules/settings/` — The unified interface over the platform's configuration.
+  Implemented inside `apps/api` (`core/settings.py`, `models/settings.py`,
+  `repositories/settings.py`, `services/settings*.py`,
+  `services/session_registry.py`, `schemas/settings.py`, `api/v1/settings/`) and
+  `apps/web` (`components/settings/`, `hooks/use-settings.ts`,
+  `lib/api/settings.ts`) like every other module — and **four of its nine
+  sections store nothing here**, because the features that own them already do.
+  Nothing imports the settings service; it imports `AuthService` and the user
+  repository, and points at nothing else.
 - `modules/users/` — User management and RBAC.
-- `modules/localization/` — Arabic, French, translations, and RTL support.
+- `modules/localization/` — English, French, Arabic, translations, and RTL
+  support. Implemented inside `apps/api` (`core/localization.py`,
+  `repositories/localization.py`, `services/localization*.py`,
+  `schemas/localization.py`, `api/v1/localization/`) and `apps/web`
+  (`lib/i18n/`, `messages/*.json`, `components/i18n/`,
+  `components/layout/language-switcher.tsx`) like every other module — **with no
+  model and no migration**, because a language preference is a *setting* and
+  Settings already owns the row. Its dependencies point at `user_settings` and at
+  nothing else; nothing imports the localization service except the two delivery
+  channels and the two AI surfaces, each of which takes the one-method
+  `LanguageDirectory` rather than the module.
+- `modules/monitoring/` — Monitoring & observability. Implemented inside
+  `apps/api` (`core/observability.py`, `core/tracing.py`,
+  `services/metrics_registry.py`, `services/metrics_export.py`,
+  `services/tracer.py`, `services/error_tracker.py`,
+  `services/security_monitor.py`, `services/system_metrics.py`,
+  `services/database_metrics.py`, `services/monitoring.py`,
+  `api/v1/monitoring/`) and `apps/web` (`components/monitoring/`,
+  `hooks/use-monitoring.ts`, `lib/api/monitoring.ts`) like every other module —
+  **with no model and no migration**, because a metric written to PostgreSQL would
+  make the database a dependency of the thing that watches the database. Its
+  dependencies point at every other module's *recorders* and none of theirs points
+  back: nothing imports the monitoring service, and the eleven feature recorders
+  are read rather than written. The only files outside this list it touches are
+  the four edges it attaches to — `core/middleware.py`, `core/exceptions.py`,
+  `core/lifespan.py`, and `core/logging.py`.
 - `services/ai/` — AI agents, RAG pipeline, embeddings, prompts, and LLM integrations.
 - `services/workers/` — Background jobs, OCR, indexing, reminders, and scheduled tasks.
 - `apps/api/websocket/` — The WebSocket layer: frame encoding, one connection, and

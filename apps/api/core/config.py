@@ -30,15 +30,20 @@ DEV_JWT_SECRET_PLACEHOLDER = "dev-only-insecure-jwt-secret-change-me"
 # for HMAC-SHA256; 32+ chars is the widely recommended floor).
 MIN_JWT_SECRET_LENGTH = 32
 
-# Languages EMAIL_DEFAULT_LANGUAGE may name.
+# Languages a default-language setting may name — EMAIL_DEFAULT_LANGUAGE, since
+# the WhatsApp channel shipped WHATSAPP_DEFAULT_LANGUAGE, and since Localization
+# shipped the application-wide DEFAULT_LANGUAGE the other two fall back to. The
+# name is kept rather than generalized because renaming a constant every
+# deployment's error messages quote is a change with no benefit to anyone reading
+# one.
 #
 # Written out here rather than imported from `core.rag.SUPPORTED_ANSWER_LANGUAGES`,
 # which is where the platform actually defines the set: **this module is imported
 # by everything, including `core.rag` itself**, so reaching for it during
 # validation is a circular import at startup. A duplicated three-element literal
 # is the cheaper of the two problems, and it is not left to drift — a unit test
-# asserts the two sets are equal, which fails the build rather than producing an
-# email in a language the renderer will silently replace.
+# asserts the two sets are equal, which fails the build rather than producing a
+# message in a language the renderer will silently replace.
 SUPPORTED_EMAIL_LANGUAGES: frozenset[str] = frozenset({"ar", "fr", "en"})
 
 
@@ -67,13 +72,114 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     DEBUG: bool = False
 
+    # --- Localization ---
+    # The application's default language: step 3 of `21-localization.md`'s
+    # selection chain ("user preference, browser language, application default")
+    # and the last step of its fallback strategy, which are one value asked for by
+    # two questions. `en` because that spec names English as the default; a
+    # deployment serving one country moves it here rather than in a release.
+    #
+    # It is the fallback for *every* language decision on the platform — a
+    # notification's, an email's, a WhatsApp message's, an AI answer's, a report's
+    # — through `core.localization.resolve_language`, which is why it lives beside
+    # the application's own settings rather than inside any one feature's block.
+    # `EMAIL_DEFAULT_LANGUAGE` and `WHATSAPP_DEFAULT_LANGUAGE` remain as the
+    # *channel's* answer for a recipient whose own preference cannot be read.
+    DEFAULT_LANGUAGE: str = "en"
+    # Whether a client may report a missing translation key or a catalogue that
+    # failed to load. On by default: `21-localization.md` asks for exactly those
+    # two figures under Monitoring, and a browser is the only place either is
+    # observable. The reports are counted, never stored, and carry a **key**
+    # rather than any text — see `api/v1/localization/router.py`.
+    LOCALIZATION_REPORTING_ENABLED: bool = True
+    # Most keys one report may name. A client batches what it noticed while
+    # rendering a page; a ceiling keeps a loop that reports per render from
+    # turning a metrics endpoint into a write path.
+    LOCALIZATION_REPORT_MAX_KEYS: int = 50
+
     # --- Server ---
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
     # --- Logging ---
+    # The five levels `22-monitoring.md` requires, and the level is deliberately
+    # configurable rather than derived from ENVIRONMENT: a production incident is
+    # diagnosed by turning DEBUG on for an hour, and a deployment that has to be
+    # rebuilt to do that is one where nobody does it.
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     LOG_JSON: bool = True
+
+    # --- Monitoring & observability ---
+    # The cross-cutting layer: structured logging context, metrics, tracing,
+    # health, error tracking, and security monitoring. **Switching it off must
+    # change nothing a user can see** — that is the whole contract of the feature
+    # (`22-monitoring.md`: "monitoring must never become a dependency of the
+    # application"), so this setting suppresses *recording* and leaves every
+    # request, worker, and socket behaving identically.
+    MONITORING_ENABLED: bool = True
+    # The two halves, separately switchable, because they cost differently. Metric
+    # recording is a dictionary lookup and an addition; tracing allocates a span
+    # object per instrumented call and keeps a bounded buffer. A deployment under
+    # memory pressure turns the second off and keeps the first.
+    MONITORING_METRICS_ENABLED: bool = True
+    MONITORING_TRACING_ENABLED: bool = True
+    # Whether database statements are timed. Separate from tracing because it
+    # attaches to the SQLAlchemy engine rather than to a request, so it also
+    # covers background workers — and because it is the one piece of
+    # instrumentation on a per-statement path, which is the hottest thing the
+    # platform does.
+    MONITORING_DB_INSTRUMENTATION: bool = True
+    # Traces retained in memory, and spans kept per trace. Both are bounds on
+    # *memory*, not on correctness: a trace past the span ceiling is still
+    # recorded, with the overflow counted rather than silently lost.
+    MONITORING_TRACE_BUFFER: int = 200
+    MONITORING_MAX_SPANS_PER_TRACE: int = 50
+    # Distinct metric series the registry holds before it refuses new ones, and
+    # distinct failure groups the error tracker keeps. Both ceilings exist to
+    # bound a *bug* — a label or a fingerprint that varies per request — rather
+    # than the design, and what each refuses is counted and reported.
+    MONITORING_MAX_METRIC_SERIES: int = 4096
+    MONITORING_MAX_ERROR_GROUPS: int = 200
+    # Security events kept in the recent feed. Small: the feed is for reading, and
+    # the counters and per-minute rates beside it are what an alert evaluates.
+    MONITORING_SECURITY_FEED_SIZE: int = 100
+    # A request or a database statement slower than this is logged at WARNING with
+    # its route or verb. Slow-query logging is the one piece of this feature that
+    # writes a line per occurrence, so the threshold matters: 500 ms is well above
+    # every ordinary query on this platform and well below anything worth
+    # ignoring.
+    MONITORING_SLOW_REQUEST_MS: float = 2000.0
+    MONITORING_SLOW_QUERY_MS: float = 500.0
+    # Whether `GET /monitoring/export` serves the Prometheus text exposition
+    # format, and the prefix every series carries there. The prefix is a setting
+    # because a deployment scraping several services into one Prometheus needs
+    # them distinguishable, and renaming a metric afterwards breaks every
+    # dashboard built on it.
+    MONITORING_PROMETHEUS_ENABLED: bool = True
+    MONITORING_PROMETHEUS_PREFIX: str = "legal_platform"
+    # Alert thresholds. They live here rather than in `core/observability.py`
+    # beside the rules for the reason `19-dashboard-analytics.md` gives for its
+    # own budgets: a five-percent error rate is alarming for one deployment and a
+    # quiet afternoon for another, and a threshold that requires a release to
+    # change is a rule somebody disables instead of tuning.
+    #
+    # Percent of requests answered with a server error.
+    MONITORING_ERROR_RATE_THRESHOLD: float = 5.0
+    # Average request latency, in milliseconds.
+    MONITORING_LATENCY_THRESHOLD_MS: float = 2000.0
+    # Jobs pending or processing in one queue.
+    MONITORING_QUEUE_BACKLOG_THRESHOLD: int = 100
+    # Failed sign-ins in the last fifteen minutes.
+    MONITORING_LOGIN_FAILURE_THRESHOLD: int = 25
+    # Requests that must have been observed before a *rate* alert may fire. Three
+    # requests of which one failed is a 33 % error rate and means nothing; without
+    # a floor, every deployment pages its operator the first time a health check
+    # races a restart.
+    MONITORING_ALERT_MIN_SAMPLES: int = 20
+    # Rows the trace and error views return when a request does not ask for a
+    # number, and the ceiling a request may ask for.
+    MONITORING_PAGE_SIZE: int = 20
+    MONITORING_MAX_PAGE_SIZE: int = 100
 
     # --- API documentation ---
     ENABLE_DOCS: bool = True
@@ -563,6 +669,52 @@ class Settings(BaseSettings):
     # its own endpoint and is one UPDATE whatever the history's size.
     NOTIFICATION_MAX_BULK_READ: int = 200
 
+    # --- Dashboard & analytics ---
+    # The platform's landing page: a widget system assembled by one aggregated
+    # endpoint. It **owns no data** — every figure is read from the modules that
+    # do — so switching it off removes a page and changes nothing else. That is
+    # also why there is no queue, no worker, and no retry setting here: a
+    # dashboard is a read.
+    DASHBOARD_ENABLED: bool = True
+    # Rows a list widget returns, and the ceiling a request may ask for. A widget
+    # is a glance rather than a page: five is what fits on a card, and anything
+    # past the maximum is a list view rather than a dashboard.
+    DASHBOARD_LIST_SIZE: int = 5
+    DASHBOARD_MAX_LIST_SIZE: int = 20
+    # How far ahead the "upcoming hearings" widget looks, in days. Thirty matches
+    # the longest fixed time filter, so the diary widget and the analytics beside
+    # it describe the same month.
+    DASHBOARD_HEARING_HORIZON_DAYS: int = 30
+    # Longest custom range a client may ask for, in days. A dashboard is a view of
+    # the working present; a two-year window is a report, and every widget query
+    # would scan for it.
+    DASHBOARD_MAX_RANGE_DAYS: int = 366
+    # Wall-clock budget for assembling one dashboard, in seconds. Widgets are
+    # loaded in order and the budget is checked between them: once it is spent,
+    # the widgets not yet reached are returned as *unavailable* rather than being
+    # attempted. That is the spec's "one failing widget must not prevent the
+    # dashboard from loading" extended to a slow one — the page arrives, the
+    # remaining tiles say so, and the client refreshes them individually.
+    #
+    # It is deliberately **not** a per-query timeout: cancelling a running
+    # statement is a driver-and-database concern that differs between PostgreSQL
+    # and the test database, and a budget that is enforced identically everywhere
+    # is worth more than one that only works in production.
+    DASHBOARD_BUDGET_SECONDS: float = 8.0
+    # How long a *platform-wide* widget's result may be reused, in seconds; 0
+    # disables caching entirely. Only widgets declared `platform_wide` in
+    # `core/dashboard.py` are eligible, and that restriction is the whole safety
+    # argument: those figures are identical for every caller who may see them, so
+    # a shared entry cannot show one person another's data. Nothing user-scoped is
+    # ever cached, whatever this is set to.
+    DASHBOARD_CACHE_SECONDS: int = 30
+    # Entries the platform-wide cache holds before the oldest is evicted. Small on
+    # purpose: there are three such widgets and a handful of windows.
+    DASHBOARD_CACHE_SIZE: int = 64
+    # How recently an account must have signed in to count towards "active users",
+    # in minutes.
+    DASHBOARD_ACTIVE_USER_MINUTES: int = 60
+
     # --- Email delivery channel ---
     # The second delivery channel for the notifications the platform already
     # creates. It decides nothing about *what* is worth telling somebody — that
@@ -609,12 +761,14 @@ class Settings(BaseSettings):
     # environments against one mailbox needs so a staging message is
     # distinguishable from a real one.
     EMAIL_SUBJECT_PREFIX: str | None = None
-    # Which language emails are written in. There is **no per-user language
-    # column yet** (`architecture.md` lists Language Preferences under PostgreSQL
-    # and nothing has built them), so this is the deployment's answer rather than
-    # the recipient's; when that column arrives, one call site changes. `fr`
-    # matches `core.notifications.resolve_notification_language`'s own fallback.
-    EMAIL_DEFAULT_LANGUAGE: str = "fr"
+    # Which language an email is written in when the **recipient's own preference
+    # cannot be read** — a settings lookup that failed, or an account that has
+    # never chosen. Since Localization shipped, the ordinary path is the
+    # recipient's `user_settings.language`, resolved by
+    # `services.localization.SettingsLanguageDirectory` before a delivery row is
+    # queued; this is the channel's last resort and is itself resolved against
+    # DEFAULT_LANGUAGE, so a deployment that sets one value sets both.
+    EMAIL_DEFAULT_LANGUAGE: str = "en"
     # Background workers sending mail in this API process. Two by default: enough
     # that one hung connection does not stop the queue, small enough that the
     # platform never looks like a sender worth rate-limiting.
@@ -665,6 +819,110 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = True
     SMTP_USE_SSL: bool = False
     SMTP_TIMEOUT_SECONDS: int = 10
+
+    # --- WhatsApp delivery channel ---
+    # The third delivery channel for the notifications the platform already
+    # creates. Like email, it decides nothing about *what* is worth telling
+    # somebody — that stays with the business modules and the Notification
+    # Service — and only delivers the subset marked for WhatsApp in
+    # `core/whatsapp.py`.
+    #
+    # **Off by default**, for the reason email is and one more besides: it is an
+    # outward-facing side effect, and it is the only one that reaches a device in
+    # somebody's pocket. It also cannot work until templates have been submitted
+    # to and approved by Meta, which is a process rather than a setting — see
+    # `apps/api/whatsapp/README.md`.
+    WHATSAPP_ENABLED: bool = False
+    # Which provider implementation to use (see
+    # `services/whatsapp_provider.py`). An unrecognised value falls back to the
+    # default rather than failing startup, the same posture EMAIL_PROVIDER and
+    # LLM_PROVIDER take. `null` accepts and discards, which is what an integration
+    # test and a staging environment want — and it matters more here, because a
+    # test cannot have a WhatsApp Business account.
+    WHATSAPP_PROVIDER: str = "meta"
+    # Which renderer produces the template parameters. Descriptors live in
+    # `apps/api/whatsapp/` as versioned `.j2` files under source control, so the
+    # ordered parameters sent into an approved template are reviewable as a diff.
+    WHATSAPP_TEMPLATE_RENDERER: str = "jinja-files"
+
+    # --- Meta WhatsApp Cloud API (the shipped provider) ---
+    # A permanent or system-user access token for the WhatsApp Business account.
+    # NEVER logged, never in an exception, never in a metric — the same posture
+    # SMTP_PASSWORD, LLM_API_KEY, and MINIO_SECRET_KEY take. Its absence is
+    # handled rather than fatal: nothing is queued at all, `GET
+    # /notifications/whatsapp/metrics` reports `provider_available: false` and
+    # names the missing settings, and every other feature is untouched.
+    WHATSAPP_ACCESS_TOKEN: str | None = None
+    # The identifier of the business phone number messages are sent *from*. This
+    # is the one the messages endpoint is addressed by, which is why an absent one
+    # blocks delivery.
+    WHATSAPP_PHONE_NUMBER_ID: str | None = None
+    # The WhatsApp Business Account the number belongs to. Deliberately **not**
+    # required for sending — the send path never reads it — and configured because
+    # `18-whatsapp-delivery-channel.md` lists it and because template management
+    # and delivery-receipt webhooks, if either is ever built, are addressed by it.
+    # Reported as incomplete configuration rather than as a blocker.
+    WHATSAPP_BUSINESS_ACCOUNT_ID: str | None = None
+    # Graph API version. A setting rather than a constant because moving to a newer
+    # version is a deployment decision and should not need a release.
+    WHATSAPP_API_VERSION: str = "v23.0"
+    # Where the Graph API lives. A setting only so an integration test can point
+    # the provider at a local stub; no deployment should change it.
+    WHATSAPP_API_BASE_URL: str = "https://graph.facebook.com"
+    # Deadline for one Cloud API call.
+    WHATSAPP_TIMEOUT_SECONDS: int = 10
+
+    # --- WhatsApp message composition ---
+    # The platform's name as it appears in a message's signature. A setting rather
+    # than PROJECT_NAME for the reason EMAIL_FROM_NAME is one: the API's internal
+    # name ("… Platform API") is not what should appear on a lawyer's phone.
+    WHATSAPP_SENDER_NAME: str = "Legal Case Management Platform"
+    # Public URL of the web application, for the "open" link. Blank falls back to
+    # EMAIL_BASE_URL and then to the first CORS origin; if none is available the
+    # message is sent LINKLESS but correct, rather than carrying a /cases/… with
+    # no host.
+    WHATSAPP_BASE_URL: str | None = None
+    # Which language a message is written in when the **recipient's own preference
+    # cannot be read** — the same last resort the email channel documents, and for
+    # the same reason. Since Localization shipped the ordinary path is the
+    # recipient's `user_settings.language`.
+    WHATSAPP_DEFAULT_LANGUAGE: str = "en"
+    # Country code, digits only, for accounts whose phone number was entered in
+    # national format ("0612345678"). Blank means such numbers are **not messaged
+    # at all**, which is the safe reading of an ambiguous value: a wrongly
+    # "corrected" number is a legal notification delivered to a stranger. Numbers
+    # stored with a `+` or a `00` prefix never need this.
+    WHATSAPP_DEFAULT_COUNTRY_CODE: str | None = None
+
+    # --- WhatsApp delivery scheduling ---
+    # Background workers sending messages. Two by default: enough that one hung
+    # request does not stop the queue, small enough that the platform never bursts
+    # hard enough to be rate-limited for it. Its own pool rather than the email
+    # one, because a greylisting relay must not occupy the threads that deliver
+    # hearing updates and a throttled WhatsApp number must not slow down mail.
+    WHATSAPP_WORKER_CONCURRENCY: int = 2
+    # Send attempts per delivery, including the first. Only *transient* failures
+    # are retried (see `core/whatsapp.py`); a rejected token, a number that is not
+    # on WhatsApp, and an unapproved template are not.
+    WHATSAPP_MAX_ATTEMPTS: int = 5
+    # Delay after the first transient failure, doubled per attempt, and the ceiling
+    # that schedule never exceeds. The cap matters more than the base, and more
+    # here than for email: WhatsApp is the platform's *urgent* channel, so a tenth
+    # attempt four hours out would deliver a hearing update after the hearing.
+    WHATSAPP_RETRY_BACKOFF_SECONDS: float = 30.0
+    WHATSAPP_RETRY_MAX_BACKOFF_SECONDS: float = 1800.0
+    # How often the sweeper looks for deliveries that have come due, and how many
+    # it re-queues per pass. The batch size is what keeps recovering from an
+    # overnight rate limit from being its own outage — which here would also be a
+    # burst that gets the business number throttled again.
+    WHATSAPP_RETRY_INTERVAL_SECONDS: int = 60
+    WHATSAPP_RETRY_BATCH_SIZE: int = 100
+    # How long a delivery may sit in `sending` before it is assumed to belong to a
+    # process that died and is returned to the queue. Generously above
+    # WHATSAPP_TIMEOUT_SECONDS, because a send that is merely slow must never be
+    # reclaimed underneath the worker still doing it — which is how a message goes
+    # out twice.
+    WHATSAPP_STALE_SENDING_SECONDS: int = 600
 
     # --- Prompt templates ---
     # Which prompt backend to use (see `services/prompts.py`). Templates live in
@@ -817,6 +1075,11 @@ class Settings(BaseSettings):
         "SMTP_HOST",
         "SMTP_USERNAME",
         "SMTP_PASSWORD",
+        "WHATSAPP_ACCESS_TOKEN",
+        "WHATSAPP_PHONE_NUMBER_ID",
+        "WHATSAPP_BUSINESS_ACCOUNT_ID",
+        "WHATSAPP_BASE_URL",
+        "WHATSAPP_DEFAULT_COUNTRY_CODE",
         mode="before",
     )
     @classmethod
@@ -825,6 +1088,25 @@ class Settings(BaseSettings):
         if isinstance(value, str) and value.strip() == "":
             return None
         return value
+
+    @field_validator("DEFAULT_LANGUAGE")
+    @classmethod
+    def _require_supported_default_language(cls, value: str) -> str:
+        """Refuse a default language the platform cannot render.
+
+        Checked at import rather than at the first page load, because this value
+        is the *last resort* of every language decision the platform makes: a
+        typo would not fail anything visibly, it would quietly serve one
+        deployment's whole interface in the fallback of a fallback. Normalized to
+        lower case here so nothing downstream has to.
+        """
+        normalized = value.strip().lower()
+        if normalized not in SUPPORTED_EMAIL_LANGUAGES:
+            raise ValueError(
+                "DEFAULT_LANGUAGE must be one of "
+                f"{', '.join(sorted(SUPPORTED_EMAIL_LANGUAGES))}"
+            )
+        return normalized
 
     @field_validator("POSTGRES_PASSWORD")
     @classmethod
@@ -900,6 +1182,12 @@ class Settings(BaseSettings):
         "NOTIFICATION_MAX_PAGE_SIZE",
         "NOTIFICATION_UNREAD_COUNT_CAP",
         "NOTIFICATION_MAX_BULK_READ",
+        "DASHBOARD_LIST_SIZE",
+        "DASHBOARD_MAX_LIST_SIZE",
+        "DASHBOARD_HEARING_HORIZON_DAYS",
+        "DASHBOARD_MAX_RANGE_DAYS",
+        "DASHBOARD_CACHE_SIZE",
+        "DASHBOARD_ACTIVE_USER_MINUTES",
         "EMAIL_WORKER_CONCURRENCY",
         "EMAIL_MAX_ATTEMPTS",
         "EMAIL_RETRY_INTERVAL_SECONDS",
@@ -907,6 +1195,12 @@ class Settings(BaseSettings):
         "EMAIL_STALE_SENDING_SECONDS",
         "SMTP_PORT",
         "SMTP_TIMEOUT_SECONDS",
+        "WHATSAPP_TIMEOUT_SECONDS",
+        "WHATSAPP_WORKER_CONCURRENCY",
+        "WHATSAPP_MAX_ATTEMPTS",
+        "WHATSAPP_RETRY_INTERVAL_SECONDS",
+        "WHATSAPP_RETRY_BATCH_SIZE",
+        "WHATSAPP_STALE_SENDING_SECONDS",
     )
     @classmethod
     def _require_positive(cls, value: int, info: ValidationInfo) -> int:
@@ -1088,6 +1382,31 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _validate_dashboard_limits(self) -> Settings:
+        """Keep the dashboard's sizes and budgets coherent.
+
+        Three couplings, and each turns a plausible misconfiguration into a
+        startup failure rather than into a page that behaves oddly:
+
+        * a **default list size above the maximum** makes every unqualified
+          dashboard request fail validation against a bound the caller never
+          chose — the same coupling the search, notification, assistant, and
+          report limits have;
+        * a **non-positive time budget** would spend itself before the first
+          widget, so every dashboard would come back entirely unavailable — which
+          reads exactly like a broken database and is not one;
+        * a **negative cache TTL** is not "off"; zero is off, and the difference
+          matters because one of them is a value somebody typed on purpose.
+        """
+        if self.DASHBOARD_LIST_SIZE > self.DASHBOARD_MAX_LIST_SIZE:
+            raise ValueError("DASHBOARD_LIST_SIZE must not exceed DASHBOARD_MAX_LIST_SIZE")
+        if self.DASHBOARD_BUDGET_SECONDS <= 0:
+            raise ValueError("DASHBOARD_BUDGET_SECONDS must be a positive number")
+        if self.DASHBOARD_CACHE_SECONDS < 0:
+            raise ValueError("DASHBOARD_CACHE_SECONDS must not be negative")
+        return self
+
+    @model_validator(mode="after")
     def _validate_email_limits(self) -> Settings:
         """Keep the email delivery budgets coherent with one another.
 
@@ -1123,6 +1442,64 @@ class Settings(BaseSettings):
                 "EMAIL_DEFAULT_LANGUAGE must be one of "
                 f"{', '.join(sorted(SUPPORTED_EMAIL_LANGUAGES))}"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_whatsapp_limits(self) -> Settings:
+        """Keep the WhatsApp delivery budgets coherent with one another.
+
+        The same four couplings the email channel has, plus one of its own — and
+        every one of them is invisible until messages are already queued in a
+        background worker where nobody is watching:
+
+        * a **backoff ceiling below the base delay** is not a ceiling, it is a
+          silent replacement — every retry would wait the cap and the exponential
+          schedule the operator configured would never happen;
+        * a **stale-send threshold at or below the provider timeout** reclaims
+          deliveries that are merely slow, so a Cloud API call taking nine seconds
+          would have its message re-queued and eventually sent twice — the one
+          mistake this feature must not make, and a worse one here than in a
+          mailbox: two phone alerts about the same hearing leave a reader unable to
+          tell which is current;
+        * **negative delays** are not shorter waits, they are undefined ones;
+        * an **unsupported default language** would render every message through
+          the fallback while the setting claimed otherwise. Checked against the
+          platform's own supported set rather than a list of its own, so the two
+          cannot drift;
+        * a **non-numeric default country code** would be stripped to nothing by
+          :func:`~core.whatsapp.normalize_phone` and silently stop every
+          nationally-formatted number being messaged, which looks exactly like
+          "those users have no phone" in the metrics. Refused here so it is a
+          startup error rather than a quiet gap. A leading ``+`` is accepted and
+          stripped, because that is how a country code is written everywhere else.
+        """
+        if (
+            self.WHATSAPP_RETRY_MAX_BACKOFF_SECONDS
+            < self.WHATSAPP_RETRY_BACKOFF_SECONDS
+        ):
+            raise ValueError(
+                "WHATSAPP_RETRY_MAX_BACKOFF_SECONDS must not be smaller than "
+                "WHATSAPP_RETRY_BACKOFF_SECONDS"
+            )
+        if self.WHATSAPP_RETRY_BACKOFF_SECONDS < 0:
+            raise ValueError("WHATSAPP_RETRY_BACKOFF_SECONDS must not be negative")
+        if self.WHATSAPP_STALE_SENDING_SECONDS <= self.WHATSAPP_TIMEOUT_SECONDS:
+            raise ValueError(
+                "WHATSAPP_STALE_SENDING_SECONDS must be greater than "
+                "WHATSAPP_TIMEOUT_SECONDS"
+            )
+        if self.WHATSAPP_DEFAULT_LANGUAGE.strip().lower() not in SUPPORTED_EMAIL_LANGUAGES:
+            raise ValueError(
+                "WHATSAPP_DEFAULT_LANGUAGE must be one of "
+                f"{', '.join(sorted(SUPPORTED_EMAIL_LANGUAGES))}"
+            )
+        if self.WHATSAPP_DEFAULT_COUNTRY_CODE is not None:
+            code = self.WHATSAPP_DEFAULT_COUNTRY_CODE.strip().lstrip("+")
+            if not code.isdigit():
+                raise ValueError(
+                    "WHATSAPP_DEFAULT_COUNTRY_CODE must be digits only, "
+                    "optionally prefixed with '+'"
+                )
         return self
 
     @model_validator(mode="after")
@@ -1217,6 +1594,30 @@ class Settings(BaseSettings):
             if candidate and candidate != "*":
                 return candidate
         return None
+
+    @property
+    def whatsapp_base_url(self) -> str | None:
+        """Public address of the web application, for links inside messages.
+
+        ``WHATSAPP_BASE_URL`` when set, and otherwise **whatever the email channel
+        resolved** — which is ``EMAIL_BASE_URL`` and then the first CORS origin.
+        Chaining rather than repeating the fallback is what stops a deployment
+        from having to state the web application's address three times, and it
+        makes the common case — one address, set once or derived — keep working as
+        channels are added.
+
+        The dedicated setting exists for the uncommon case that is nonetheless
+        real: a deployment behind two hostnames, where a link that has to survive
+        being tapped on a phone outside the office is not the same host as one
+        opened from a desk.
+
+        ``None`` when none is available, which produces **linkless but correct**
+        messages rather than a broken relative path — see
+        :func:`~core.whatsapp.target_url`.
+        """
+        if self.WHATSAPP_BASE_URL:
+            return self.WHATSAPP_BASE_URL.rstrip("/")
+        return self.email_base_url
 
     @property
     def login_failure_window(self) -> timedelta:

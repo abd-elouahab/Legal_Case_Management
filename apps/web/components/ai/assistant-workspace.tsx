@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { Bot, PanelLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,8 @@ export function AssistantWorkspace({
   caseId?: string;
 } = {}) {
   const { can, isLoading } = usePermissions();
+  const t = useTranslations("assistant.workspace");
+  const tStates = useTranslations("common.states");
   const [chosenId, setChosenId] = React.useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const create = useCreateConversation();
@@ -80,7 +83,7 @@ export function AssistantWorkspace({
     return (
       <Card>
         <CardContent className="flex min-h-96 items-center justify-center py-10">
-          <span className="text-sm text-muted-foreground">Loading…</span>
+          <span className="text-sm text-muted-foreground">{tStates("loading")}</span>
         </CardContent>
       </Card>
     );
@@ -96,8 +99,7 @@ export function AssistantWorkspace({
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       {!canAsk ? (
         <p className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
-          You can read your conversations, but your role does not allow asking the AI
-          assistant new questions.
+          {t("readOnly")}
         </p>
       ) : null}
 
@@ -118,13 +120,13 @@ export function AssistantWorkspace({
               <SheetTrigger asChild>
                 <Button type="button" variant="outline" size="sm">
                   <PanelLeft className="h-4 w-4" aria-hidden="true" />
-                  Conversations
+                  {t("conversations")}
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-80 p-4">
                 <SheetTitle className="mb-3 flex items-center gap-2 text-base">
                   <Bot className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                  Conversations
+                  {t("conversations")}
                 </SheetTitle>
                 <ConversationList
                   selectedId={selectedId}

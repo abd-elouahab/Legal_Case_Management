@@ -82,9 +82,46 @@ export const PERMISSIONS = [
   "ai:generate-report",
   "ai:monitor",
 
+  // Dashboard
+  //
+  // **One permission, and the absence of a second is the design.** There is no
+  // `dashboard:view`: the dashboard is the landing page for every authenticated
+  // role, and a permission every role holds is not a permission. What a dashboard
+  // *contains* is decided per widget by the API, against the capability that owns
+  // each widget's rows — so the route is guarded by authentication alone and the
+  // widgets gate themselves.
+  "dashboard:monitor",
+
   // Settings
+  //
+  // **Four, and two of them grant nothing about anybody else.** `settings:view`
+  // and `settings:update` are the caller's *own* preferences — every role holds
+  // both, because a role that could not change its own theme or language would be
+  // a role the platform is unusable in, and no endpoint behind them takes a user
+  // identifier. `settings:manage` is the *platform's* configuration (maintenance
+  // mode, and the defaults every account that has expressed no opinion follows),
+  // held by administrators only; `settings:monitor` is the operational view, like
+  // every other `*:monitor`.
   "settings:view",
   "settings:update",
+  "settings:manage",
+  "settings:monitor",
+
+  // Monitoring & observability
+  //
+  // **Two, and neither is a `*:monitor`** — which is the substance of it rather
+  // than a naming quirk. Eleven features each added a `<feature>:monitor` gating
+  // *their own* operational view; this one *is* the operational view, so its
+  // permissions are named for what they grant. Both are administrator-only:
+  // `22-monitoring.md` is explicit that regular users must never reach a
+  // monitoring endpoint, and every figure behind them is platform-wide, so there
+  // is nothing to scope and no narrower version to hand anybody.
+  //
+  // `monitoring:export` is not referenced in this application at all — it gates
+  // the Prometheus scrape endpoint, whose caller is a scraper rather than a
+  // browser. It is listed so the type stays the API's full vocabulary.
+  "monitoring:view",
+  "monitoring:export",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -141,8 +178,15 @@ export const PERMISSION = {
   aiGenerateReport: "ai:generate-report",
   aiMonitor: "ai:monitor",
 
+  dashboardMonitor: "dashboard:monitor",
+
   settingsView: "settings:view",
   settingsUpdate: "settings:update",
+  settingsManage: "settings:manage",
+  settingsMonitor: "settings:monitor",
+
+  monitoringView: "monitoring:view",
+  monitoringExport: "monitoring:export",
 } as const satisfies Record<string, Permission>;
 
 /**

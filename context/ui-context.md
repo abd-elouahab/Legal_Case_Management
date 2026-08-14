@@ -6,6 +6,46 @@ The platform follows a modern enterprise SaaS design inspired by Linear, GitHub,
 
 The application supports **both Dark Mode and Light Mode**, with Dark Mode as the default experience.
 
+Both palettes ship as of `20-settings.md`, whose Appearance section is what
+required the second one to exist — `00-design-system.md` shipped the platform
+dark-only, and the root layout no longer forces a theme. There are **three**
+choices, not two: Light, Dark, and **System**, the last following the operating
+system and behaving differently from either as the day goes on.
+
+The light palette below is derived from the same Tailwind slate/blue families the
+dark one is, so the two are recognisably one design rather than two. The accents
+step *down* rather than up (blue-600 where dark uses blue-500), because the same
+hue needs more weight to hold contrast against white, and every foreground /
+background pair clears WCAG AA — which the Accessibility section requires of the
+interface, not of one theme of it.
+
+| Role | CSS Variable | Light |
+|------|--------------|-------|
+| Page Background | `--bg-base` | `#F8FAFC` |
+| Surface | `--bg-surface` | `#FFFFFF` |
+| Card Background | `--bg-card` | `#FFFFFF` |
+| Sidebar | `--bg-sidebar` | `#F1F5F9` |
+| Primary Text | `--text-primary` | `#0F172A` |
+| Secondary Text | `--text-secondary` | `#334155` |
+| Muted Text | `--text-muted` | `#64748B` |
+| Primary Accent | `--accent-primary` | `#2563EB` |
+| Secondary Accent | `--accent-secondary` | `#1D4ED8` |
+| Border | `--border-default` | `#E2E8F0` |
+| Success | `--state-success` | `#16A34A` |
+| Warning | `--state-warning` | `#D97706` |
+| Error | `--state-error` | `#DC2626` |
+| Notification | `--state-info` | `#0284C7` |
+
+One token exists only because there are now two themes: `--text-on-accent`, the
+colour drawn *on* an accent or a state fill. A dark-only palette could use
+`--text-primary` there and be right by coincidence; a two-theme one cannot, since
+near-black text on a blue button is unreadable.
+
+The chosen theme is stored **twice, deliberately**: `next-themes` keeps a copy in
+`localStorage`, which is what paints the correct palette before React hydrates,
+and the Settings API holds the durable copy, which is what makes the choice
+follow somebody to a new device. The server's answer wins once it arrives.
+
 The interface is designed around three primary user roles:
 
 - Administrator
@@ -484,25 +524,77 @@ components/auth/
 
 ### Dashboard
 
-The dashboard presents key information at a glance.
+Implemented per `context/feature-specs/19-dashboard-analytics.md`. The landing
+page after signing in, and it answers three questions in this order: **what
+requires my attention, what changed recently, what should I do next.** Analytics
+are secondary and sit below the work.
 
-Widgets include:
+**The page renders what the server sent, in the order it sent it.** There is no
+layout table in `apps/web`, no role branch, and no widget list: the API returns
+the caller's own layout, already filtered to what they may see, and
+`DashboardView` walks it. A widget added on the server appears here without a
+change — which is why a court representative's dashboard and an administrator's
+are the same component.
 
-- Active Cases
-- Upcoming Hearings
-- Assigned Lawyers
-- Recent Court Updates
-- Pending Notifications
-- AI Activity
-- Recently Modified Cases
-- Case Status Overview
+**Nineteen widgets, nine renderers.** A widget declares a payload *kind*
+(`metrics`, `breakdown`, `cases`, `documents`, `reports`, `conversations`,
+`activity`, `notifications`, `actions`), and `WidgetContent` has one renderer per
+kind rather than one per widget. That ratio is what keeps the twentieth widget
+free in the browser as well as on the server.
 
-Charts:
+Widgets, grouped as the page sections them:
 
-- Cases by Status
-- Monthly Case Activity
-- Hearing Schedule
-- Notification Statistics
+- **Overview** — Quick Actions, Notifications, Recent Activity
+- **Cases** — My Cases, Recently Updated Cases, Case Status, Case Analytics
+- **Court** — Upcoming Hearings, Hearing Calendar
+- **Documents** — Recent Documents, Text Extraction, Document Analytics
+- **AI** — AI Reports, Assistant Conversations, AI Usage
+- **Activity** — Activity Breakdown
+- **System** (administrators) — Storage, Users, Processing Queues
+
+**Every card owns four states**, and the distinction between the last two is the
+one that matters: *loading* (a skeleton, so the page does not reflow), *ready*,
+*empty* (the query ran and there is nothing — an invitation), and *unavailable*
+(the query did not run — an explanation and a retry). Conflating the last two
+would show somebody "no cases yet" when the database was down.
+
+**A failing widget never fails the page.** It renders its own short explanation
+and a refresh control; one banner above the grid says how many could not be
+loaded; everything else is up to date. Each card also has its own refresh button,
+which re-reads **that widget only**.
+
+**Live, without a refresh button being needed.** Each widget arrives carrying the
+domain events that make it stale, and the page refreshes what an event touched.
+With the channel unavailable it falls back to a slow poll, so the dashboard is
+never *dependent* on real-time — the same rule every other screen follows.
+
+**Time filter** — Today / Last 7 Days / Last 30 Days / Custom, as a button row
+with `aria-pressed` rather than a select. It changes one thing: the query the
+page is read with, so every widget in the response measures the same interval.
+Custom shows two date inputs and an Apply that stays disabled until both are set
+and ordered.
+
+**Quick Actions** live in the page header rather than inside their widget's card,
+so they stay reachable from any scroll position. Which ones appear is decided by
+the API against the permissions the *destination* requires — so a shortcut can
+never be shown to somebody the page behind it would refuse.
+
+**Charts are bars, not pies.** A breakdown renders labelled rows with the number
+beside each label and a proportional bar behind it; the bar is decorative and
+`aria-hidden`, so nothing is conveyed by colour or length alone. Zero-count
+slices are kept, so the shape changes as volumes do rather than as work moves.
+
+**No fabricated figures.** A metric with no value renders as an em dash, never as
+`0` — an average over no observations and a measured zero are different facts,
+and the platform shows which one it has.
+
+**Labels never come from the API.** A widget, a metric, and a bucket each carry a
+stable key; the words live in `components/dashboard/labels.ts` alongside the
+icons and destinations, which is what makes the page translatable when next-intl
+lands and is why the API returns no prose.
+
+**Layout** — one column on a phone, two from `md`, three from `xl`; the analytics
+and system widgets span the full grid. Section headings group the cards.
 
 ---
 
@@ -875,10 +967,70 @@ fallback that keeps every one of these correct when it is unavailable.
 
 ---
 
+### Settings
+
+Reached from the sidebar by every authenticated role. One page, one request on
+load, and a section list down the left:
+
+```
+┌──────────────────┬──────────────────────────────────────────┐
+│ Profile          │  Appearance                              │
+│ Account & …      │  ┌────────────────────────────────────┐  │
+│ Notifications    │  │ Theme            [ Dark      ▾ ]   │  │
+│ Communication    │  │ Dark is the platform's designed …   │  │
+│ AI assistant     │  └────────────────────────────────────┘  │
+│ Dashboard        │                                          │
+│ ▸ Appearance     │                                          │
+│ Language & …     │                                          │
+│ Administration   │  ← administrators only                   │
+└──────────────────┴──────────────────────────────────────────┘
+```
+
+**The section list comes from the API**, not from a table in the client: a tenth
+section reaches a browser nobody redeployed. So does the *control* for each
+setting — the API serves a definition (value type, permitted identifiers, bounds)
+and the page renders a checkbox, a select, a text area, or a checkbox grid from
+it. The labels are the client's, and a setting with no label falls back to its
+identifier rather than to a blank row.
+
+**Nothing has a Save button except Profile.** A preference is one value and
+saving it immediately loses nothing; a form that batched them would let somebody
+close the page believing they had switched something off. A name, by contrast, is
+typed a character at a time, so the profile form saves on submit and free-text
+settings commit on blur. A refused save leaves the previous value on screen and
+says why, which is what makes an immediate save safe.
+
+Section by section:
+
+- **Profile** — name, phone, job title, and a profile-picture reference, with
+  email and role shown read-only beside them.
+- **Account & Security** — change password, and a list of the devices signed in.
+  Both controls state that they end other sessions *before* they are used, and
+  the list distinguishes "no other devices" from "the list is unavailable".
+- **Notifications** — *what* the platform tells you about (the in-app column).
+- **Communication** — *how* it reaches you (email and WhatsApp). Both read and
+  write the Notification Service's own preferences: two projections of one grid.
+- **AI assistant**, **Dashboard**, **Appearance**, **Language & Region** — the
+  server-described controls above. "(platform default)" is stated rather than
+  implied, because an account that has chosen nothing has no stored row at all.
+- **Administration** — administrators only, and **absent entirely** for everyone
+  else rather than shown disabled. Maintenance mode, and the defaults every
+  account that has expressed no preference follows.
+
+A maintenance notice appears at the top of the page for **everyone** while
+maintenance mode is on: the switch is administrative, the announcement is not.
+
+Responsive per the rules below: the section list is a sidebar on a laptop and a
+horizontally-scrolling row of chips on a phone.
+
+---
+
 ## Localization
 
-The platform fully supports:
+Implemented per `context/feature-specs/21-localization.md`. The platform fully
+supports:
 
+- **English** (the shipped default)
 - French
 - Arabic
 
@@ -886,12 +1038,58 @@ Features:
 
 - Instant language switching
 - Right-to-Left (RTL) layout for Arabic
-- Left-to-Right (LTR) layout for French
+- Left-to-Right (LTR) layout for English and French
 - Localized dates and times
-- Localized numbers
-- AI responses in the selected language
+- Localized numbers, percentages, and file sizes
+- AI responses and generated reports in the selected language
 
-Language switching is available from the top navigation bar.
+**Language switching is available from the top navigation bar**, beside the
+notification bell — and that placement is the whole accessibility argument for
+the control: somebody who cannot read the interface cannot find a switch buried
+inside the account menu. The trigger is an icon, which needs no language to
+recognise.
+
+**Every option is written in its own language.** `Français` is `Français` on an
+Arabic screen, not `الفرنسية`: a reader looking for their own language should
+find the word they already recognise rather than having to read the current one
+first. Those are the only strings on the platform that are never translated, and
+they live in `lib/i18n/config.ts` rather than in a catalogue for exactly that
+reason.
+
+Section by section:
+
+- **What decides the language** — the caller's Settings preference, then their
+  browser's language *on first sign-in only*, then the application default. The
+  browser's answer is **adopted and stored**, so from the second visit it is an
+  ordinary preference; without that write, somebody who deliberately chose the
+  platform default would have it silently overridden on every load.
+- **The choice is stored twice, exactly as the theme is.** `localStorage` is what
+  lets the *login screen* — which has no session and therefore no settings —
+  render in the language somebody has been using for a year; the Settings API is
+  the durable copy that follows them to a new device. The server's answer wins
+  once it arrives.
+- **Switching is immediate and downloads one file.** The new catalogue is applied
+  before the save round-trips, and each locale is fetched at most once per
+  session. The previous strings stay on screen for the moment a catalogue is in
+  flight rather than a spinner: a language switch that blanked the page would read
+  as a navigation.
+- **RTL is inherited, never decided per component.** `dir` and `lang` are written
+  onto the document element and every component uses logical spacing utilities
+  (`ms-`/`me-`, `ps-`/`pe-`, `start-`/`end-`, `text-start`/`text-end`), so the
+  sidebar, the drawer, tables, dialogs, and forms mirror without a second
+  stylesheet. The mobile drawer opens from the reading-mode's *start* edge, and
+  the icons that mean *forward* — breadcrumb chevrons, pagination arrows, "back to
+  cases" — turn around; icons that mean a thing in the world do not.
+- **Dates, times, and numbers follow the reader.** `useDateFormat` applies the
+  Language & Region settings (language, time zone, date style, time format) and
+  `useNumberFormat` applies the locale to counts, percentages, and file sizes.
+  A file size's *unit* stays `MB`: SI prefixes are the same in every language the
+  platform serves, and translating them would replace a symbol every reader of a
+  legal file already recognises.
+- **A missing translation never shows a key.** It falls back to the default
+  language's sentence, and — if there is none anywhere — to a readable form of
+  the key's last segment, while the key itself is reported to the platform so an
+  operator can see it.
 
 ---
 

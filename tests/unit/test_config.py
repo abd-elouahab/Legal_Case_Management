@@ -159,14 +159,15 @@ def test_blank_cookie_domain_becomes_none() -> None:
 
 
 def test_the_email_channel_is_off_by_default() -> None:
-    """The one feature switch on this platform that defaults to off.
+    """One of the two feature switches on this platform that default to off.
 
     Every other one — OCR, indexing, search, RAG, reports, real-time,
     notifications — defaults to on, because the worst case of an unconfigured one
-    is a recorded failure nobody outside the platform sees. Email is different in
-    kind: it is the only *outward-facing* side effect, and a deployment that has
-    not yet chosen a relay, a from-address, and a base URL should not be mailing
-    real people the first time somebody is assigned a case.
+    is a recorded failure nobody outside the platform sees. The delivery channels
+    are different in kind: they are the platform's *outward-facing* side effects,
+    and a deployment that has not yet chosen a relay, a from-address, and a base
+    URL should not be mailing real people the first time somebody is assigned a
+    case.
     """
     assert Settings(**_base_kwargs()).EMAIL_ENABLED is False
 
@@ -244,3 +245,100 @@ def test_an_explicit_base_url_wins_and_loses_its_trailing_slash() -> None:
 def test_a_wildcard_origin_is_not_a_base_url() -> None:
     """`https://*` is not somewhere a link can point."""
     assert Settings(**_base_kwargs(CORS_ORIGINS="*")).email_base_url is None
+
+
+# --------------------------------------------------------------------------- #
+# WhatsApp delivery channel
+# --------------------------------------------------------------------------- #
+
+
+def test_the_whatsapp_channel_is_off_by_default() -> None:
+    """The second switch that defaults to off, for the reason email's does and one
+    more besides: it reaches a device in somebody's pocket, and it cannot work at
+    all until message templates have been approved by Meta."""
+    assert Settings(**_base_kwargs()).WHATSAPP_ENABLED is False
+
+
+def test_rejects_an_unsupported_whatsapp_language() -> None:
+    """Checked against the platform's own supported set rather than a list of its
+    own, so the two cannot drift — and the language also selects *which approved
+    localization* of the template is sent."""
+    with pytest.raises(ValidationError, match="WHATSAPP_DEFAULT_LANGUAGE"):
+        Settings(**_base_kwargs(WHATSAPP_DEFAULT_LANGUAGE="de"))
+
+
+def test_rejects_a_whatsapp_backoff_ceiling_below_the_base() -> None:
+    with pytest.raises(ValidationError, match="WHATSAPP_RETRY_MAX_BACKOFF_SECONDS"):
+        Settings(
+            **_base_kwargs(
+                WHATSAPP_RETRY_BACKOFF_SECONDS=120.0,
+                WHATSAPP_RETRY_MAX_BACKOFF_SECONDS=60.0,
+            )
+        )
+
+
+def test_rejects_a_whatsapp_stale_threshold_at_or_below_the_send_timeout() -> None:
+    """It would reclaim deliveries that are merely slow — and two phone alerts
+    about one hearing leave a reader unable to tell which is current."""
+    with pytest.raises(ValidationError, match="WHATSAPP_STALE_SENDING_SECONDS"):
+        Settings(
+            **_base_kwargs(
+                WHATSAPP_TIMEOUT_SECONDS=30, WHATSAPP_STALE_SENDING_SECONDS=30
+            )
+        )
+
+
+def test_rejects_a_non_numeric_default_country_code() -> None:
+    """`normalize_phone` would strip it to nothing and silently stop every
+    nationally-formatted number being messaged, which looks exactly like "those
+    users have no phone" in the metrics."""
+    with pytest.raises(ValidationError, match="WHATSAPP_DEFAULT_COUNTRY_CODE"):
+        Settings(**_base_kwargs(WHATSAPP_DEFAULT_COUNTRY_CODE="+2 1 2 (Morocco)"))
+
+
+def test_a_country_code_may_be_written_with_a_plus() -> None:
+    """Because that is how a country code is written everywhere else."""
+    assert Settings(**_base_kwargs(WHATSAPP_DEFAULT_COUNTRY_CODE="+212"))
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "WHATSAPP_WORKER_CONCURRENCY",
+        "WHATSAPP_MAX_ATTEMPTS",
+        "WHATSAPP_RETRY_BATCH_SIZE",
+        "WHATSAPP_TIMEOUT_SECONDS",
+    ],
+)
+def test_rejects_non_positive_whatsapp_settings(field: str) -> None:
+    with pytest.raises(ValidationError, match=field):
+        Settings(**_base_kwargs(**{field: 0}))
+
+
+def test_blank_whatsapp_credentials_become_none() -> None:
+    """A blank value in .env means "unset", not an empty token."""
+    settings = Settings(
+        **_base_kwargs(WHATSAPP_ACCESS_TOKEN="", WHATSAPP_PHONE_NUMBER_ID="")
+    )
+    assert settings.WHATSAPP_ACCESS_TOKEN is None
+    assert settings.WHATSAPP_PHONE_NUMBER_ID is None
+
+
+def test_the_whatsapp_base_url_chains_to_the_email_one() -> None:
+    """So a deployment states the web application's address once rather than once
+    per channel — and the dedicated setting exists for the deployment that really
+    does need two."""
+    shared = Settings(
+        **_base_kwargs(
+            EMAIL_BASE_URL="https://legal.example", WHATSAPP_BASE_URL=None
+        )
+    )
+    assert shared.whatsapp_base_url == "https://legal.example"
+
+    split = Settings(
+        **_base_kwargs(
+            EMAIL_BASE_URL="https://legal.example",
+            WHATSAPP_BASE_URL="https://m.legal.example/",
+        )
+    )
+    assert split.whatsapp_base_url == "https://m.legal.example"

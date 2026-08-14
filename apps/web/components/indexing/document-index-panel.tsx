@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 
@@ -9,19 +10,16 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IndexStatusBadge } from "@/components/indexing/index-status-badge";
 import {
-  indexingErrorMessage,
   isDocumentIndexMissing,
   useDocumentIndex,
   useIndexCompletionSync,
+  useIndexingErrorMessage,
   useReindexDocument,
 } from "@/hooks/use-indexing";
-import { formatDateTime } from "@/lib/format";
+import { useDateFormat } from "@/hooks/use-date-format";
 import { PERMISSION } from "@/types/authorization";
-import {
-  indexFailureLabel,
-  indexLanguageLabel,
-  type DocumentIndex,
-} from "@/types/indexing";
+import { useNumberFormat } from "@/hooks/use-number-format";
+import type { DocumentIndex } from "@/types/indexing";
 import { isOcrSupported } from "@/types/ocr";
 import type { LegalDocument } from "@/types/document";
 
@@ -58,42 +56,55 @@ function MetaRow({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 function IndexMetadata({ index }: { index: DocumentIndex }) {
-  const language = indexLanguageLabel(index.detectedLanguage);
+  const { formatDateTime } = useDateFormat();
+  const { formatNumber } = useNumberFormat();
+  const t = useTranslations("indexing.metadata");
+  const tLanguages = useTranslations("common.languages");
 
   return (
     <dl className="flex flex-col gap-1.5">
       {index.chunkCount !== null ? (
-        <MetaRow label="Passages" value={index.chunkCount.toLocaleString()} />
+        <MetaRow label={t("passages")} value={formatNumber(index.chunkCount)} />
       ) : null}
-      {index.pageCount !== null ? <MetaRow label="Pages" value={index.pageCount} /> : null}
+      {index.pageCount !== null ? (
+        <MetaRow label={t("pages")} value={index.pageCount} />
+      ) : null}
       {index.characterCount !== null ? (
-        <MetaRow label="Characters" value={index.characterCount.toLocaleString()} />
+        <MetaRow label={t("characters")} value={formatNumber(index.characterCount)} />
       ) : null}
-      {language ? <MetaRow label="Language" value={language} /> : null}
+      {index.detectedLanguage ? (
+        <MetaRow label={t("language")} value={tLanguages(index.detectedLanguage)} />
+      ) : null}
       {index.embeddingModel ? (
-        <MetaRow label="Model" value={index.embeddingModel} />
+        <MetaRow label={t("model")} value={index.embeddingModel} />
       ) : null}
       {index.chunkSize !== null ? (
         <MetaRow
-          label="Passage size"
+          label={t("passageSize")}
           value={
             index.chunkOverlap !== null
-              ? `${index.chunkSize} chars, ${index.chunkOverlap} overlap`
-              : `${index.chunkSize} chars`
+              ? t("passageSizeWithOverlap", {
+                  size: index.chunkSize,
+                  overlap: index.chunkOverlap,
+                })
+              : t("passageSizeValue", { size: index.chunkSize })
           }
         />
       ) : null}
       {index.startedAt ? (
-        <MetaRow label="Started" value={formatDateTime(index.startedAt)} />
+        <MetaRow label={t("started")} value={formatDateTime(index.startedAt)} />
       ) : null}
       {index.finishedAt ? (
-        <MetaRow label="Finished" value={formatDateTime(index.finishedAt)} />
+        <MetaRow label={t("finished")} value={formatDateTime(index.finishedAt)} />
       ) : null}
       {index.durationSeconds !== null ? (
-        <MetaRow label="Duration" value={`${index.durationSeconds}s`} />
+        <MetaRow
+          label={t("duration")}
+          value={t("seconds", { value: index.durationSeconds })}
+        />
       ) : null}
       {index.attemptCount > 1 ? (
-        <MetaRow label="Attempts" value={index.attemptCount} />
+        <MetaRow label={t("attempts")} value={index.attemptCount} />
       ) : null}
     </dl>
   );
@@ -107,6 +118,8 @@ function ReindexButton({
   index?: DocumentIndex;
 }) {
   const reindex = useReindexDocument();
+  const t = useTranslations("indexing");
+  const errorMessage = useIndexingErrorMessage();
 
   // Offered only when the server says a rebuild would be accepted. A run already
   // queued or indexing answers 409, and a button that produces an error the user
@@ -116,9 +129,9 @@ function ReindexButton({
   async function run() {
     try {
       await reindex.mutateAsync({ documentId: document.id, version: document.version });
-      toast.success("Search indexing was queued.");
+      toast.success(t("queued"));
     } catch (error) {
-      toast.error(indexingErrorMessage(error));
+      toast.error(errorMessage(error));
     }
   }
 
@@ -132,13 +145,17 @@ function ReindexButton({
         disabled={disabled}
       >
         <RefreshCw className="h-4 w-4" aria-hidden="true" />
-        {index ? "Rebuild index" : "Index for search"}
+        {index ? t("rebuild") : t("build")}
       </Button>
     </Protected>
   );
 }
 
 export function DocumentIndexPanel({ document }: { document: LegalDocument }) {
+  const t = useTranslations("indexing");
+  const tFailures = useTranslations("indexing.failures");
+  const errorMessage = useIndexingErrorMessage();
+
   // Indexing consumes extracted text, so it applies exactly where extraction
   // does. Taken from the OCR module's own predicate rather than restated, so the
   // two cannot drift — and the server remains the authority either way.
@@ -157,7 +174,7 @@ export function DocumentIndexPanel({ document }: { document: LegalDocument }) {
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h3 className="flex items-center gap-2 text-sm font-medium text-foreground">
         <Search className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-        Search index
+        {t("title")}
       </h3>
       {data ? <IndexStatusBadge status={data.status} /> : null}
     </div>
@@ -165,18 +182,15 @@ export function DocumentIndexPanel({ document }: { document: LegalDocument }) {
 
   if (!applicable) {
     return (
-      <section className="flex flex-col gap-2" aria-label="Search index">
+      <section className="flex flex-col gap-2" aria-label={t("title")}>
         {heading}
-        <p className="text-sm text-muted-foreground">
-          Search indexing applies to documents whose text has been extracted, which
-          covers PDFs and images.
-        </p>
+        <p className="text-sm text-muted-foreground">{t("notApplicable")}</p>
       </section>
     );
   }
 
   return (
-    <section className="flex flex-col gap-3" aria-label="Search index">
+    <section className="flex flex-col gap-3" aria-label={t("title")}>
       {heading}
 
       {isLoading ? (
@@ -186,30 +200,25 @@ export function DocumentIndexPanel({ document }: { document: LegalDocument }) {
         </div>
       ) : isDocumentIndexMissing(error) ? (
         <div className="flex flex-col items-start gap-3">
-          <p className="text-sm text-muted-foreground">
-            This document has not been indexed for search yet. Indexing begins once its
-            text has been extracted.
-          </p>
+          <p className="text-sm text-muted-foreground">{t("notIndexed")}</p>
           <ReindexButton document={document} />
         </div>
       ) : isError || !data ? (
         <p role="alert" className="text-sm text-destructive">
-          {indexingErrorMessage(error)}
+          {errorMessage(error)}
         </p>
       ) : (
         <div className="flex flex-col gap-3">
           {data.isActive ? (
             <p className="text-sm text-muted-foreground">
-              {data.status === "pending"
-                ? "Queued for indexing. This page updates automatically."
-                : "Building the search index. This page updates automatically."}
+              {data.status === "pending" ? t("waitingQueued") : t("waitingBuilding")}
             </p>
           ) : null}
 
           {data.status === "failed" ? (
             <div className="flex flex-col gap-1 rounded-md border border-destructive/30 bg-destructive/5 p-3">
               <p className="text-sm font-medium text-destructive">
-                {indexFailureLabel(data.errorCode)}
+                {tFailures(data.errorCode ?? "unknown")}
               </p>
               {/* The server's own message: only it knows the specifics, and it is
                   written to be safe to show — it describes what went wrong with
@@ -217,9 +226,7 @@ export function DocumentIndexPanel({ document }: { document: LegalDocument }) {
               {data.errorMessage ? (
                 <p className="text-sm text-muted-foreground">{data.errorMessage}</p>
               ) : null}
-              <p className="text-xs text-muted-foreground">
-                The document and its extracted text are unaffected.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("failureNote")}</p>
             </div>
           ) : null}
 

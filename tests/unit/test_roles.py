@@ -87,7 +87,16 @@ class TestLawyer:
             # half of that rule is what withholding `cases:view-all` expresses.
             Permission.CASES_VIEW_ALL,
             Permission.DOCUMENTS_DELETE,
-            Permission.SETTINGS_UPDATE,
+            # `settings:manage` is the platform's own configuration — maintenance
+            # mode, and the defaults every account that has expressed no opinion
+            # follows. It is deliberately **not** a wider form of
+            # `settings:update`, which is the caller's *own* preferences and is in
+            # `BASE_PERMISSIONS`: a role that could not change its own theme or
+            # language would be a role the platform is unusable in. This
+            # parametrization named `settings:update` until `20-settings.md`
+            # gave the two permissions their distinct meanings.
+            Permission.SETTINGS_MANAGE,
+            Permission.SETTINGS_MONITOR,
         ],
     )
     def test_cannot_administer_the_platform(self, permission: Permission) -> None:

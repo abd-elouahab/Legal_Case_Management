@@ -8,7 +8,8 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import { ApiError, NetworkError } from "@/lib/api/errors";
+import { NetworkError } from "@/lib/api/errors";
+import { useErrorMessage, type ErrorCodeMap } from "@/hooks/use-error-message";
 import {
   fetchNotification,
   fetchNotificationMetrics,
@@ -73,29 +74,22 @@ export const notificationKeys = {
 };
 
 /**
- * Translate a failure into a message safe to show the user.
+ * Translate a failure into a sentence in the reader's language.
  *
- * Branches on the API's machine-readable `code` rather than on message text,
- * which is localizable and may change — the same rule every other hook module
- * here follows.
+ * Branches on the API's machine-readable `code` rather than on message text —
+ * which the server writes in English, with no knowledge of who is reading it.
+ * `hooks/use-error-message.ts` records why that matters; the short version is
+ * that an interface which is Arabic everywhere except when something goes wrong
+ * is not localized. Codes with no entry here fall through to the shared
+ * `errors.*` sentences and then to a generic one.
  */
-export function notificationErrorMessage(error: unknown): string {
-  if (error instanceof NetworkError) return error.message;
+const NOTIFICATION_ERRORS: ErrorCodeMap = {
+  notification_not_found: "notFound",
+  notifications_disabled: "disabled",
+};
 
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case "notification_not_found":
-        return "This notification is no longer available.";
-      case "notifications_disabled":
-        return "Notifications are switched off on this platform right now.";
-      case "forbidden":
-        return "You do not have permission to do that.";
-      default:
-        return error.message;
-    }
-  }
-
-  return "Something went wrong. Please try again.";
+export function useNotificationErrorMessage(): (error: unknown) => string {
+  return useErrorMessage("notifications.errors", NOTIFICATION_ERRORS);
 }
 
 // --------------------------------------------------------------------------- //

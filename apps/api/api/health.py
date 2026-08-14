@@ -9,10 +9,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Response, status
 
 from core.config import settings
-from core.readiness import probe_dependencies
+from core.readiness import probe_dependencies, probe_external_services
 from schemas.health import (
     DependencyCheck,
     DependencyStatus,
+    ExternalServiceCheck,
     HealthResponse,
     HealthStatus,
     ReadinessResponse,
@@ -46,10 +47,24 @@ async def ready(response: Response) -> ReadinessResponse:
         for name, result in results.items()
     }
 
+    # Configuration only, so this adds no latency to a probe an orchestrator runs
+    # every few seconds — and it never affects the verdict, for the reason
+    # `ReadinessResponse` records. Wrapped, because a readiness endpoint that
+    # failed while reporting on an optional integration would be the clearest
+    # possible case of monitoring becoming a dependency.
+    try:
+        external = {
+            name: ExternalServiceCheck(enabled=item.enabled, configured=item.configured)
+            for name, item in probe_external_services().items()
+        }
+    except Exception:  # pragma: no cover - defensive
+        external = {}
+
     response.status_code = status.HTTP_200_OK if all_up else status.HTTP_503_SERVICE_UNAVAILABLE
     return ReadinessResponse(
         status=HealthStatus.OK if all_up else HealthStatus.DEGRADED,
         dependencies=dependencies,
+        external_services=external,
     )
 
 

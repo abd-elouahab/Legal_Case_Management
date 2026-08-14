@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { RefreshCw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,15 +24,15 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  reportErrorMessage,
   useRegenerateReport,
   useReport,
   useReportCompletionSync,
+  useReportErrorMessage,
 } from "@/hooks/use-reports";
 import { useRealtimeResource } from "@/hooks/use-realtime";
-import { formatDateTime } from "@/lib/format";
+import { useDateFormat } from "@/hooks/use-date-format";
 import { PERMISSION } from "@/types/authorization";
-import { reportFailureLabel, reportTypeLabel } from "@/types/report";
+
 
 /**
  * One report, opened from the history or straight after being queued.
@@ -66,8 +67,15 @@ export function ReportDetailDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { formatDateTime } = useDateFormat();
   const report = useReport(reportId, { enabled: open });
   const regenerate = useRegenerateReport();
+  const t = useTranslations("reports.detail");
+  const tTypes = useTranslations("reports.types");
+  const tFailures = useTranslations("reports.failures");
+  const tActionLabels = useTranslations("reports.actions");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useReportErrorMessage();
 
   // **A report is followed on its own topic, never on its case's.** A report is
   // its author's private work product, so the server refuses to fan its events
@@ -93,9 +101,9 @@ export function ReportDetailDialog({
     if (!reportId) return;
     try {
       await regenerate.mutateAsync(reportId);
-      toast.success("Report queued again. It will update as it is rewritten.");
+      toast.success(t("queuedAgain"));
     } catch (error) {
-      toast.error(reportErrorMessage(error));
+      toast.error(errorMessage(error));
     }
   }
 
@@ -104,13 +112,16 @@ export function ReportDetailDialog({
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2" dir="auto">
-            {detail ? detail.title : "Report"}
+            {detail ? detail.title : t("title")}
             {detail ? <ReportStatusBadge status={detail.status} /> : null}
           </DialogTitle>
           <DialogDescription>
             {detail
-              ? `${reportTypeLabel(detail.reportType)} · requested ${formatDateTime(detail.createdAt)}`
-              : "Loading the report."}
+              ? t("typeAndRequested", {
+                  type: tTypes(detail.reportType),
+                  at: formatDateTime(detail.createdAt),
+                })
+              : t("loading")}
           </DialogDescription>
         </DialogHeader>
 
@@ -122,8 +133,8 @@ export function ReportDetailDialog({
           </div>
         ) : report.isError ? (
           <ErrorState
-            title="This report could not be opened"
-            description={reportErrorMessage(report.error)}
+            title={t("openFailed")}
+            description={errorMessage(report.error)}
             onRetry={() => void report.refetch()}
           />
         ) : detail ? (
@@ -131,10 +142,7 @@ export function ReportDetailDialog({
             {detail.isActive ? (
               <div className="rounded-lg border border-border bg-muted/40 p-4">
                 <ReportProgress report={detail} />
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Each section is retrieved and written separately, so a long case takes
-                  a few minutes. You can close this — the report keeps building.
-                </p>
+                <p className="mt-3 text-xs text-muted-foreground">{t("progressNote")}</p>
               </div>
             ) : null}
 
@@ -149,11 +157,13 @@ export function ReportDetailDialog({
                 />
                 <div className="flex flex-col gap-1">
                   <p className="text-sm font-medium text-destructive">
-                    {reportFailureLabel(detail.errorCode)}
+                    {tFailures(detail.errorCode ?? "unknown")}
                   </p>
                   <p className="text-sm text-secondary-foreground">
-                    {detail.errorMessage ??
-                      "The report could not be generated. Try generating it again."}
+                    {/* The server's own sentence when it has one, and the
+                        platform's when it does not. Both describe what failed
+                        in the pipeline, never what was in the documents. */}
+                    {detail.errorMessage ?? t("failureFallback")}
                   </p>
                 </div>
               </div>
@@ -162,10 +172,14 @@ export function ReportDetailDialog({
             {detail.status === "completed" ? (
               <>
                 <p className="text-xs text-muted-foreground">
-                  {detail.groundedSections ?? 0} of {detail.sections.length} section
-                  {detail.sections.length === 1 ? "" : "s"} grounded in{" "}
-                  {detail.documentCount} document{detail.documentCount === 1 ? "" : "s"}
-                  {detail.finishedAt ? ` · generated ${formatDateTime(detail.finishedAt)}` : ""}
+                  {t("groundedSummary", {
+                    grounded: detail.groundedSections ?? 0,
+                    sections: detail.sections.length,
+                    documents: detail.documentCount,
+                  })}
+                  {detail.finishedAt
+                    ? ` · ${t("generatedAt", { at: formatDateTime(detail.finishedAt) })}`
+                    : ""}
                 </p>
 
                 <ReportSections sections={detail.sections} language={detail.language} />
@@ -202,7 +216,7 @@ export function ReportDetailDialog({
                   ) : (
                     <RefreshCw className="h-4 w-4" aria-hidden="true" />
                   )}
-                  Regenerate
+                  {tActionLabels("regenerate")}
                 </Button>
               </Protected>
             ) : null}
@@ -210,7 +224,7 @@ export function ReportDetailDialog({
           </div>
 
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Close
+            {tActions("close")}
           </Button>
         </DialogFooter>
       </DialogContent>

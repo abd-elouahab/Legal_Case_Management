@@ -1,3 +1,7 @@
+"use client";
+
+import { useTranslations } from "next-intl";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -16,21 +20,27 @@ import {
  * because it promises a layout it then changes.
  */
 export function UserTableSkeleton({ rows = 5 }: { rows?: number }) {
+  const t = useTranslations("users.table");
+
   return (
     <div
       className="w-full overflow-x-auto rounded-lg border border-border"
       aria-busy="true"
-      aria-label="Loading users"
+      aria-label={t("loading")}
     >
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Email</TableHead>
-            <TableHead>Role</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="hidden lg:table-cell">Last sign-in</TableHead>
-            <TableHead className="hidden lg:table-cell">Created</TableHead>
+            <TableHead>{t("columns.name")}</TableHead>
+            <TableHead>{t("columns.email")}</TableHead>
+            <TableHead>{t("columns.role")}</TableHead>
+            <TableHead>{t("columns.status")}</TableHead>
+            <TableHead className="hidden lg:table-cell">
+              {t("columns.last_login")}
+            </TableHead>
+            <TableHead className="hidden lg:table-cell">
+              {t("columns.created_at")}
+            </TableHead>
             <TableHead className="w-12" />
           </TableRow>
         </TableHeader>

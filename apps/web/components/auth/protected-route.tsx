@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 
 import { AccessDenied } from "@/components/shared/access-denied";
 import { LoadingState } from "@/components/shared/loading-state";
@@ -32,13 +33,14 @@ export interface ProtectedRouteProps extends AccessRule {
 
 export function ProtectedRoute({ children, fallback, ...rule }: ProtectedRouteProps) {
   const { allows, isLoading } = usePermissions();
+  const t = useTranslations("auth.states");
 
   // Deciding while the session is still resolving would flash "access denied"
   // at a user who is perfectly entitled to the page.
   if (isLoading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <LoadingState label="Checking your access…" />
+        <LoadingState label={t("checkingAccess")} />
       </div>
     );
   }

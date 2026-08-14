@@ -1,0 +1,2027 @@
+{
+  "assistant": {
+    "caseSection": {
+      "description": "Posez des questions sur les documents de ce dossier. Chaque réponse est construite uniquement à partir des fichiers classés sous ce dossier et cite le document et la page dont elle provient.",
+      "title": "Assistant IA"
+    },
+    "chat": {
+      "dismissAndRetry": "Ignorer et réessayer",
+      "documentsUnaffected": "Vos documents et leur texte ne sont pas affectés.",
+      "earlierHidden": "Les messages plus anciens de cette conversation ne sont pas affichés.",
+      "firstQuestionDescription": "Les réponses sont construites uniquement à partir des documents des dossiers auxquels vous avez accès, et chaque affirmation indique le fichier et la page dont elle provient. Si les documents ne permettent pas de répondre, l’assistant le dit plutôt que de deviner.",
+      "firstQuestionTitle": "Posez votre première question",
+      "noConversationDescription": "Démarrez une nouvelle conversation pour poser des questions sur les documents de vos dossiers. Chaque réponse cite le fichier et la page dont elle provient.",
+      "noConversationTitle": "Aucune conversation ouverte",
+      "placeholder": "Posez une question sur vos documents — par exemple, quand le loyer est-il exigible ?",
+      "placeholderCase": "Posez une question sur les documents de ce dossier…",
+      "transcript": "Conversation"
+    },
+    "citations": {
+      "hideExcerpt": "Masquer l’extrait",
+      "label": "Sources",
+      "match": "{percent} % de correspondance",
+      "notCited": "Non cité",
+      "notCitedTitle": "Récupéré, mais non cité dans la réponse",
+      "openCase": "Ouvrir le dossier",
+      "pageAndVersion": "Page {page} · Version {version}",
+      "showExcerpt": "Afficher l’extrait",
+      "similarity": "Similarité {score}",
+      "summary": "{sources, plural, =1 {1 source} other {# sources}} provenant de {documents, plural, =1 {1 document} other {# documents}}",
+      "truncated": "Ce passage a été raccourci pour tenir dans le budget de contexte de la réponse."
+    },
+    "composer": {
+      "enterQuestion": "Saisissez une question.",
+      "hint": "Les réponses proviennent uniquement des documents de vos dossiers, avec une citation pour chaque affirmation. Entrée envoie · Maj+Entrée pour une nouvelle ligne.",
+      "label": "Poser une question à l’assistant",
+      "placeholder": "Posez une question sur vos documents — par exemple, quand le loyer est-il exigible ?",
+      "send": "Envoyer la question"
+    },
+    "conversations": {
+      "actionsFor": "Actions pour {title}",
+      "active": "Actif",
+      "archive": "Archiver",
+      "archived": "Archivé",
+      "emptyArchivedDescription": "Les conversations que vous archivez sont conservées ici et restent lisibles.",
+      "emptyArchivedTitle": "Rien d’archivé",
+      "emptyDescription": "Démarrez-en une pour poser des questions sur les documents de vos dossiers.",
+      "emptySearchDescription": "Aucun nom de conversation ne correspond.",
+      "emptySearchTitle": "Aucune conversation correspondante",
+      "emptyTitle": "Aucune conversation pour l’instant",
+      "label": "Conversations",
+      "loadFailed": "Vos conversations n’ont pas pu être chargées.",
+      "new": "Nouvelle conversation",
+      "noMessages": "Aucun message pour l’instant",
+      "rename": "Renommer",
+      "restore": "Restaurer",
+      "searchLabel": "Rechercher des conversations par nom",
+      "searchPlaceholder": "Rechercher des conversations"
+    },
+    "deleteConversation": {
+      "deleting": "Suppression…",
+      "description": "La conversation et ses réponses n’apparaîtront plus nulle part sur la plateforme, et vous ne pourrez pas la rouvrir. Si vous souhaitez seulement la retirer de votre liste, archivez-la — une conversation archivée reste lisible.",
+      "title": "Supprimer « {title} » ?",
+      "titleGeneric": "Supprimer cette conversation ?"
+    },
+    "errors": {
+      "caseNotFound": "Ce dossier n’existe plus.",
+      "contextOverflow": "Cette question nécessite plus de contexte que l’assistant ne peut en traiter d’un coup. Posez une question plus ciblée.",
+      "conversationArchived": "Cette conversation est archivée. Restaurez-la, ou démarrez-en une nouvelle, pour continuer.",
+      "conversationFull": "Cette conversation a atteint sa limite de messages. Démarrez-en une nouvelle pour continuer.",
+      "conversationNotFound": "Cette conversation n’existe plus.",
+      "disabled": "L’assistant IA est actuellement désactivé sur cette plateforme.",
+      "filterTooBroad": "Ce filtre correspond à trop d’éléments pour être recherché. Restreignez-le à un dossier ou à un document.",
+      "invalidFeedbackTarget": "Seules les réponses de l’assistant peuvent être évaluées.",
+      "invalidQuestion": "Saisissez une question d’au moins deux caractères.",
+      "malformedResponse": "Le modèle a renvoyé une réponse que la plateforme n’a pas pu lire. Reposez la question.",
+      "messageNotFound": "Ce message n’existe plus.",
+      "modelFailure": "Le modèle de langage n’a pas pu répondre. Réessayez dans un instant.",
+      "modelUnavailable": "Le modèle de langage est indisponible pour le moment. Réessayez dans un instant.",
+      "noCaseAccess": "Vous n’avez pas accès au dossier sur lequel porte votre question.",
+      "retrievalUnavailable": "La recherche documentaire est indisponible pour le moment : l’assistant ne peut fonder aucune réponse.",
+      "timeout": "L’assistant a mis trop de temps à répondre. Essayez une question plus ciblée."
+    },
+    "failures": {
+      "context_overflow": "Dépassement du contexte",
+      "llm_failure": "Défaillance du modèle",
+      "llm_unavailable": "Modèle indisponible",
+      "malformed_response": "Réponse mal formée",
+      "retrieval_unavailable": "Recherche documentaire indisponible",
+      "timeout": "Délai dépassé"
+    },
+    "feedback": {
+      "copyAnswer": "Copier cette réponse",
+      "helpful": "Utile",
+      "notHelpful": "Pas utile",
+      "rateHelpful": "Évaluer cette réponse comme utile",
+      "rateNotHelpful": "Évaluer cette réponse comme peu utile",
+      "ratedHelpful": "Jugée utile.",
+      "ratedNotHelpful": "Jugée peu utile.",
+      "removeHelpful": "Retirer l’évaluation « utile »",
+      "removeNotHelpful": "Retirer l’évaluation « peu utile »"
+    },
+    "message": {
+      "answerInProgress": "Réponse de l’assistant en cours",
+      "assistantAnswer": "Réponse de l’assistant",
+      "durationSeconds": "{seconds} s",
+      "followUp": "Question de suivi",
+      "followUpTitle": "Cette question a été interprétée à la lumière de ce qui a été demandé auparavant",
+      "insufficientEvidence": "Aucun document justificatif n’a été trouvé pour cette question : l’assistant n’a donc rien sur quoi fonder une réponse. Les documents deviennent exploitables une fois leur texte extrait et indexé.",
+      "noPassages": "Aucun passage correspondant trouvé…",
+      "passageCount": "{count, plural, =1 {1 passage} other {# passages}}",
+      "searching": "Recherche dans vos documents…",
+      "truncated": "Cette réponse a atteint la limite de longueur et s’arrête prématurément. Posez une question plus ciblée pour voir la suite.",
+      "writing": "{count, plural, =1 {1 passage lu} other {# passages lus}} — rédaction de la réponse…",
+      "yourMessage": "Votre message"
+    },
+    "metrics": {
+      "activeConversations": "Conversations actives",
+      "averageLength": "Longueur moyenne",
+      "averageResponse": "Réponse moyenne",
+      "disabled": "L’assistant est désactivé sur ce déploiement. Les conversations existantes restent lisibles ; seules les nouvelles conversations et les nouveaux messages sont refusés.",
+      "failed": "Échec",
+      "failuresByCause": "Échecs par cause",
+      "footnote": "Les conversations et les évaluations couvrent toute la plateforme. Le nombre de requêtes et les durées proviennent de ce processus API depuis {at} et sont réinitialisés à son redémarrage.",
+      "grounded": "Fondé",
+      "helpfulOf": "{percent} % sur {total}",
+      "messageCount": "{count, plural, =1 {1 message} other {# messages}}",
+      "messagesAnswered": "Messages traités",
+      "ratedHelpful": "Jugées utiles",
+      "seconds": "{value} s",
+      "streamed": "Diffusées",
+      "streamingOff": "La diffusion est désactivée.",
+      "suggestionsOff": "Les suggestions de suivi sont indisponibles.",
+      "title": "Assistant IA"
+    },
+    "rename": {
+      "description": "Seul le nom change. Les questions et les réponses de cette conversation restent intactes.",
+      "enterName": "Saisissez un nom.",
+      "name": "Nom",
+      "title": "Renommer la conversation"
+    },
+    "suggestions": {
+      "askNext": "Question suivante",
+      "label": "Questions de suivi suggérées"
+    },
+    "workspace": {
+      "conversations": "Conversations",
+      "readOnly": "Vous pouvez lire vos conversations, mais votre rôle ne vous permet pas de poser de nouvelles questions à l’assistant IA."
+    }
+  },
+  "auth": {
+    "errors": {
+      "accountDisabled": "Ce compte a été désactivé. Contactez un administrateur.",
+      "invalidCredentials": "E-mail ou mot de passe incorrect.",
+      "tooManyAttempts": "Trop de tentatives de connexion. Patientez quelques minutes et réessayez."
+    },
+    "login": {
+      "description": "Saisissez vos identifiants pour accéder à vos dossiers.",
+      "email": "E-mail",
+      "emailPlaceholder": "vous@exemple.com",
+      "hidePassword": "Masquer le mot de passe",
+      "password": "Mot de passe",
+      "passwordPlaceholder": "Saisissez votre mot de passe",
+      "showPassword": "Afficher le mot de passe",
+      "signingIn": "Connexion…",
+      "submit": "Se connecter",
+      "title": "Se connecter"
+    },
+    "states": {
+      "checkingAccess": "Vérification de vos accès…",
+      "redirecting": "Redirection vers la connexion…",
+      "restoringSession": "Restauration de votre session…"
+    }
+  },
+  "cases": {
+    "actions": {
+      "archive": "Archiver",
+      "label": "Actions",
+      "manageAssignments": "Gérer les affectations",
+      "menuFor": "Actions pour {caseNumber}",
+      "restore": "Restaurer",
+      "viewDetails": "Voir les détails"
+    },
+    "archiveDialog": {
+      "archived": "Le dossier {caseNumber} a été archivé.",
+      "archiving": "Archivage…",
+      "confirm": "Archiver",
+      "description": "Le dossier quitte la charge de travail active mais est conservé — non supprimé — de sorte que ses documents, sa chronologie et son historique restent intacts. Il demeure consultable et vous pouvez le restaurer à tout moment.",
+      "title": "Archiver {caseNumber} ?",
+      "titleGeneric": "Archiver ce dossier ?"
+    },
+    "assignDialog": {
+      "description": "Choisissez qui travaille sur {caseNumber}. Sélectionner « Non assigné » supprime l’affectation actuelle.",
+      "descriptionGeneric": "Choisissez qui travaille sur ce dossier.",
+      "noChanges": "Aucune modification d’affectation à enregistrer.",
+      "submit": "Enregistrer les affectations",
+      "title": "Gérer les affectations",
+      "updated": "Les affectations de {caseNumber} ont été mises à jour."
+    },
+    "createDialog": {
+      "created": "Le dossier {caseNumber} a été créé.",
+      "creating": "Création…",
+      "description": "Ouvrez un dossier et, si vous le souhaitez, désignez l’avocat et le représentant du tribunal qui y travailleront.",
+      "submit": "Créer le dossier",
+      "title": "Nouveau dossier"
+    },
+    "details": {
+      "assignment": "Affectation",
+      "assignments": "Affectations",
+      "auditInformation": "Informations d’audit",
+      "backToCases": "Retour aux dossiers",
+      "courtInformation": "Informations du tribunal",
+      "createdAt": "Créé le",
+      "createdBy": "Créé par",
+      "generalInformation": "Informations générales",
+      "loading": "Chargement du dossier…",
+      "notProvided": "Non renseigné",
+      "notRecorded": "Non enregistré",
+      "notScheduled": "Non planifiée",
+      "notSet": "Non défini",
+      "updatedAt": "Mis à jour le",
+      "updatedBy": "Mis à jour par"
+    },
+    "editDialog": {
+      "description": "Mettre à jour {caseNumber} — ses informations, son statut, sa priorité, son tribunal ou ses affectations.",
+      "descriptionGeneric": "Mettre à jour ce dossier.",
+      "noChanges": "Aucune modification à enregistrer.",
+      "title": "Modifier le dossier",
+      "updated": "Le dossier {caseNumber} a été mis à jour."
+    },
+    "empty": {
+      "description": "Ouvrez le premier dossier pour commencer à suivre une affaire tout au long de son cycle de vie.",
+      "filteredDescription": "Essayez un autre terme de recherche ou une autre période, ou effacez les filtres pour tout voir.",
+      "filteredTitle": "Aucun dossier ne correspond à vos filtres",
+      "title": "Aucun dossier pour l’instant"
+    },
+    "errors": {
+      "detailTitle": "Impossible de charger ce dossier",
+      "invalidAssignment": "L’utilisateur sélectionné ne peut pas être affecté à ce poste.",
+      "invalidDates": "Ces dates ne sont pas dans un ordre valide. Vérifiez les dates de dépôt et d’audience.",
+      "invalidTransition": "Ce dossier ne peut pas passer à ce statut depuis son état actuel.",
+      "listTitle": "Impossible de charger les dossiers",
+      "notFound": "Ce dossier n’existe plus. Actualisez la liste et réessayez.",
+      "numberTaken": "Un dossier portant ce numéro existe déjà."
+    },
+    "filters": {
+      "allPriorities": "Toutes les priorités",
+      "allStatuses": "Tous les statuts",
+      "anyCourt": "N’importe quel tribunal",
+      "anyLawyer": "N’importe quel avocat",
+      "anyRepresentative": "N’importe quel représentant",
+      "assignedLawyer": "Avocat assigné",
+      "assignedRepresentative": "Représentant assigné",
+      "court": "Tribunal",
+      "filedFrom": "Déposé à partir du",
+      "filedUntil": "Déposé jusqu’au",
+      "hearingFrom": "Audience à partir du",
+      "hearingUntil": "Audience jusqu’au",
+      "priority": "Priorité",
+      "searchPlaceholder": "Rechercher par numéro de dossier, titre, description ou tribunal",
+      "status": "Statut"
+    },
+    "form": {
+      "assignedLawyer": "Avocat assigné",
+      "assignedRepresentative": "Représentant du tribunal assigné",
+      "caseNumber": "Numéro de dossier",
+      "caseNumberHint": "Laissez vide pour générer automatiquement le numéro suivant.",
+      "caseNumberPlaceholder": "CASE-2026-0001",
+      "category": "Catégorie",
+      "categoryHint": "Facultatif — par ex. Commercial, Travail, Famille.",
+      "categoryPlaceholder": "Commercial",
+      "court": "Tribunal",
+      "courtPlaceholder": "Tribunal de Commerce de Casablanca",
+      "description": "Description",
+      "descriptionPlaceholder": "Résumé de l’affaire.",
+      "filingDate": "Date de dépôt",
+      "nextHearing": "Prochaine audience",
+      "noEligibleAccounts": "Aucun compte actif ne détient encore ce rôle.",
+      "priority": "Priorité",
+      "selectPriority": "Sélectionner une priorité",
+      "selectStatus": "Sélectionner un statut",
+      "status": "Statut",
+      "statusHint": "Seules les transitions que ce dossier peut légalement effectuer sont proposées.",
+      "title": "Titre",
+      "titlePlaceholder": "Benali c. Société Atlas",
+      "unassigned": "Non assigné"
+    },
+    "pagination": {
+      "summary": "{count, plural, =0 {Aucun dossier} =1 {Affichage de {from} à {to} sur 1 dossier} other {Affichage de {from} à {to} sur # dossiers}}"
+    },
+    "priorities": {
+      "high": "Élevée",
+      "low": "Faible",
+      "medium": "Moyenne",
+      "urgent": "Urgente"
+    },
+    "restored": "Le dossier {caseNumber} a été restauré.",
+    "statuses": {
+      "archived": "Archivé",
+      "closed": "Clôturé",
+      "draft": "Brouillon",
+      "in_progress": "En cours",
+      "open": "Ouvert",
+      "waiting_for_hearing": "En attente d’audience"
+    },
+    "table": {
+      "columns": {
+        "assignedLawyer": "Avocat assigné",
+        "assignedRepresentative": "Représentant assigné",
+        "case_number": "Numéro de dossier",
+        "court": "Tribunal",
+        "filing_date": "Date de dépôt",
+        "next_hearing_date": "Prochaine audience",
+        "priority": "Priorité",
+        "status": "Statut",
+        "title": "Titre",
+        "updated_at": "Dernière mise à jour"
+      },
+      "loading": "Chargement des dossiers",
+      "notScheduled": "Non planifiée"
+    },
+    "unassigned": "Non assigné",
+    "upcoming": {
+      "availability": "Disponible dans une prochaine version.",
+      "heading": "À venir sur ce dossier",
+      "notes": {
+        "description": "Notes de travail partagées entre l’administrateur et l’équipe affectée.",
+        "title": "Notes"
+      }
+    }
+  },
+  "common": {
+    "a11y": {
+      "breadcrumb": "Fil d’Ariane",
+      "collapseSidebar": "Réduire la barre latérale",
+      "dashboardHome": "Accueil du tableau de bord",
+      "expandSidebar": "Déployer la barre latérale",
+      "openAccountMenu": "Ouvrir le menu du compte",
+      "openNavigation": "Ouvrir le menu de navigation",
+      "primaryNavigation": "Principal",
+      "sidebar": "Barre latérale",
+      "skipToContent": "Aller au contenu"
+    },
+    "actions": {
+      "apply": "Appliquer",
+      "cancel": "Annuler",
+      "clear": "Effacer",
+      "clearFilters": "Effacer les filtres",
+      "close": "Fermer",
+      "confirm": "Confirmer",
+      "copied": "Copié",
+      "copy": "Copier",
+      "create": "Créer",
+      "delete": "Supprimer",
+      "download": "Télécharger",
+      "edit": "Modifier",
+      "next": "Suivant",
+      "openMenu": "Ouvrir le menu",
+      "previous": "Précédent",
+      "refresh": "Actualiser",
+      "remove": "Retirer",
+      "retry": "Réessayer",
+      "save": "Enregistrer",
+      "saveChanges": "Enregistrer les modifications",
+      "saving": "Enregistrement…",
+      "search": "Rechercher",
+      "send": "Envoyer",
+      "view": "Voir"
+    },
+    "languages": {
+      "ar": "Arabe",
+      "en": "Anglais",
+      "fr": "Français",
+      "und": "Indéterminé"
+    },
+    "pagination": {
+      "page": "Page {page}",
+      "pageOf": "Page {page} sur {total}",
+      "showing": "Affichage de {from} à {to} sur {total}"
+    },
+    "sort": {
+      "sortBy": "Trier par {column}",
+      "sortedAscending": "Trié par ordre croissant. Activez pour inverser.",
+      "sortedDescending": "Trié par ordre décroissant. Activez pour inverser."
+    },
+    "states": {
+      "emptyTitle": "Rien ici pour l’instant",
+      "errorDescription": "Les informations n’ont pas pu être chargées.",
+      "errorTitle": "Une erreur est survenue",
+      "loading": "Chargement…",
+      "no": "Non",
+      "noResults": "Aucun résultat",
+      "notAvailable": "—",
+      "optional": "Facultatif",
+      "platformDefault": "(par défaut de la plateforme)",
+      "required": "Obligatoire",
+      "unknown": "Inconnu",
+      "yes": "Oui"
+    },
+    "time": {
+      "dateAt": "{date} • {time}",
+      "never": "Jamais",
+      "todayAt": "Aujourd’hui • {time}",
+      "yesterdayAt": "Hier • {time}"
+    }
+  },
+  "dashboard": {
+    "buckets": {
+      "archived": "Archivé",
+      "assignment": "Affectation",
+      "case": "Dossier",
+      "closed": "Clôturé",
+      "completed": "Terminé",
+      "document": "Document",
+      "draft": "Brouillon",
+      "failed": "Échec",
+      "in_progress": "En cours",
+      "not_started": "Non démarré",
+      "open": "Ouvert",
+      "pending": "En file d’attente",
+      "priority": "Priorité",
+      "processing": "Traitement",
+      "skipped": "Ignoré",
+      "status": "Statut",
+      "waiting_for_hearing": "En attente d’audience"
+    },
+    "card": {
+      "refreshWidget": "Actualiser {widget}",
+      "seeAll": "Tout voir"
+    },
+    "empty": {
+      "ai_reports": "Vous n’avez encore généré aucun rapport.",
+      "case_status_overview": "Aucun dossier pour l’instant.",
+      "my_cases": "Aucun dossier ouvert ne vous est assigné.",
+      "notifications": "Aucune notification pour l’instant.",
+      "ocr_status": "Aucun document dont extraire du texte pour l’instant.",
+      "recent_activity": "Aucune activité dans vos dossiers pour l’instant.",
+      "recent_cases": "Aucun dossier n’a encore été mis à jour.",
+      "recent_conversations": "Vous n’avez encore rien demandé à l’assistant.",
+      "recent_documents": "Aucun document téléversé pour l’instant.",
+      "timeline_activity": "Rien ne s’est produit sur cette période.",
+      "upcoming_hearings": "Aucune audience prévue dans les 30 prochains jours."
+    },
+    "errors": {
+      "disabled": "Le tableau de bord est actuellement désactivé sur cette plateforme.",
+      "noAccess": "Vous n’avez pas accès à ce tableau de bord.",
+      "title": "Impossible de charger votre tableau de bord",
+      "widget": {
+        "budgetExhausted": "Ce widget a été ignoré pour garder la page réactive. Actualisez-le pour le charger.",
+        "budgetExhaustedShort": "Ignoré pour rester réactif",
+        "generic": "Ce widget est indisponible pour le moment.",
+        "queryFailed": "Ce widget n’a pas pu être chargé. Tout le reste de la page n’est pas affecté.",
+        "queryFailedShort": "Échec de la requête"
+      },
+      "widgetNotFound": "Ce widget ne vous est pas accessible."
+    },
+    "filters": {
+      "from": "Du",
+      "invalidRange": "La date de fin ne doit pas précéder la date de début.",
+      "period": "Période",
+      "to": "Au"
+    },
+    "groups": {
+      "ai": "IA",
+      "cases": "Dossiers",
+      "court": "Tribunal",
+      "documents": "Documents",
+      "general": "Vue d’ensemble",
+      "system": "Système",
+      "timeline": "Activité"
+    },
+    "health": {
+      "activeUsers": "Utilisateurs actifs",
+      "averageLoad": "Chargement moyen",
+      "averageWidget": "Widget moyen",
+      "disabled": "Le tableau de bord est désactivé sur ce déploiement. Tous les autres modules sont intacts — un tableau de bord ne possède aucune donnée.",
+      "failuresByCause": "Échecs par cause",
+      "loads": "Tableaux de bord chargés",
+      "refreshes": "Actualisations de widgets",
+      "since": "Comptabilisé dans ce processus API depuis {at}. Le tableau de bord ne stocke rien : ces valeurs sont réinitialisées à son redémarrage.",
+      "slowestWidgets": "Widgets les plus lents",
+      "successRate": "Taux de réussite",
+      "title": "Santé du tableau de bord",
+      "widgetsFailed": "Widgets en échec",
+      "widgetsLoaded": "Widgets chargés"
+    },
+    "messageCount": "{count, plural, =1 {1 message} other {# messages}}",
+    "metrics": {
+      "accounts_administrator": "Administrateurs",
+      "accounts_court_representative": "Représentants du tribunal",
+      "accounts_lawyer": "Avocats",
+      "active_cases": "Actif",
+      "active_conversations": "Actif",
+      "active_users": "Connectés récemment",
+      "archived_cases": "Archivé",
+      "assistant_messages": "Messages",
+      "average_document_bytes": "Taille moyenne",
+      "closed_cases": "Clôturé",
+      "closed_in_window": "Clôturés sur la période",
+      "conversations": "Conversations",
+      "conversations_in_window": "Démarrées sur la période",
+      "created_in_window": "Ouverts sur la période",
+      "disabled_accounts": "Désactivé",
+      "documents": "Documents",
+      "enabled_accounts": "Activé",
+      "hearings_next_30_days": "30 prochains jours",
+      "hearings_next_7_days": "7 prochains jours",
+      "hearings_overdue": "En retard",
+      "hearings_today": "Aujourd’hui",
+      "indexing_completed": "Indexé",
+      "indexing_failed": "Échec de l’indexation",
+      "indexing_pending": "Indexation en file d’attente",
+      "indexing_processing": "Indexation",
+      "ocr_completed": "Texte extrait",
+      "ocr_failed": "Échec de l’extraction",
+      "ocr_pending": "Extraction en file d’attente",
+      "ocr_processing": "Extraction",
+      "queued_total": "En file d’attente",
+      "reports_failed": "Échec",
+      "reports_generated": "Terminé",
+      "reports_in_progress": "En cours",
+      "reports_in_window": "Générés sur la période",
+      "reports_pending": "Rapports en file d’attente",
+      "reports_processing": "Rédaction des rapports",
+      "reports_total": "Rapports",
+      "storage_bytes": "Stockage utilisé",
+      "suspended_accounts": "Suspendu",
+      "total_accounts": "Comptes",
+      "total_cases": "Total des dossiers",
+      "total_documents": "Documents",
+      "uploaded_in_window": "Téléversés sur la période",
+      "version_bytes": "Versions précédentes"
+    },
+    "partialFailure": "{count, plural, =1 {Un widget n’a pas pu être chargé. Tout le reste de cette page est à jour.} other {# widgets n’ont pas pu être chargés. Tout le reste de cette page est à jour.}}",
+    "quickActions": {
+      "create_case": "Nouveau dossier",
+      "generate_report": "Générer un rapport",
+      "open_assistant": "Interroger l’assistant",
+      "upload_document": "Téléverser un document",
+      "view_calendar": "Calendrier du tribunal"
+    },
+    "ranges": {
+      "custom": "Période personnalisée",
+      "last_30_days": "30 derniers jours",
+      "last_7_days": "7 derniers jours",
+      "today": "Aujourd’hui"
+    },
+    "sectionProgress": "{completed}/{total} sections",
+    "subtitle": "Votre portefeuille de dossiers, vos documents, et ce sur quoi la plateforme travaille.",
+    "title": "Tableau de bord",
+    "widgets": {
+      "active_users": {
+        "description": "Les comptes, et qui s’est connecté récemment.",
+        "title": "Utilisateurs"
+      },
+      "ai_analytics": {
+        "description": "Vos propres conversations et rapports.",
+        "title": "Utilisation de l’IA"
+      },
+      "ai_reports": {
+        "description": "Les rapports que vous avez générés.",
+        "title": "Rapports IA"
+      },
+      "case_analytics": {
+        "title": "Analyses des dossiers"
+      },
+      "case_status_overview": {
+        "description": "La répartition de votre portefeuille de dossiers.",
+        "title": "Statut du dossier"
+      },
+      "document_analytics": {
+        "title": "Analyses documentaires"
+      },
+      "hearing_calendar": {
+        "title": "Calendrier des audiences"
+      },
+      "my_cases": {
+        "description": "Les dossiers qui vous sont assignés, les plus urgents en premier.",
+        "title": "Mes dossiers"
+      },
+      "notifications": {
+        "description": "Vos alertes les plus récentes.",
+        "title": "Notifications"
+      },
+      "ocr_status": {
+        "description": "Où en sont vos documents dans le pipeline.",
+        "title": "Extraction de texte"
+      },
+      "processing_queues": {
+        "description": "Le travail que la plateforme a accepté et n’a pas encore terminé.",
+        "title": "Files de traitement"
+      },
+      "quick_actions": {
+        "description": "Ce que vous faites le plus souvent.",
+        "title": "Actions rapides"
+      },
+      "recent_activity": {
+        "description": "Ce qui a changé dans vos dossiers.",
+        "title": "Activité récente"
+      },
+      "recent_cases": {
+        "title": "Dossiers récemment mis à jour"
+      },
+      "recent_conversations": {
+        "title": "Conversations avec l’assistant"
+      },
+      "recent_documents": {
+        "title": "Documents récents"
+      },
+      "storage_usage": {
+        "description": "Ce que la plateforme conserve.",
+        "title": "Stockage"
+      },
+      "timeline_activity": {
+        "description": "Où le travail est allé sur cette période.",
+        "title": "Répartition de l’activité"
+      },
+      "upcoming_hearings": {
+        "description": "Les prochaines dates d’audience.",
+        "title": "Audiences à venir"
+      }
+    }
+  },
+  "documents": {
+    "actions": {
+      "label": "Actions",
+      "menuFor": "Actions pour {filename}",
+      "preview": "Aperçu",
+      "replace": "Remplacer",
+      "viewDetails": "Voir les détails"
+    },
+    "categories": {
+      "contract": "Contrat",
+      "correspondence": "Correspondance",
+      "court_decision": "Décision de justice",
+      "evidence": "Preuve",
+      "identity_document": "Pièce d’identité",
+      "invoice": "Facture",
+      "other": "Autre",
+      "pleading": "Conclusions"
+    },
+    "deleteDialog": {
+      "deleted": "{filename} a été supprimé.",
+      "deleting": "Suppression…",
+      "description": "Le document est retiré du dossier et n’apparaîtra plus dans les listes, les recherches ni les téléchargements. Il est conservé — non détruit — avec chacune de ses versions stockées, car un document juridique n’est jamais supprimé définitivement sans autorisation.",
+      "title": "Supprimer {filename} ?",
+      "titleGeneric": "Supprimer ce document ?"
+    },
+    "detailsDialog": {
+      "description": "Métadonnées, dossier auquel appartient ce document, et chaque version jamais téléversée — toutes encore téléchargeables.",
+      "downloadCurrent": "Télécharger la version actuelle",
+      "fields": {
+        "addedToCase": "Ajouté au dossier",
+        "case": "Dossier",
+        "category": "Catégorie",
+        "currentVersion": "Version actuelle",
+        "currentVersionUploaded": "Version actuelle téléversée le",
+        "description": "Description",
+        "fileName": "Nom du fichier",
+        "size": "Taille",
+        "type": "Type",
+        "uploadedBy": "Téléversé par"
+      },
+      "loadFailed": "Impossible de charger ce document",
+      "loading": "Chargement du document…",
+      "notAvailable": "Non disponible",
+      "notProvided": "Non renseigné",
+      "notRecorded": "Non enregistré",
+      "saveDetails": "Enregistrer les détails",
+      "saved": "Les détails du document ont été mis à jour.",
+      "title": "Détails du document",
+      "versionShort": "v{version}"
+    },
+    "empty": {
+      "description": "Téléversez le premier contrat, la première pièce ou le premier élément de preuve pour commencer à constituer le dossier.",
+      "filteredDescription": "Essayez un autre terme de recherche, une autre catégorie ou une autre période, ou effacez les filtres pour tout voir.",
+      "filteredTitle": "Aucun document ne correspond à vos filtres",
+      "title": "Aucun document pour l’instant"
+    },
+    "errors": {
+      "caseNotFound": "Ce dossier n’existe plus. Actualisez la page et réessayez.",
+      "invalidFile": "Ce fichier a été refusé. Vérifiez son type et sa taille, puis réessayez.",
+      "listTitle": "Impossible de charger les documents",
+      "notFound": "Ce document n’existe plus. Actualisez la liste et réessayez.",
+      "previewUnavailable": "Ce type de fichier ne peut pas être prévisualisé. Téléchargez-le à la place.",
+      "storageUnavailable": "Le stockage des documents est temporairement indisponible. Veuillez réessayer.",
+      "versionNotFound": "Cette version du document n’est plus disponible."
+    },
+    "filters": {
+      "allCategories": "Toutes les catégories",
+      "allTypes": "Tous les types",
+      "anyone": "N’importe qui",
+      "category": "Catégorie",
+      "fileType": "Type de fichier",
+      "searchPlaceholder": "Rechercher par nom de fichier, description ou catégorie",
+      "uploadedBy": "Téléversé par",
+      "uploadedFrom": "Téléversé à partir du",
+      "uploadedUntil": "Téléversé jusqu’au"
+    },
+    "pagination": {
+      "summary": "{count, plural, =0 {Aucun document} =1 {Affichage de {from} à {to} sur 1 document} other {Affichage de {from} à {to} sur # documents}}"
+    },
+    "preview": {
+      "downloading": "Téléchargement…",
+      "failedDescription": "{reason} Vous pouvez toujours le télécharger.",
+      "failedTitle": "Impossible de prévisualiser ce document",
+      "frameTitle": "Aperçu de {filename}",
+      "imageAlt": "Aperçu du document",
+      "loading": "Chargement de l’aperçu…",
+      "loadingDocument": "Chargement du document…",
+      "title": "Aperçu",
+      "versionAndSize": "Version {version} · {size}"
+    },
+    "replaceDialog": {
+      "description": "Téléversez une nouvelle version de {filename}. La version {version} est conservée et reste téléchargeable depuis l’historique des versions — rien n’est écrasé.",
+      "descriptionGeneric": "Téléversez une nouvelle version. Les versions précédentes sont conservées et restent téléchargeables.",
+      "newFile": "Nouveau fichier",
+      "progressLabel": "Progression du remplacement",
+      "replaced": "{filename} a été enregistré comme version {version}. La version {previous} reste disponible.",
+      "submit": "Téléverser une nouvelle version",
+      "supportedTypes": "Types acceptés : {types} — jusqu’à {maxSize} Mo. Le remplacement peut être d’un type différent du fichier qu’il remplace.",
+      "title": "Remplacer le document"
+    },
+    "table": {
+      "columns": {
+        "case": "Dossier",
+        "category": "Catégorie",
+        "created_at": "Date de téléversement",
+        "file_size": "Taille",
+        "original_filename": "Nom du fichier",
+        "uploadedBy": "Téléversé par",
+        "uploaded_at": "Date de téléversement",
+        "version": "Version"
+      },
+      "loading": "Chargement des documents",
+      "versionShort": "v{version}"
+    },
+    "upload": {
+      "chosenFile": "{name} — {kilobytes} Ko",
+      "progressLabel": "Progression du téléversement",
+      "uploading": "Téléversement…",
+      "uploadingPercent": "Téléversement… {percent} %"
+    },
+    "uploadDialog": {
+      "case": "Dossier",
+      "category": "Catégorie",
+      "description": "Joignez un fichier à un dossier. Types acceptés : {types} — jusqu’à {maxSize} Mo.",
+      "descriptionField": "Description (facultatif)",
+      "descriptionPlaceholder": "Ce qu’est ce document, et pourquoi il compte pour le dossier.",
+      "file": "Fichier",
+      "loadingCases": "Chargement des dossiers…",
+      "selectCase": "Sélectionner un dossier",
+      "selectCategory": "Sélectionner une catégorie",
+      "submit": "Téléverser",
+      "title": "Téléverser un document",
+      "uploaded": "{filename} a été téléversé."
+    },
+    "versions": {
+      "current": "Actuelle",
+      "downloadVersion": "Télécharger la version {version}",
+      "downloading": "Téléchargement…",
+      "none": "Aucune version enregistrée.",
+      "title": "Historique des versions",
+      "version": "Version {version}"
+    }
+  },
+  "errors": {
+    "forbidden": "Vous n’avez pas l’autorisation de faire cela.",
+    "generic": "Une erreur est survenue. Veuillez réessayer.",
+    "network": "Le serveur est injoignable. Vérifiez votre connexion et réessayez.",
+    "notFound": "Cet élément n’existe plus.",
+    "rateLimited": "Trop de tentatives. Veuillez patienter un instant et réessayer.",
+    "sessionExpired": "Votre session a expiré. Reconnectez-vous pour continuer.",
+    "unauthorized": "Vous devez vous connecter pour faire cela.",
+    "unavailable": "Ce service est temporairement indisponible. Veuillez réessayer sous peu.",
+    "validation": "Certaines informations fournies ne sont pas valides. Vérifiez le formulaire et réessayez."
+  },
+  "indexing": {
+    "build": "Indexer pour la recherche",
+    "errors": {
+      "alreadyRunning": "Ce document est déjà en cours d’indexation.",
+      "disabled": "L’indexation des documents est actuellement désactivée sur cette plateforme.",
+      "documentNotFound": "Ce document n’existe plus. Actualisez la page et réessayez.",
+      "notIndexed": "Ce document n’a pas été indexé pour la recherche.",
+      "notReady": "Ce document n’est pas encore prêt à être indexé — son texte n’a pas été extrait.",
+      "versionNotFound": "Cette version du document n’est plus disponible."
+    },
+    "failureNote": "Le document et son texte extrait ne sont pas affectés.",
+    "failures": {
+      "chunking_failure": "Le texte n’a pas pu être découpé",
+      "embedding_failure": "Le service d’embedding a échoué",
+      "invalid_ocr_output": "Aucun texte extrait",
+      "timeout": "A pris trop de temps",
+      "unknown": "N’a pas abouti",
+      "vector_store_unavailable": "Index de recherche indisponible"
+    },
+    "metadata": {
+      "attempts": "Tentatives",
+      "characters": "Caractères",
+      "duration": "Durée",
+      "finished": "Terminé le",
+      "language": "Langue",
+      "model": "Modèle",
+      "pages": "Pages",
+      "passageSize": "Taille des passages",
+      "passageSizeValue": "{size} caractères",
+      "passageSizeWithOverlap": "{size} caractères, {overlap} de chevauchement",
+      "passages": "Passages",
+      "seconds": "{value} s",
+      "started": "Démarré le"
+    },
+    "metrics": {
+      "averageTime": "Durée moyenne",
+      "configuration": "{model} · {dimensions} dimensions · {chunker} · {chunkSize}/{chunkOverlap} car. · {collection}",
+      "disabled": "L’indexation des documents est désactivée sur ce déploiement. Les index existants restent lisibles ; aucun nouveau travail n’est planifié.",
+      "documentsIndexed": "Documents indexés",
+      "embeddingUnavailable": "Le modèle d’embedding {model} ne peut pas être chargé : les nouvelles indexations échoueront. Les documents et leur texte extrait ne sont pas affectés, et chaque exécution pourra être reconstruite une fois le modèle disponible.",
+      "failureRate": "Taux d’échec",
+      "failures": "Échecs",
+      "failuresByCause": "Échecs par cause",
+      "passagesIndexed": "Passages indexés",
+      "passagesPerDocument": "Passages par document",
+      "seconds": "{value} s",
+      "successRate": "Taux de réussite",
+      "title": "Indexation pour la recherche",
+      "vectorStoreUnavailable": "L’index de recherche est injoignable : les nouvelles indexations échoueront. Les documents et leur texte extrait ne sont pas affectés.",
+      "vectorsStored": "Vecteurs stockés"
+    },
+    "notApplicable": "L’indexation pour la recherche s’applique aux documents dont le texte a été extrait, c’est-à-dire les PDF et les images.",
+    "notIndexed": "Ce document n’a pas encore été indexé pour la recherche. L’indexation démarre une fois son texte extrait.",
+    "queued": "L’indexation pour la recherche a été mise en file d’attente.",
+    "rebuild": "Reconstruire l’index",
+    "statuses": {
+      "failed": "Échec",
+      "indexed": "Consultable",
+      "indexing": "Indexation",
+      "pending": "En file d’attente"
+    },
+    "title": "Index de recherche",
+    "waitingBuilding": "Construction de l’index de recherche. Cette page se met à jour automatiquement.",
+    "waitingQueued": "En file d’attente pour indexation. Cette page se met à jour automatiquement."
+  },
+  "monitoring": {
+    "alerts": {
+      "deliveryNote": "Les conditions sont évaluées ici et transmises nulle part — c’est un gestionnaire d’alertes ou une personne lisant cette page qui en fait un appel téléphonique.",
+      "measured": "Mesuré à {value} pour un seuil de {threshold}.",
+      "none": "Aucune alerte n’est déclenchée.",
+      "title": "Alertes"
+    },
+    "errors": {
+      "distinct": "Défaillances distinctes",
+      "evicted": "Groupes évincés",
+      "none": "Rien n’a échoué sur cette fenêtre.",
+      "occurrences": "Vu {count} fois",
+      "title": "Erreurs",
+      "total": "Occurrences"
+    },
+    "events": {
+      "account_disabled": "Compte désactivé",
+      "login_failed": "Échec de la connexion",
+      "login_locked_out": "Verrouillé",
+      "login_succeeded": "Connexion réussie",
+      "logout": "Déconnecté",
+      "password_changed": "Mot de passe modifié",
+      "permission_denied": "Autorisation refusée",
+      "rate_limited": "Débit limité",
+      "resource_access_denied": "Ressource refusée",
+      "token_expired": "Jeton expiré",
+      "token_invalid": "Jeton invalide"
+    },
+    "externalNote": "Les services externes sont rapportés à partir de la seule configuration — une sonde de disponibilité n’appelle jamais un modèle facturé ni n’ouvre une connexion mail.",
+    "generatedAt": "Lu à {at}",
+    "health": {
+      "dependencies": "Services sous-jacents",
+      "environment": "Environnement",
+      "externalServices": "Services externes",
+      "required": "obligatoire",
+      "threads": "Threads",
+      "title": "Santé",
+      "uptime": "Disponibilité",
+      "version": "Version"
+    },
+    "jobs": {
+      "depthsUnavailable": "La profondeur des files n’a pas pu être lue : rien n’est affiché plutôt que zéro.",
+      "failed": "Échec",
+      "none": "Aucun travail en arrière-plan n’est en attente.",
+      "pending": "En attente",
+      "processing": "Traitement",
+      "queue": "File d’attente",
+      "title": "Tâches en arrière-plan",
+      "workers": "Pools de workers"
+    },
+    "latencies": {
+      "api_response": "Réponse de l’API",
+      "background_job": "Tâche en arrière-plan",
+      "database_query": "Requête base de données",
+      "external_call": "Appel externe",
+      "span": "Travail tracé"
+    },
+    "loadFailed": "L’état opérationnel de la plateforme n’a pas pu être lu.",
+    "partial": "Certaines sections n’ont pas pu être assemblées : {sections}. Tout le reste de cette page est à jour.",
+    "performance": {
+      "average": "Moyenne",
+      "clientErrors": "Erreurs client",
+      "count": "Nombre",
+      "errorRate": "Taux d’erreur",
+      "max": "Le plus lent",
+      "measurement": "Mesure",
+      "noObservations": "Rien n’a encore été mesuré sur cette fenêtre.",
+      "requests": "Requêtes",
+      "serverErrors": "Erreurs serveur",
+      "slowestRoutes": "Routes les plus lentes",
+      "title": "Performance"
+    },
+    "queues": {
+      "email": "E-mail",
+      "indexing": "Indexation",
+      "notifications": "Notifications",
+      "ocr": "Extraction de texte",
+      "reports": "Rapports",
+      "whatsapp": "WhatsApp"
+    },
+    "refresh": "Actualiser",
+    "rules": {
+      "authentication_failures_high": "Les connexions échouées dépassent le seuil pour cette fenêtre.",
+      "background_workers_stopped": "Un pool de workers en arrière-plan est arrêté : sa file d’attente ne se videra jamais.",
+      "cache_unavailable": "Redis est injoignable : la déconnexion et la limitation des tentatives de connexion ne peuvent être appliquées.",
+      "database_unavailable": "PostgreSQL est injoignable.",
+      "error_rate_high": "Trop de requêtes reçoivent une erreur serveur en réponse.",
+      "latency_high": "Les requêtes sont plus lentes que le seuil ne l’autorise.",
+      "queue_backlog": "Une file d’attente en arrière-plan contient plus de travail que le seuil ne l’autorise.",
+      "storage_unavailable": "MinIO est injoignable : les documents ne peuvent être ni stockés ni servis.",
+      "vector_unavailable": "Qdrant est injoignable : la recherche sémantique et le pipeline IA refusent les requêtes."
+    },
+    "security": {
+      "attempts": "Tentatives de connexion",
+      "failureRate": "Taux d’échec",
+      "failures": "Connexions échouées",
+      "none": "Aucun événement de sécurité sur cette fenêtre.",
+      "privacyNote": "Aucun compte ni aucune adresse n’est enregistré — une source est une empreinte salée dont la seule propriété lisible est le nombre de sources distinctes.",
+      "sources": "Sources distinctes",
+      "title": "Sécurité"
+    },
+    "severities": {
+      "critical": "Critique",
+      "info": "Info",
+      "warning": "Avertissement"
+    },
+    "states": {
+      "degraded": "Dégradé",
+      "disabled": "Désactivé",
+      "healthy": "Sain",
+      "unhealthy": "Défaillant",
+      "unknown": "Inconnu"
+    },
+    "traces": {
+      "dropped": "Spans abandonnés",
+      "failed": "Échec",
+      "failedTrace": "en échec",
+      "none": "Aucune trace n’a encore été enregistrée.",
+      "recorded": "Traces",
+      "spanSummary": "{count} spans",
+      "spans": "Spans",
+      "title": "Traces"
+    }
+  },
+  "navigation": {
+    "descriptions": {
+      "aiAssistant": "Questions-réponses et synthèses sur les documents juridiques",
+      "cases": "Gérer les dossiers juridiques",
+      "courtUpdates": "Audiences et décisions de justice",
+      "dashboard": "Les indicateurs clés des dossiers en un coup d’œil",
+      "documents": "Documents et fichiers juridiques",
+      "lawyers": "Avocats assignés",
+      "monitoring": "Santé et exploitation de la plateforme",
+      "notifications": "Alertes et rappels",
+      "reports": "Rapports juridiques générés par l’IA",
+      "search": "Trouvez des passages dans les documents indexés",
+      "settings": "Préférences de l’espace de travail",
+      "users": "Comptes et rôles de la plateforme"
+    },
+    "items": {
+      "aiAssistant": "Assistant IA",
+      "cases": "Dossiers",
+      "courtUpdates": "Mises à jour du tribunal",
+      "dashboard": "Tableau de bord",
+      "documents": "Documents",
+      "lawyers": "Avocats",
+      "monitoring": "Supervision",
+      "notifications": "Notifications",
+      "reports": "Rapports",
+      "search": "Rechercher",
+      "settings": "Paramètres",
+      "users": "Utilisateurs"
+    },
+    "routes": {
+      "accessDenied": "Accès refusé",
+      "aiAssistant": "Assistant IA",
+      "cases": "Dossiers",
+      "courtUpdates": "Mises à jour du tribunal",
+      "dashboard": "Tableau de bord",
+      "documents": "Documents",
+      "lawyers": "Avocats",
+      "monitoring": "Supervision",
+      "notifications": "Notifications",
+      "reports": "Rapports",
+      "search": "Rechercher",
+      "settings": "Paramètres",
+      "signIn": "Connexion",
+      "users": "Utilisateurs"
+    },
+    "sections": {
+      "workspace": "Espace de travail"
+    }
+  },
+  "notifications": {
+    "announcement": {
+      "characterCount": "{used} / {max} caractères",
+      "description": "Envoyée à chaque compte actif, sous forme de notification dans l’application. Les personnes ayant désactivé les annonces de la plateforme ne sont pas notifiées.",
+      "kind": "Type",
+      "kindHint": "La maintenance est diffusée comme un avertissement de priorité élevée ; une annonce est une information ordinaire.",
+      "kinds": {
+        "announcement": "Annonce",
+        "maintenance": "Maintenance planifiée"
+      },
+      "message": "Message",
+      "messagePlaceholder": "La plateforme sera en lecture seule dimanche entre 08:00 et 10:00.",
+      "sending": "Envoi…",
+      "sent": "{count, plural, =1 {Annonce envoyée à 1 personne.} other {Annonce envoyée à # personnes.}}",
+      "skipped": "{count, plural, =1 {1 personne a désactivé les annonces de la plateforme.} other {# personnes ont désactivé les annonces de la plateforme.}}",
+      "submit": "Envoyer l’annonce",
+      "title": "Annonce de la plateforme"
+    },
+    "categories": {
+      "ai": "Assistant",
+      "case": "Dossiers",
+      "document": "Documents",
+      "hearing": "Audiences",
+      "ocr": "Extraction de texte",
+      "report": "Rapports",
+      "system": "Plateforme",
+      "user": "Compte"
+    },
+    "center": {
+      "all": "Toutes les notifications",
+      "announce": "Annoncer",
+      "preferences": "Préférences"
+    },
+    "channels": {
+      "email": "E-mail",
+      "inApp": "Dans l’application",
+      "whatsapp": "WhatsApp"
+    },
+    "errors": {
+      "disabled": "Les notifications sont actuellement désactivées sur cette plateforme.",
+      "notFound": "Cette notification n’est plus disponible."
+    },
+    "feed": {
+      "emptyDescription": "Les mises à jour des dossiers, l’activité documentaire, les audiences et les résultats de l’IA apparaîtront ici.",
+      "emptyFiltered": "Aucune notification ne correspond à ces filtres.",
+      "emptyTitle": "Rien ici",
+      "loadFailed": "Impossible de charger vos notifications",
+      "markCategoryRead": "Marquer cette catégorie comme lue",
+      "totalCount": "{count, plural, =1 {1 notification} other {# notifications}}"
+    },
+    "filters": {
+      "allCategories": "Toutes les catégories",
+      "allPriorities": "Toutes les priorités",
+      "allTypes": "Tous les types",
+      "byCategory": "Filtrer par catégorie",
+      "byPriority": "Filtrer par priorité",
+      "byType": "Filtrer par type",
+      "unreadOnly": "Non lus uniquement"
+    },
+    "item": {
+      "markRead": "Marquer comme lu",
+      "markReadFor": "Marquer « {title} » comme lu"
+    },
+    "panel": {
+      "empty": "Aucune notification pour l’instant.",
+      "loading": "Chargement des notifications…",
+      "markAllRead": "Tout marquer comme lu",
+      "marking": "Marquage…",
+      "moreThan": "plus de {count}",
+      "nothingUnread": "Rien de non lu.",
+      "showAll": "Tout afficher",
+      "title": "Notifications",
+      "unreadLabel": "Notifications, {count} non lues",
+      "unreadOnly": "Non lus uniquement",
+      "viewAll": "Tout voir"
+    },
+    "preferences": {
+      "account_activity": {
+        "description": "Réinitialisations de mot de passe, changements de rôle et activation de compte.",
+        "title": "Activité du compte"
+      },
+      "ai_report_completion": {
+        "description": "Quand un rapport que vous avez demandé est prêt, et quand sa génération échoue.",
+        "title": "Rapports IA"
+      },
+      "case_updates": {
+        "description": "Nouveaux dossiers, changements de statut et de priorité, archivage et affectations.",
+        "title": "Mises à jour des dossiers"
+      },
+      "document_updates": {
+        "description": "Fichiers téléversés, remplacés ou retirés sur vos dossiers.",
+        "title": "Mises à jour des documents"
+      },
+      "hearing_updates": {
+        "description": "Dates d’audience, dates de dépôt et dossiers passant en attente d’audience.",
+        "title": "Audiences"
+      },
+      "ocr_completion": {
+        "description": "Quand un document scanné devient lisible, et quand l’extraction échoue.",
+        "title": "Extraction de texte"
+      },
+      "system_announcements": {
+        "description": "Fenêtres de maintenance et annonces de vos administrateurs.",
+        "title": "Annonces de la plateforme"
+      }
+    },
+    "preferencesForm": {
+      "channelToggle": "{preference} — {channel}",
+      "description": "Choisissez ce dont la plateforme vous informe, et comment cela vous parvient. Désactiver quelque chose arrête les nouvelles notifications de ce type — celles déjà présentes dans votre fil y restent. Seules les mises à jour importantes sont envoyées par e-mail ou WhatsApp ; l’activité courante reste dans l’application quel que soit votre choix ici, et WhatsApp exige un numéro de téléphone sur votre compte.",
+      "loading": "Chargement de vos préférences…",
+      "title": "Préférences de notification"
+    },
+    "priorities": {
+      "critical": "Critique",
+      "high": "Élevée",
+      "low": "Faible",
+      "normal": "Normale"
+    },
+    "types": {
+      "error": "Erreur",
+      "information": "Information",
+      "success": "Succès",
+      "warning": "Avertissement"
+    }
+  },
+  "ocr": {
+    "errors": {
+      "alreadyRunning": "L’extraction de texte est déjà en cours pour ce document.",
+      "disabled": "L’extraction de texte est actuellement désactivée sur cette plateforme.",
+      "documentNotFound": "Ce document n’existe plus. Actualisez la page et réessayez.",
+      "notProcessed": "Ce document n’a pas fait l’objet d’une extraction de texte.",
+      "unsupportedFormat": "L’extraction de texte ne s’applique pas à ce type de fichier.",
+      "versionNotFound": "Cette version du document n’est plus disponible."
+    },
+    "extract": "Extraire le texte",
+    "failureNote": "Le document lui-même n’est pas affecté et reste téléchargeable.",
+    "failures": {
+      "corrupted_document": "Le fichier n’a pas pu être lu",
+      "engine_failure": "Le service d’extraction a échoué",
+      "storage_failure": "Fichier stocké indisponible",
+      "timeout": "A pris trop de temps",
+      "unknown": "N’a pas abouti",
+      "unreadable_document": "Rien de lisible n’a été trouvé",
+      "unsupported_format": "Type de fichier non pris en charge"
+    },
+    "hideText": "Masquer le texte extrait",
+    "metadata": {
+      "attempts": "Tentatives",
+      "confidence": "Confiance",
+      "duration": "Durée",
+      "engine": "Moteur",
+      "finished": "Terminé le",
+      "language": "Langue",
+      "pages": "Pages",
+      "percent": "{value} %",
+      "seconds": "{value} s",
+      "started": "Démarré le"
+    },
+    "metrics": {
+      "averageTime": "Durée moyenne",
+      "disabled": "L’extraction de texte est désactivée sur ce déploiement. Les résultats existants restent lisibles ; aucun nouveau travail n’est planifié.",
+      "engineUnavailable": "Le moteur {engine} est injoignable : les nouvelles extractions échoueront. Les documents téléversés ne sont pas affectés et chaque exécution pourra être relancée une fois le moteur installé.",
+      "failureRate": "Taux d’échec",
+      "failuresByCause": "Échecs par cause",
+      "runs": "Exécutions",
+      "seconds": "{value} s",
+      "successRate": "Taux de réussite"
+    },
+    "notApplicable": "L’extraction de texte s’applique aux PDF et aux images. Ce type de fichier contient déjà du texte lisible par machine.",
+    "notProcessed": "Ce document n’a pas encore été traité.",
+    "queued": "L’extraction de texte a été mise en file d’attente.",
+    "retry": "Relancer l’extraction",
+    "statuses": {
+      "completed": "Terminé",
+      "failed": "Échec",
+      "pending": "En file d’attente",
+      "processing": "Extraction"
+    },
+    "text": {
+      "confidence": "{value} % de confiance",
+      "copyAll": "Copier tout le texte",
+      "copyRefused": "Votre navigateur n’a pas autorisé la copie. Sélectionnez le texte à la place.",
+      "emptyDescription": "Ce document n’a produit aucun texte lisible. Il peut s’agir d’un scan vierge ou d’un fichier ne contenant que des images.",
+      "emptyPage": "Cette page n’a produit aucun texte.",
+      "emptyTitle": "Aucun texte n’a été extrait",
+      "page": "Page {number}",
+      "summary": "{pages, plural, =1 {1 page} other {# pages}} · {characters} caractères"
+    },
+    "title": "Extraction de texte",
+    "viewText": "Voir le texte extrait",
+    "waitingQueued": "En file d’attente pour extraction. Cette page se met à jour automatiquement.",
+    "waitingReading": "Lecture du document. Cette page se met à jour automatiquement."
+  },
+  "pages": {
+    "aiAssistant": {
+      "description": "Posez des questions sur les documents de vos dossiers. Chaque réponse cite le fichier et la page dont elle provient, et l’assistant le dit lorsque les documents ne permettent pas de répondre.",
+      "title": "Assistant IA"
+    },
+    "caseDetails": {
+      "description": "Informations générales, affectation, informations du tribunal et piste d’audit.",
+      "title": "Détails du dossier"
+    },
+    "cases": {
+      "description": "Créez, organisez et suivez les dossiers juridiques tout au long de leur cycle de vie.",
+      "title": "Dossiers"
+    },
+    "courtUpdates": {
+      "description": "Suivez les audiences, les décisions de justice et les échéances des dossiers.",
+      "emptyDescription": "Le suivi des audiences et des décisions de justice sera implémenté dans une prochaine fonctionnalité.",
+      "emptyTitle": "Aucune mise à jour du tribunal pour l’instant",
+      "title": "Mises à jour du tribunal"
+    },
+    "dashboard": {
+      "description": "Vos dossiers, audiences, documents et activité — mis à jour au fil des événements.",
+      "title": "Tableau de bord"
+    },
+    "documents": {
+      "description": "Téléversez, organisez, versionnez et retrouvez les fichiers rattachés à vos dossiers.",
+      "title": "Documents"
+    },
+    "lawyers": {
+      "description": "Gérez les avocats et leurs affectations aux dossiers.",
+      "emptyDescription": "La gestion des avocats sera implémentée dans une prochaine fonctionnalité.",
+      "emptyTitle": "Aucun avocat pour l’instant",
+      "title": "Avocats"
+    },
+    "monitoring": {
+      "description": "Le comportement de ce déploiement : santé, latence, travail en arrière-plan, échecs et activité de sécurité.",
+      "title": "Supervision"
+    },
+    "notFound": {
+      "description": "La page que vous cherchez n’existe pas ou a peut-être été déplacée.",
+      "title": "Page introuvable"
+    },
+    "notifications": {
+      "description": "Mises à jour des dossiers, décisions de justice, activité documentaire et résultats de l’IA.",
+      "title": "Notifications"
+    },
+    "reports": {
+      "description": "Générez des rapports juridiques structurés et sourcés à partir des documents indexés d’un dossier. Chaque rapport est rédigé en arrière-plan, section par section, et seuls les rapports que vous avez générés apparaissent ici.",
+      "title": "Rapports"
+    },
+    "search": {
+      "description": "Posez une question avec vos propres mots et trouvez les passages qui y répondent, dans les documents de vos dossiers.",
+      "title": "Rechercher"
+    },
+    "settings": {
+      "description": "Gérez votre profil, la sécurité de votre compte et le comportement de cette plateforme pour vous.",
+      "title": "Paramètres"
+    },
+    "userDetails": {
+      "description": "Profil, rôle, statut du compte et activité.",
+      "title": "Détails de l’utilisateur"
+    },
+    "users": {
+      "description": "Gérez les administrateurs, les avocats et les représentants du tribunal.",
+      "title": "Utilisateurs"
+    }
+  },
+  "realtime": {
+    "connecting": {
+      "detail": "Connexion aux mises à jour en direct.",
+      "label": "Connexion"
+    },
+    "offline": {
+      "detail": "Les mises à jour en direct sont indisponibles. Tout fonctionne encore, mais les modifications faites par d’autres n’apparaîtront qu’après actualisation.",
+      "label": "Mises à jour suspendues"
+    },
+    "reconnecting": {
+      "detail": "Les mises à jour en direct ont été interrompues. Reconnexion — la page fonctionne toujours.",
+      "label": "Reconnexion"
+    },
+    "retry": "Réessayer de se connecter aux mises à jour en direct"
+  },
+  "reports": {
+    "actions": {
+      "menuFor": "Actions pour {title}",
+      "open": "Ouvert",
+      "queuedAgain": "Rapport remis en file d’attente.",
+      "regenerate": "Régénérer"
+    },
+    "caseSection": {
+      "description": "Des rapports structurés et sourcés, générés à partir des documents indexés de ce dossier. Seuls les rapports que vous avez générés apparaissent ici.",
+      "title": "Rapports"
+    },
+    "deleteDialog": {
+      "confirm": "Supprimer le rapport",
+      "deleted": "Rapport supprimé.",
+      "deleting": "Suppression…",
+      "description": "quitte votre historique et ne peut plus être ouvert ni exporté. Le dossier, ses documents et sa chronologie restent intacts. Il est toujours possible de générer à nouveau le rapport.",
+      "title": "Supprimer ce rapport ?"
+    },
+    "detail": {
+      "failureFallback": "Le rapport n’a pas pu être généré. Essayez de le générer à nouveau.",
+      "generatedAt": "généré {at}",
+      "groundedSummary": "{grounded} sur {sections, plural, =1 {1 section} other {# sections}} fondées sur {documents, plural, =1 {1 document} other {# documents}}",
+      "loading": "Chargement du rapport.",
+      "openFailed": "Ce rapport n’a pas pu être ouvert",
+      "progressNote": "Chaque section est recherchée et rédigée séparément : un dossier volumineux prend donc quelques minutes. Vous pouvez fermer cette fenêtre — le rapport continue de se construire.",
+      "queuedAgain": "Rapport remis en file d’attente. Il se mettra à jour au fur et à mesure de sa réécriture.",
+      "title": "Rapport",
+      "typeAndRequested": "{type} · demandé {at}"
+    },
+    "empty": {
+      "description": "Générez un rapport structuré et sourcé à partir des documents indexés de ce dossier. Il est rédigé en arrière-plan, section par section.",
+      "filteredDescription": "Aucun rapport de votre historique ne correspond à ces filtres.",
+      "filteredTitle": "Aucun rapport correspondant",
+      "title": "Aucun rapport pour l’instant"
+    },
+    "errors": {
+      "alreadyRunning": "Ce rapport est déjà en cours de génération.",
+      "caseNotFound": "Ce dossier n’existe plus. Actualisez la page et réessayez.",
+      "disabled": "La génération de rapports est actuellement désactivée sur cette plateforme.",
+      "exportUnavailable": "Ce format d’export n’est pas disponible sur ce déploiement. Essayez l’autre.",
+      "listTitle": "Impossible de charger les rapports",
+      "noGenerateAccess": "Vous n’avez pas l’autorisation de générer des rapports pour ce dossier.",
+      "notFound": "Ce rapport n’est plus disponible.",
+      "notReady": "Ce rapport n’est pas encore terminé. Il pourra être exporté une fois achevé.",
+      "tooManyActive": "Plusieurs de vos rapports sont déjà en cours de génération. Attendez qu’un se termine."
+    },
+    "export": {
+      "exported": "Rapport exporté en {format}.",
+      "label": "Exporter"
+    },
+    "failures": {
+      "export_failure": "L’export a échoué",
+      "insufficient_context": "Rien à rapporter",
+      "llm_failure": "Le service IA a échoué",
+      "llm_unavailable": "Service IA indisponible",
+      "malformed_response": "Réponse inexploitable",
+      "retrieval_unavailable": "Les documents n’ont pas pu être récupérés",
+      "timeout": "A pris trop de temps",
+      "unknown": "N’a pas abouti"
+    },
+    "filters": {
+      "all": "Tous",
+      "allStatuses": "Tous les statuts",
+      "allTypes": "Tous les types",
+      "searchPlaceholder": "Rechercher dans les titres de rapport",
+      "status": "Statut",
+      "type": "Type"
+    },
+    "generateDialog": {
+      "case": "Dossier",
+      "description": "Le rapport est rédigé à partir des documents indexés de ce dossier, section par section, avec une citation pour chaque constatation. La génération s’exécute en arrière-plan — vous pouvez fermer cette fenêtre et revenir plus tard.",
+      "language": "Langue",
+      "languageHint": "Chaque section est rédigée dans cette langue, quelle que soit la langue des documents.",
+      "loadingCases": "Chargement des dossiers…",
+      "loadingTypes": "Chargement des types de rapport…",
+      "queued": "Rapport mis en file d’attente. Il apparaîtra au fur et à mesure de sa rédaction.",
+      "queueing": "Mise en file d’attente…",
+      "reportType": "Type de rapport",
+      "sectionPreview": "{count, plural, =1 {Ce rapport contiendra 1 section} other {Ce rapport contiendra # sections}}",
+      "selectCase": "Sélectionner un dossier",
+      "selectLanguage": "Sélectionner une langue",
+      "selectType": "Sélectionner un type",
+      "submit": "Générer",
+      "title": "Générer un rapport",
+      "titleField": "Titre (facultatif)",
+      "titlePlaceholder": "Laissez vide pour le nommer d’après le type de rapport et le numéro de dossier",
+      "uncoveredNote": "Une section que le dossier ne couvre pas l’indique, plutôt que d’être inventée."
+    },
+    "metrics": {
+      "averageSize": "Taille moyenne",
+      "averageTime": "Durée moyenne",
+      "characters": "{value} caractères",
+      "disabled": "La génération de rapports est désactivée sur ce déploiement. Les rapports existants restent lisibles et exportables ; aucun nouveau n’est mis en file d’attente.",
+      "exports": "Exports",
+      "failures": "Échecs",
+      "failuresByCause": "Échecs par cause",
+      "footnote": "Formats d’export disponibles ici : {formats}. Jeu de modèles v{version}.",
+      "llmUnavailable": "Aucun fournisseur d’IA n’est joignable : les nouveaux rapports échoueront. Les dossiers, les documents et les rapports existants ne sont pas affectés, et chaque exécution pourra être relancée une fois le service disponible.",
+      "noFormats": "aucun",
+      "promptUnavailable": "Le modèle de réponse du pipeline ne peut pas être chargé : chaque section échouera — une section de rapport est une exécution du pipeline. Les dossiers et les documents ne sont pas affectés.",
+      "reportsByType": "Rapports par type",
+      "reportsGenerated": "Rapports générés",
+      "seconds": "{value} s",
+      "sectionsGrounded": "Sections fondées",
+      "successRate": "Taux de réussite",
+      "title": "Génération de rapports IA",
+      "tokensUsed": "Jetons utilisés"
+    },
+    "pagination": {
+      "summary": "{count, plural, =0 {Aucun rapport} =1 {Affichage de {from} à {to} sur 1 rapport} other {Affichage de {from} à {to} sur # rapports}}"
+    },
+    "progress": {
+      "label": "Progression de la génération du rapport",
+      "preparing": "Préparation",
+      "queued": "En file d’attente — en attente d’un worker",
+      "writingSection": "Rédaction de la section {current} sur {total}"
+    },
+    "sections": {
+      "notCovered": "Non couvert",
+      "sources": "Sources : {markers}",
+      "stopsEarly": "S’arrête prématurément"
+    },
+    "statuses": {
+      "completed": "Prêt",
+      "failed": "Échec",
+      "pending": "En file d’attente",
+      "processing": "Génération"
+    },
+    "table": {
+      "columns": {
+        "case": "Dossier",
+        "created_at": "Demandé le",
+        "report": "Rapport",
+        "requested": "Demandé le",
+        "sections": "Sections",
+        "status": "Statut",
+        "title": "Rapport"
+      },
+      "groundedOf": "{grounded}/{total} fondées",
+      "loading": "Chargement des rapports",
+      "openCase": "Ouvrir le dossier"
+    },
+    "types": {
+      "case_summary": "Synthèse du dossier",
+      "chronological_timeline": "Chronologie",
+      "evidence_summary": "Synthèse des preuves",
+      "executive_summary": "Synthèse pour la direction",
+      "hearing_preparation": "Préparation d’audience"
+    }
+  },
+  "search": {
+    "bestMatch": "meilleure correspondance {percent}",
+    "caseSection": {
+      "description": "Posez une question avec vos propres mots et trouvez les passages qui y répondent, avec le fichier et la page dont ils proviennent.",
+      "title": "Rechercher dans ce dossier"
+    },
+    "documentsUnaffected": "Vos documents et leur texte ne sont pas affectés.",
+    "durationMs": "{value} ms",
+    "empty": {
+      "noResultsDescription": "Rien dans les documents auxquels vous avez accès ne se rapproche de cette question. Essayez une autre formulation, ou élargissez les filtres. Les documents deviennent consultables une fois leur texte extrait et indexé.",
+      "noResultsTitle": "Aucun passage correspondant",
+      "notSearchedDescription": "Posez une question avec vos propres mots. Les résultats sont des passages issus des documents des dossiers auxquels vous avez accès, chacun avec son fichier, sa page et sa pertinence.",
+      "notSearchedTitle": "Aucune recherche effectuée"
+    },
+    "enterQuery": "Saisissez une recherche.",
+    "errors": {
+      "caseNotFound": "Ce dossier n’existe plus. Effacez le filtre et relancez la recherche.",
+      "disabled": "La recherche sémantique est actuellement désactivée sur cette plateforme.",
+      "documentNotFound": "Ce document n’existe plus. Effacez le filtre et relancez la recherche.",
+      "embeddingUnavailable": "Le modèle de recherche est indisponible pour le moment : une question ne peut pas être mise en correspondance avec vos documents.",
+      "filterTooBroad": "Ce filtre correspond à trop d’éléments pour être recherché. Restreignez-le à un dossier ou à un document.",
+      "invalidQuery": "Saisissez une recherche d’au moins deux caractères.",
+      "noFilterAccess": "Vous n’avez pas accès au dossier ou au document utilisé comme filtre.",
+      "vectorStoreUnavailable": "L’index de recherche est injoignable pour le moment : rien ne peut être mis en correspondance avec vos documents."
+    },
+    "failures": {
+      "embedding_unavailable": "Modèle de recherche indisponible",
+      "unknown": "La recherche n’a pas abouti",
+      "vector_store_unavailable": "Index de recherche indisponible"
+    },
+    "filters": {
+      "allCases": "Tous les dossiers",
+      "allCategories": "Toutes les catégories",
+      "allLanguages": "Toutes les langues",
+      "allTypes": "Tous les types",
+      "case": "Dossier",
+      "category": "Catégorie",
+      "fileType": "Type de fichier",
+      "language": "Langue"
+    },
+    "heading": "Recherche sémantique",
+    "hint": "En langage naturel, en arabe, en français ou en anglais — une question dans une langue trouve des passages écrits dans les autres.",
+    "label": "Rechercher dans vos documents",
+    "labelCase": "Rechercher dans les documents de ce dossier",
+    "metrics": {
+      "averageRelevance": "Pertinence moyenne",
+      "averageTime": "Durée moyenne",
+      "configuration": "{model} · {dimensions} dimensions · classement {ranker} · {collection} · jusqu’à {maxLimit} résultats",
+      "disabled": "La recherche sémantique est désactivée sur ce déploiement. Les documents indexés ne sont pas affectés ; seule leur recherche est refusée.",
+      "embeddingUnavailable": "Le modèle d’embedding {model} ne peut pas être chargé : toutes les recherches échoueront. Les documents et leurs index ne sont pas affectés.",
+      "failureRate": "Taux d’échec",
+      "failures": "Échecs",
+      "failuresByCause": "Échecs par cause",
+      "milliseconds": "{value} ms",
+      "passagesReturned": "Passages renvoyés",
+      "resultsPerSearch": "Résultats par recherche",
+      "searches": "Recherches",
+      "since": "Comptabilisé sur cette instance de l’API depuis {at}.",
+      "successRate": "Taux de réussite",
+      "title": "Recherche sémantique",
+      "vectorStoreUnavailable": "L’index de recherche est injoignable : toutes les recherches échoueront. Les documents et leur texte extrait ne sont pas affectés."
+    },
+    "placeholder": "Formulez votre question — par exemple, quand le loyer est-il exigible ?",
+    "result": {
+      "document": "Document",
+      "match": "{percent} % de correspondance",
+      "openCase": "Ouvrir le dossier",
+      "provenance": "Page {page} · Passage {passage} · Version {version}",
+      "rank": "Résultat {rank}",
+      "similarity": "Similarité {score}"
+    },
+    "resultCount": "{count, plural, =1 {1 passage pour} other {# passages pour}}",
+    "searching": "Recherche"
+  },
+  "settings": {
+    "administration": {
+      "description": "Configuration système, et valeurs par défaut suivies par tout compte n’ayant exprimé aucune préférence.",
+      "loading": "Chargement de la configuration de la plateforme…",
+      "notice": "Ces paramètres s’appliquent à tout le monde. Chaque valeur par défaut ci-dessous est celle que suivra tout compte n’ayant jamais choisi pour lui-même — en modifier une atteint immédiatement chacun de ces comptes. Le mode maintenance affiche un avis à toutes les personnes connectées ; il ne ferme pas la plateforme.",
+      "title": "Configuration de la plateforme"
+    },
+    "definitions": {
+      "ai_citations": {
+        "description": "La façon dont les sources d’une réponse sont affichées. Les réponses sont toujours fondées sur vos documents — ceci ne change que l’affichage.",
+        "title": "Citations"
+      },
+      "ai_default_citations": {
+        "description": "Pour les comptes qui n’en ont pas choisi.",
+        "title": "Affichage des citations par défaut"
+      },
+      "ai_default_response_length": {
+        "description": "Pour les comptes qui n’en ont pas choisi.",
+        "title": "Longueur de réponse par défaut"
+      },
+      "ai_default_streaming": {
+        "description": "Pour les comptes qui n’en ont pas choisi.",
+        "title": "Diffuser les réponses par défaut"
+      },
+      "ai_response_length": {
+        "description": "Le niveau de détail des réponses de l’assistant.",
+        "title": "Longueur de réponse"
+      },
+      "ai_streaming": {
+        "description": "Afficher une réponse au fur et à mesure de sa rédaction plutôt qu’une fois terminée.",
+        "title": "Diffuser les réponses"
+      },
+      "dashboard_range": {
+        "description": "La période sur laquelle s’ouvrent les analyses de votre tableau de bord.",
+        "title": "Période par défaut"
+      },
+      "dashboard_widgets": {
+        "description": "Choisissez les cartes à afficher. Ne sélectionnez rien pour voir tous les widgets autorisés par votre rôle, y compris ceux ajoutés ultérieurement.",
+        "title": "Widgets visibles"
+      },
+      "date_format": {
+        "description": "La façon dont une date est écrite.",
+        "title": "Format de date"
+      },
+      "default_date_format": {
+        "description": "Pour les comptes qui n’en ont pas choisi.",
+        "title": "Format de date par défaut"
+      },
+      "default_language": {
+        "description": "Pour les comptes qui n’en ont pas choisi.",
+        "title": "Langue par défaut"
+      },
+      "default_theme": {
+        "description": "Pour les comptes qui n’en ont pas choisi.",
+        "title": "Thème par défaut"
+      },
+      "default_time_format": {
+        "description": "Pour les comptes qui n’en ont pas choisi.",
+        "title": "Format d’heure par défaut"
+      },
+      "default_timezone": {
+        "description": "Pour les comptes qui n’en ont pas choisi.",
+        "title": "Fuseau horaire par défaut"
+      },
+      "language": {
+        "description": "L’interface, et la langue dans laquelle les réponses de l’IA sont rédigées.",
+        "title": "Langue"
+      },
+      "maintenance_message": {
+        "description": "Ce que tout le monde voit lorsque le mode maintenance est activé.",
+        "title": "Avis de maintenance"
+      },
+      "maintenance_mode": {
+        "description": "Affiche un avis à toutes les personnes connectées. Il annonce une maintenance ; il ne ferme pas la plateforme.",
+        "title": "Mode maintenance"
+      },
+      "theme": {
+        "description": "Le mode sombre est l’expérience conçue pour la plateforme. Système suit votre appareil.",
+        "title": "Thème"
+      },
+      "time_format": {
+        "description": "Une horloge de 24 ou de 12 heures.",
+        "title": "Format d’heure"
+      },
+      "timezone": {
+        "description": "Les heures d’audience et les échéances sont affichées dans ce fuseau.",
+        "title": "Fuseau horaire"
+      }
+    },
+    "errors": {
+      "forbidden": "Vous n’avez pas l’autorisation de modifier cela.",
+      "invalidValue": "Cette valeur n’est pas acceptée pour ce paramètre. Vérifiez ce que vous avez saisi.",
+      "unavailable": "Les paramètres sont temporairement indisponibles. Veuillez réessayer.",
+      "wrongPassword": "Votre mot de passe actuel est incorrect."
+    },
+    "failures": {
+      "bad_current_password": "Mot de passe actuel incorrect",
+      "invalid_value": "Valeur invalide",
+      "persistence_failed": "N’a pas pu être enregistré",
+      "unknown": "Inconnu",
+      "unknown_setting": "Paramètre inconnu"
+    },
+    "preferenceSections": {
+      "communication": {
+        "description": "Choisissez comment les notifications vous parviennent en dehors de l’application. Seules les mises à jour importantes sont envoyées par e-mail ou WhatsApp — l’activité courante reste dans l’application quel que soit votre choix ici, et WhatsApp exige un numéro de téléphone sur votre compte.",
+        "title": "Communication"
+      },
+      "notifications": {
+        "description": "Choisissez ce dont la plateforme vous informe. Désactiver quelque chose arrête les nouvelles notifications de ce type — celles déjà présentes dans votre fil y restent.",
+        "title": "Notifications"
+      }
+    },
+    "profile": {
+      "description": "La façon dont vos collègues vous voient sur cette plateforme. Votre adresse e-mail et votre rôle sont définis par un administrateur et affichés ici à titre indicatif.",
+      "discard": "Abandonner",
+      "emailAddress": "Adresse e-mail",
+      "firstName": "Prénom",
+      "jobTitle": "Fonction",
+      "jobTitleHint": "Facultatif. Un intitulé que vos collègues voient à côté de votre nom.",
+      "jobTitlePlaceholder": "Collaborateur senior",
+      "lastName": "Nom",
+      "phone": "Numéro de téléphone",
+      "phoneHint": "Facultatif. Utilisé pour les alertes WhatsApp si vous les activez.",
+      "profilePicture": "Photo de profil",
+      "profilePictureHint": "Facultatif. Un lien vers une image.",
+      "role": "Rôle",
+      "saved": "Votre profil a été mis à jour.",
+      "title": "Profil"
+    },
+    "sections": {
+      "administration": {
+        "description": "Configuration à l’échelle de la plateforme. Réservée aux administrateurs.",
+        "title": "Administration"
+      },
+      "ai": {
+        "description": "La façon dont les réponses de l’assistant vous sont présentées.",
+        "title": "Assistant IA"
+      },
+      "appearance": {
+        "description": "Le thème dans lequel cette plateforme est dessinée.",
+        "title": "Apparence"
+      },
+      "communication": {
+        "description": "La façon dont ces notifications vous parviennent.",
+        "title": "Communication"
+      },
+      "dashboard": {
+        "description": "Ce sur quoi s’ouvre votre page d’accueil.",
+        "title": "Tableau de bord"
+      },
+      "language": {
+        "description": "Votre langue, votre fuseau horaire, et la façon dont les dates et les heures sont écrites.",
+        "title": "Langue et région"
+      },
+      "notifications": {
+        "description": "Ce dont la plateforme vous informe.",
+        "title": "Notifications"
+      },
+      "profile": {
+        "description": "La façon dont vos collègues vous voient sur cette plateforme.",
+        "title": "Profil"
+      },
+      "security": {
+        "description": "Votre mot de passe et les appareils sur lesquels vous êtes connecté.",
+        "title": "Compte et sécurité"
+      }
+    },
+    "security": {
+      "activeSessions": "Sessions actives",
+      "changePassword": "Changer le mot de passe",
+      "currentPassword": "Mot de passe actuel",
+      "hidePasswords": "Masquer les mots de passe",
+      "loadingSessions": "Chargement de vos sessions…",
+      "newPassword": "Nouveau mot de passe",
+      "newPasswordHint": "Au moins 8 caractères.",
+      "noOtherDevices": "Aucun autre appareil n’est connecté.",
+      "repeatPassword": "Répéter le nouveau mot de passe",
+      "showPasswords": "Afficher les mots de passe",
+      "thisDevice": "Cet appareil",
+      "unknownDevice": "Appareil inconnu"
+    },
+    "values": {
+      "balanced": "Équilibré",
+      "concise": "Concis",
+      "dark": "Sombre",
+      "day_month_year": "31/12/2026",
+      "detailed": "Détaillé",
+      "hidden": "Marqueurs uniquement, liste repliée",
+      "hour_12": "12 heures (2:32 pm)",
+      "hour_24": "24 heures (14:32)",
+      "inline": "Marqueurs en ligne uniquement",
+      "last_30_days": "30 derniers jours",
+      "last_7_days": "7 derniers jours",
+      "light": "Clair",
+      "list": "Marqueurs et liste des sources",
+      "long": "31 décembre 2026",
+      "month_day_year": "12/31/2026",
+      "system": "Système",
+      "today": "Aujourd’hui",
+      "year_month_day": "2026-12-31"
+    },
+    "widgets": {
+      "active_users": "Utilisateurs actifs",
+      "ai_analytics": "Analyses IA",
+      "ai_reports": "Rapports IA",
+      "case_analytics": "Analyses des dossiers",
+      "case_status_overview": "Vue d’ensemble des statuts",
+      "document_analytics": "Analyses documentaires",
+      "hearing_calendar": "Calendrier des audiences",
+      "my_cases": "Mes dossiers",
+      "notifications": "Notifications",
+      "ocr_status": "État de l’extraction de texte",
+      "processing_queues": "Files de traitement",
+      "quick_actions": "Actions rapides",
+      "recent_activity": "Activité récente",
+      "recent_cases": "Dossiers récents",
+      "recent_conversations": "Conversations récentes",
+      "recent_documents": "Documents récents",
+      "storage_usage": "Utilisation du stockage",
+      "timeline_activity": "Distribution de l’activité",
+      "upcoming_hearings": "Audiences à venir"
+    },
+    "workspace": {
+      "loadFailed": "Impossible de charger les paramètres",
+      "loading": "Chargement de vos paramètres…",
+      "maintenanceFallback": "Cette plateforme est actuellement en maintenance.",
+      "sectionsLabel": "Sections des paramètres"
+    }
+  },
+  "shared": {
+    "accessDenied": {
+      "backToDashboard": "Retour au tableau de bord",
+      "description": "Vous n’avez pas l’autorisation de consulter cette page. Si vous pensez qu’il s’agit d’une erreur, contactez un administrateur.",
+      "title": "Accès refusé"
+    },
+    "error": {
+      "description": "Une erreur inattendue s’est produite. Veuillez réessayer.",
+      "title": "Une erreur est survenue"
+    },
+    "loading": {
+      "label": "Chargement…"
+    },
+    "spinner": {
+      "label": "Chargement"
+    }
+  },
+  "shell": {
+    "brand": {
+      "homeLabel": "Plateforme de gestion des dossiers juridiques — Tableau de bord",
+      "name": "Plateforme juridique",
+      "tagline": "Gestion des dossiers"
+    },
+    "footer": {
+      "copyright": "© {year} Plateforme de gestion des dossiers juridiques",
+      "tagline": "Collaboration juridique assistée par l’IA"
+    },
+    "language": {
+      "change": "Changer de langue",
+      "current": "Langue actuelle : {language}",
+      "label": "Langue"
+    },
+    "search": {
+      "label": "Rechercher dans les dossiers et les documents (bientôt disponible)",
+      "placeholder": "Rechercher des dossiers, des documents…"
+    },
+    "sidebar": {
+      "collapse": "Réduire"
+    },
+    "userMenu": {
+      "profile": "Profil",
+      "settings": "Paramètres",
+      "signOut": "Se déconnecter",
+      "signingOut": "Déconnexion…"
+    }
+  },
+  "timeline": {
+    "empty": {
+      "description": "Tout ce qui arrive à ce dossier — mises à jour, affectations et documents — sera enregistré ici automatiquement.",
+      "filteredDescription": "Essayez un autre terme de recherche, un autre type d’activité ou une autre période, ou effacez les filtres pour voir tout l’historique.",
+      "filteredTitle": "Aucune activité ne correspond à vos filtres",
+      "title": "Aucune activité pour l’instant"
+    },
+    "errors": {
+      "caseNotFound": "Ce dossier n’existe plus. Actualisez la page et réessayez.",
+      "entryNotFound": "Cette entrée d’activité n’existe plus.",
+      "invalidFilters": "Ces filtres ne sont pas valides. Effacez-les et réessayez.",
+      "loadTitle": "Impossible de charger l’activité de ce dossier",
+      "noAccess": "Vous n’avez pas l’autorisation de consulter l’activité de ce dossier."
+    },
+    "events": {
+      "case_archived": "Dossier archivé",
+      "case_created": "Dossier créé",
+      "case_restored": "Dossier restauré",
+      "case_updated": "Dossier mis à jour",
+      "document_deleted": "Document supprimé",
+      "document_downloaded": "Document téléchargé",
+      "document_replaced": "Document remplacé",
+      "document_updated": "Document mis à jour",
+      "document_uploaded": "Document téléversé",
+      "lawyer_assigned": "Avocat assigné",
+      "lawyer_removed": "Avocat retiré",
+      "ocr_completed": "Extraction de texte terminée",
+      "ocr_failed": "Échec de l’extraction de texte",
+      "ocr_retried": "Extraction de texte relancée",
+      "ocr_started": "Extraction de texte démarrée",
+      "priority_changed": "Priorité modifiée",
+      "representative_assigned": "Représentant assigné",
+      "representative_removed": "Représentant retiré",
+      "status_changed": "Statut modifié"
+    },
+    "filters": {
+      "activityType": "Type d’activité",
+      "allActivity": "Toute l’activité",
+      "anyone": "N’importe qui",
+      "from": "Du",
+      "newestFirst": "Plus récent d’abord",
+      "oldestFirst": "Plus ancien d’abord",
+      "performedBy": "Effectué par",
+      "search": "Rechercher dans l’activité",
+      "searchPlaceholder": "Rechercher par ce qui s’est passé",
+      "sortNewestFirst": "Trier du plus récent au plus ancien",
+      "sortOldestFirst": "Trier du plus ancien au plus récent",
+      "until": "Jusqu’au"
+    },
+    "loading": "Chargement de l’activité",
+    "pagination": {
+      "summary": "{count, plural, =0 {Aucune activité} =1 {Affichage de {from} à {to} sur 1 entrée} other {Affichage de {from} à {to} sur # entrées}}"
+    },
+    "system": "Système",
+    "title": "Chronologie"
+  },
+  "users": {
+    "actions": {
+      "activate": "Activer",
+      "activated": "{name} a été activé.",
+      "deactivate": "Désactiver",
+      "label": "Actions",
+      "menuFor": "Actions pour {name}",
+      "resetPassword": "Réinitialiser le mot de passe",
+      "viewDetails": "Voir les détails"
+    },
+    "createDialog": {
+      "creating": "Création…",
+      "submit": "Créer l’utilisateur",
+      "title": "Ajouter un utilisateur"
+    },
+    "deactivateDialog": {
+      "confirm": "Désactiver",
+      "deactivated": "{name} a été désactivé.",
+      "deactivating": "Désactivation…",
+      "title": "Désactiver {name} ?",
+      "titleGeneric": "Désactiver cet utilisateur ?"
+    },
+    "details": {
+      "access": "Accès",
+      "accountActivity": "Activité du compte",
+      "backToUsers": "Retour aux utilisateurs",
+      "canSignIn": "Peut se connecter",
+      "contactInformation": "Coordonnées",
+      "created": "Créé le",
+      "lastSignIn": "Dernière connexion",
+      "lastUpdated": "Dernière mise à jour",
+      "loadFailed": "Impossible de charger cet utilisateur",
+      "loading": "Chargement de l’utilisateur…",
+      "passwordChangeRequired": "Changement de mot de passe requis",
+      "personalInformation": "Informations personnelles"
+    },
+    "editDialog": {
+      "descriptionGeneric": "Mettre à jour les informations de cet utilisateur.",
+      "noChanges": "Aucune modification à enregistrer.",
+      "title": "Modifier l’utilisateur"
+    },
+    "empty": {
+      "description": "Créez le premier compte pour donner accès à la plateforme.",
+      "filteredDescription": "Essayez un autre nom ou e-mail, ou effacez les filtres pour voir tout le monde.",
+      "filteredTitle": "Aucun utilisateur ne correspond à votre recherche",
+      "title": "Aucun utilisateur pour l’instant"
+    },
+    "errors": {
+      "cannotModifyOwn": "Vous ne pouvez pas modifier votre propre rôle ni le statut de votre compte.",
+      "emailTaken": "Un utilisateur avec cette adresse e-mail existe déjà.",
+      "listTitle": "Impossible de charger les utilisateurs",
+      "notFound": "Cet utilisateur n’existe plus. Actualisez la liste et réessayez."
+    },
+    "filters": {
+      "allRoles": "Tous les rôles",
+      "allStatuses": "Tous les statuts",
+      "role": "Rôle",
+      "searchPlaceholder": "Rechercher par nom ou e-mail",
+      "status": "Statut"
+    },
+    "form": {
+      "email": "E-mail",
+      "firstName": "Prénom",
+      "firstNamePlaceholder": "Amina",
+      "hidePassword": "Masquer le mot de passe",
+      "lastName": "Nom",
+      "lastNamePlaceholder": "Benali",
+      "password": "Mot de passe",
+      "passwordHint": "L’utilisateur pourra le modifier après s’être connecté.",
+      "passwordPlaceholder": "Choisissez un mot de passe initial",
+      "phone": "Téléphone",
+      "requirePasswordChange": "Exiger un changement de mot de passe à la première connexion",
+      "requirePasswordChangeHint": "L’utilisateur ne conserve le mot de passe ci-dessus que jusqu’à ce qu’il choisisse le sien.",
+      "role": "Rôle",
+      "selectRole": "Sélectionner un rôle",
+      "selectStatus": "Sélectionner un statut",
+      "showPassword": "Afficher le mot de passe",
+      "status": "Statut"
+    },
+    "pagination": {
+      "summary": "{count, plural, =0 {Aucun utilisateur} =1 {Affichage de {from} à {to} sur 1 utilisateur} other {Affichage de {from} à {to} sur # utilisateurs}}"
+    },
+    "resetPasswordDialog": {
+      "confirm": "Réinitialiser le mot de passe",
+      "copied": "Mot de passe temporaire copié.",
+      "copyLabel": "Copier le mot de passe temporaire",
+      "copyRefused": "Copiez-le manuellement — le presse-papiers est indisponible.",
+      "description": "Un nouveau mot de passe temporaire est généré. L’utilisateur est déconnecté de tous ses appareils et devra choisir un nouveau mot de passe avant de continuer.",
+      "done": "Terminé",
+      "resetting": "Réinitialisation…",
+      "revealedDescription": "Communiquez-le à l’utilisateur par un canal de confiance. Il ne sera plus affiché.",
+      "revealedTitle": "Mot de passe temporaire",
+      "title": "Réinitialiser le mot de passe de {name} ?"
+    },
+    "roles": {
+      "administrator": "Administrateur",
+      "court_representative": "Représentant du tribunal",
+      "lawyer": "Avocat"
+    },
+    "statuses": {
+      "active": "Actif",
+      "inactive": "Inactif",
+      "suspended": "Suspendu"
+    },
+    "table": {
+      "columns": {
+        "created_at": "Créé le",
+        "email": "E-mail",
+        "last_login": "Dernière connexion",
+        "name": "Nom",
+        "role": "Rôle",
+        "status": "Statut"
+      },
+      "loading": "Chargement des utilisateurs"
+    }
+  },
+  "validation": {
+    "assistant": {
+      "nameRequired": "Saisissez un nom pour cette conversation.",
+      "nameTooLong": "Les noms sont limités à {max} caractères.",
+      "noteTooLong": "Les notes sont limitées à {max} caractères.",
+      "questionRequired": "Saisissez un mot ou un nombre sur lequel poser une question.",
+      "questionTooLong": "Les questions sont limitées à {max} caractères."
+    },
+    "auth": {
+      "confirmPassword": "Confirmez votre nouveau mot de passe.",
+      "currentPasswordRequired": "Le mot de passe actuel est obligatoire.",
+      "emailInvalid": "Saisissez une adresse e-mail valide.",
+      "emailRequired": "L’e-mail est obligatoire.",
+      "passwordRequired": "Le mot de passe est obligatoire.",
+      "passwordTooLong": "Le mot de passe ne doit pas dépasser {max} octets.",
+      "passwordTooShort": "Le mot de passe doit contenir au moins {min} caractères.",
+      "passwordUnchanged": "Choisissez un mot de passe que vous n’avez pas déjà utilisé ici.",
+      "passwordsDoNotMatch": "Les deux mots de passe ne correspondent pas."
+    },
+    "case": {
+      "caseNumberCharacters": "Un numéro de dossier ne peut contenir que des lettres, des chiffres et les caractères - _ . /",
+      "caseNumberTooLong": "Le numéro de dossier doit contenir au plus {max} caractères.",
+      "hearingBeforeFiling": "La date de la prochaine audience ne peut précéder la date de dépôt.",
+      "priorityRequired": "Sélectionnez une priorité.",
+      "statusRequired": "Sélectionnez un statut.",
+      "titleRequired": "Un titre est obligatoire."
+    },
+    "dateInvalid": "Saisissez une date valide.",
+    "document": {
+      "caseRequired": "Sélectionnez le dossier auquel appartient ce document.",
+      "categoryRequired": "Sélectionnez une catégorie.",
+      "fileEmpty": "Le fichier sélectionné est vide.",
+      "fileRequired": "Choisissez un fichier à téléverser.",
+      "fileTooLarge": "Le fichier ne doit pas dépasser {max} Mo.",
+      "unsupportedType": "Types de fichiers acceptés : {types}."
+    },
+    "maxLength": "Doit contenir au plus {max} caractères.",
+    "maxLengthDescription": "La description doit contenir au plus {max} caractères.",
+    "maxLengthTitle": "Le titre doit contenir au plus {max} caractères.",
+    "minLength": "Saisissez au moins {min} caractères.",
+    "notification": {
+      "announcementTooLong": "Limitez l’annonce à {max} caractères.",
+      "messageRequired": "Écrivez ce que vous voulez que tout le monde voie."
+    },
+    "report": {
+      "caseRequired": "Choisissez le dossier sur lequel porte ce rapport.",
+      "typeRequired": "Choisissez un type de rapport."
+    },
+    "required": "Obligatoire.",
+    "search": {
+      "queryRequired": "Saisissez un mot ou un nombre à rechercher.",
+      "queryTooLong": "Les recherches sont limitées à {max} caractères."
+    },
+    "settings": {
+      "currentPasswordRequired": "Saisissez votre mot de passe actuel.",
+      "firstNameRequired": "Saisissez votre prénom.",
+      "lastNameRequired": "Saisissez votre nom.",
+      "noticeTooLong": "Limitez l’avis à {max} caractères.",
+      "urlTooLong": "Cette adresse est trop longue."
+    },
+    "user": {
+      "phoneCharacters": "Un numéro de téléphone ne peut contenir que des chiffres, des espaces et les caractères + ( ) - . /",
+      "phoneDigits": "Un numéro de téléphone doit contenir entre {min} et {max} chiffres.",
+      "roleRequired": "Sélectionnez un rôle.",
+      "statusRequired": "Sélectionnez un statut."
+    }
+  }
+}

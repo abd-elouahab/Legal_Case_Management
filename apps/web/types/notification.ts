@@ -52,13 +52,8 @@ export const NOTIFICATION_PRIORITY_RANK: Record<NotificationPriority, number> = 
   critical: 3,
 };
 
-/** Human-readable priority labels (future: i18n keys). */
-export const NOTIFICATION_PRIORITY_LABELS: Record<NotificationPriority, string> = {
-  low: "Low",
-  normal: "Normal",
-  high: "High",
-  critical: "Critical",
-};
+/** Where the words live: `notifications.priorities` in the message catalogues. */
+export const NOTIFICATION_PRIORITY_NAMESPACE = "notifications.priorities";
 
 /**
  * The categories the platform ships today.
@@ -80,27 +75,24 @@ export const NOTIFICATION_CATEGORIES = [
 ] as const;
 export type KnownNotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 
-/** Human-readable category labels (future: i18n keys). */
-export const NOTIFICATION_CATEGORY_LABELS: Record<KnownNotificationCategory, string> = {
-  case: "Cases",
-  document: "Documents",
-  hearing: "Hearings",
-  ocr: "Text extraction",
-  ai: "Assistant",
-  report: "Reports",
-  user: "Account",
-  system: "Platform",
-};
+/** Where the words live: `notifications.categories` in the message catalogues. */
+export const NOTIFICATION_CATEGORY_NAMESPACE = "notifications.categories";
+
 
 /** Whether this build knows how to label and illustrate a category. */
 export function isKnownCategory(value: string): value is KnownNotificationCategory {
   return (NOTIFICATION_CATEGORIES as readonly string[]).includes(value);
 }
 
-/** A category's label, falling back to the raw value for one added server-side. */
-export function categoryLabel(value: string): string {
-  return isKnownCategory(value) ? NOTIFICATION_CATEGORY_LABELS[value] : value;
-}
+/**
+ * The catalogue key for a category.
+ *
+ * The registry is **open** on the server, so a category added there has no key
+ * here — and renders through the provider's `getMessageFallback`, which humanizes
+ * it. That is what the old `categoryLabel` fallback did, moved to the one place
+ * the whole application already falls back.
+ */
+
 
 /** What a notification opens. A resource, never a path. */
 export const NOTIFICATION_TARGET_TYPES = [
@@ -183,43 +175,18 @@ export const NOTIFICATION_PREFERENCE_KEYS = [
 ] as const;
 export type NotificationPreferenceKey = (typeof NOTIFICATION_PREFERENCE_KEYS)[number];
 
-/** Labels and explanations for the settings page (future: i18n keys). */
-export const NOTIFICATION_PREFERENCE_LABELS: Record<
-  NotificationPreferenceKey,
-  { title: string; description: string }
-> = {
-  case_updates: {
-    title: "Case updates",
-    description: "New cases, status and priority changes, archiving, and assignments.",
-  },
-  document_updates: {
-    title: "Document updates",
-    description: "Files uploaded, replaced, or withdrawn on your cases.",
-  },
-  ocr_completion: {
-    title: "Text extraction",
-    description: "When a scanned document becomes readable, and when extraction fails.",
-  },
-  ai_report_completion: {
-    title: "AI reports",
-    description: "When a report you asked for is ready, and when generation fails.",
-  },
-  hearing_updates: {
-    title: "Hearings",
-    description: "Court dates, filing dates, and cases moving to await a hearing.",
-  },
-  account_activity: {
-    title: "Account activity",
-    description: "Password resets, role changes, and account activation.",
-  },
-  system_announcements: {
-    title: "Platform announcements",
-    description: "Maintenance windows and announcements from your administrators.",
-  },
-};
+/**
+ * Where a preference's title and explanation live.
+ *
+ * `notifications.preferences.<key>.title` / `.description` in the catalogues. The
+ * *keys* stay in {@link NOTIFICATION_PREFERENCE_KEYS} because they are the
+ * platform's vocabulary and travel to the API; only the sentences moved.
+ */
+export const NOTIFICATION_PREFERENCE_NAMESPACE = "notifications.preferences";
+
 
 /** The channels a notification can be delivered on. */
-export const NOTIFICATION_CHANNELS = ["inApp", "email"] as const;
+export const NOTIFICATION_CHANNELS = ["inApp", "email", "whatsapp"] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 
 /** One preference, as it currently stands, on every channel. */
@@ -234,19 +201,28 @@ export interface NotificationPreference {
    * deployment has configured a provider.
    */
   email: boolean;
+  /**
+   * Whether WhatsApp messages of this kind are delivered.
+   *
+   * As with email, a `true` does not mean a message is sent — and this channel
+   * narrows once more than email does: it also needs a phone number on the
+   * account, which is optional on this platform.
+   */
+  whatsapp: boolean;
   /** Whether this is the platform default rather than a choice the user made. */
   isDefault: boolean;
 }
 
 /**
- * A change to one preference. Both channels are optional and omitting one leaves
- * it alone, which matches the API exactly — a panel that toggles the email switch
- * must not silently rewrite the in-app one.
+ * A change to one preference. Every channel is optional and omitting one leaves
+ * it alone, which matches the API exactly — a panel that toggles the WhatsApp
+ * switch must not silently rewrite the in-app one.
  */
 export interface NotificationPreferenceChange {
   preferenceKey: NotificationPreferenceKey;
   inApp?: boolean;
   email?: boolean;
+  whatsapp?: boolean;
 }
 
 /** Which announcement a `POST /notifications/announcements` publishes. */

@@ -79,6 +79,23 @@ class TokenPayload:
     #: Session generation the token was minted under. A token is rejected once the
     #: user's generation moves past it, which is how sessions are revoked in bulk.
     session_generation: int
+    #: Which **sign-in** this token belongs to, stable across refresh rotations.
+    #:
+    #: Added by ``20-settings.md``, whose Account & Security section asks for a
+    #: list of active sessions — a question the platform could not previously
+    #: answer. ``jti`` is unique *per token* and rotates on every refresh, so it
+    #: identifies a credential rather than a session; this does not rotate, which
+    #: is what lets "this laptop, since Tuesday" survive twelve refreshes.
+    #:
+    #: It grants nothing and is checked against nothing: authorization is still
+    #: the signature, the denylist, and ``sgen``. See
+    #: :mod:`services.session_registry` for what reads it, and why that registry
+    #: is a **view** rather than a boundary.
+    #:
+    #: ``None`` for a token minted before this claim existed, so a deployment
+    #: upgrading in place keeps every live session working — the same tolerance
+    #: ``sgen`` was given when it was introduced.
+    session_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,11 +173,22 @@ def generate_temporary_password(length: int = TEMPORARY_PASSWORD_LENGTH) -> str:
 # --------------------------------------------------------------------------- #
 
 
+def new_session_id() -> str:
+    """Mint an identifier for one sign-in.
+
+    Opaque and random: it is never derived from the account, so a session
+    identifier appearing in a log or a settings page discloses nothing about whose
+    it is.
+    """
+    return str(uuid.uuid4())
+
+
 def _create_token(
     subject: str,
     token_type: TokenType,
     expires_in: timedelta,
     session_generation: int,
+    session_id: str | None = None,
 ) -> IssuedToken:
     """Sign a JWT for ``subject`` with a unique ``jti`` and bounded lifetime."""
     issued_at = datetime.now(UTC)
@@ -179,18 +207,32 @@ def _create_token(
         # Private claim: the session generation this token belongs to.
         "sgen": session_generation,
     }
+    # Omitted rather than sent as null when there is none, so a token minted by a
+    # caller that does not track sessions is byte-identical to one minted before
+    # the claim existed.
+    if session_id is not None:
+        claims["sid"] = session_id
+
     token = jwt.encode(claims, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     return IssuedToken(token=token, jti=jti, expires_at=expires_at)
 
 
-def create_access_token(subject: str, session_generation: int = 0) -> IssuedToken:
+def create_access_token(
+    subject: str, session_generation: int = 0, session_id: str | None = None
+) -> IssuedToken:
     """Mint a short-lived access token (used as a Bearer credential)."""
-    return _create_token(subject, TokenType.ACCESS, settings.access_token_ttl, session_generation)
+    return _create_token(
+        subject, TokenType.ACCESS, settings.access_token_ttl, session_generation, session_id
+    )
 
 
-def create_refresh_token(subject: str, session_generation: int = 0) -> IssuedToken:
+def create_refresh_token(
+    subject: str, session_generation: int = 0, session_id: str | None = None
+) -> IssuedToken:
     """Mint a long-lived refresh token (used only to obtain new access tokens)."""
-    return _create_token(subject, TokenType.REFRESH, settings.refresh_token_ttl, session_generation)
+    return _create_token(
+        subject, TokenType.REFRESH, settings.refresh_token_ttl, session_generation, session_id
+    )
 
 
 def decode_token(token: str, *, expected_type: TokenType) -> TokenPayload:
@@ -241,6 +283,15 @@ def decode_token(token: str, *, expected_type: TokenType) -> TokenPayload:
     if not isinstance(session_generation, int) or isinstance(session_generation, bool):
         raise InvalidTokenError("Token has an invalid session generation.")
 
+    # A missing `sid` is read as "this token predates session tracking", not as a
+    # fault: the claim grants nothing, so rejecting a token for lacking it would
+    # sign every live user out on the deploy that introduced it. A *malformed*
+    # one is still rejected — a claim present and of the wrong type is a broken
+    # issuer rather than an older one.
+    session_id = claims.get("sid")
+    if session_id is not None and (not isinstance(session_id, str) or not session_id):
+        raise InvalidTokenError("Token has an invalid session identifier.")
+
     return TokenPayload(
         subject=subject,
         token_type=expected_type,
@@ -248,4 +299,5 @@ def decode_token(token: str, *, expected_type: TokenType) -> TokenPayload:
         issued_at=datetime.fromtimestamp(issued_at, tz=UTC),
         expires_at=datetime.fromtimestamp(expires_at, tz=UTC),
         session_generation=session_generation,
+        session_id=session_id,
     )

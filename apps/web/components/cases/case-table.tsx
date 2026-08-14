@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 
 import {
@@ -15,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { CaseAssignee } from "@/components/cases/case-assignee";
 import { CasePriorityBadge, CaseStatusBadge } from "@/components/cases/case-badges";
 import { CaseRowActions } from "@/components/cases/case-row-actions";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { useDateFormat } from "@/hooks/use-date-format";
 import { caseRoute } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type { LegalCase } from "@/types/case";
@@ -35,41 +36,50 @@ import type { CaseSortField, SortOrder } from "@/types/case-management";
  * and what tells the reader whether it needs attention.
  */
 
-interface SortableColumn {
-  field: CaseSortField;
-  label: string;
-}
-
+/**
+ * A sortable column heading.
+ *
+ * Takes the **field** and translates its own label, rather than being handed a
+ * string: a caller that passed `label="Case number"` would be a caller with a
+ * hardcoded sentence in it, which is the defect this whole change removes. The
+ * screen-reader sentence is one interpolated message rather than three
+ * concatenated fragments, because *"Sorted ascending"* is not two words in French
+ * and is not two words in the same order in Arabic.
+ */
 function SortButton({
-  column,
+  field,
   sortBy,
   sortOrder,
   onToggle,
 }: {
-  column: SortableColumn;
+  field: CaseSortField;
   sortBy: CaseSortField;
   sortOrder: SortOrder;
   onToggle: (field: CaseSortField) => void;
 }) {
-  const isActive = sortBy === column.field;
+  const t = useTranslations("cases.table");
+  const tSort = useTranslations("common.sort");
+
+  const isActive = sortBy === field;
   const Icon = !isActive ? ChevronsUpDown : sortOrder === "asc" ? ArrowUp : ArrowDown;
+  const label = t(`columns.${field}`);
 
   return (
     <Button
       variant="ghost"
       size="sm"
-      onClick={() => onToggle(column.field)}
+      onClick={() => onToggle(field)}
       className={cn(
-        "-ml-2 h-8 gap-1 px-2 font-medium",
+        "-ms-2 h-8 gap-1 px-2 font-medium",
         isActive ? "text-foreground" : "text-muted-foreground",
       )}
     >
-      {column.label}
+      {label}
       <Icon className="h-4 w-4" aria-hidden="true" />
       <span className="sr-only">
         {isActive
-          ? `Sorted ${sortOrder === "asc" ? "ascending" : "descending"}. Activate to reverse.`
-          : `Sort by ${column.label}`}
+          ? tSort(sortOrder === "asc" ? "sortedAscending" : "sortedDescending")
+          : tSort("sortBy", { column: label })}
       </span>
     </Button>
   );
@@ -106,6 +116,11 @@ export function CaseTable({
   /** Dim the table while a new page or filter is loading. */
   isRefreshing?: boolean;
 }) {
+  const { formatDate, formatDateTime } = useDateFormat();
+  const t = useTranslations("cases.table");
+  const tStates = useTranslations("common.states");
+  const tActions = useTranslations("common.actions");
+
   return (
     <div
       className={cn(
@@ -119,31 +134,35 @@ export function CaseTable({
           <TableRow>
             <TableHead aria-sort={ariaSort("case_number", sortBy, sortOrder)}>
               <SortButton
-                column={{ field: "case_number", label: "Case number" }}
+                field="case_number"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onToggle={onToggleSort}
               />
             </TableHead>
-            <TableHead>Title</TableHead>
-            <TableHead>Status</TableHead>
+            <TableHead>{t("columns.title")}</TableHead>
+            <TableHead>{t("columns.status")}</TableHead>
             <TableHead aria-sort={ariaSort("priority", sortBy, sortOrder)}>
               <SortButton
-                column={{ field: "priority", label: "Priority" }}
+                field="priority"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onToggle={onToggleSort}
               />
             </TableHead>
-            <TableHead className="hidden lg:table-cell">Court</TableHead>
-            <TableHead className="hidden xl:table-cell">Assigned lawyer</TableHead>
-            <TableHead className="hidden xl:table-cell">Assigned representative</TableHead>
+            <TableHead className="hidden lg:table-cell">{t("columns.court")}</TableHead>
+            <TableHead className="hidden xl:table-cell">
+              {t("columns.assignedLawyer")}
+            </TableHead>
+            <TableHead className="hidden xl:table-cell">
+              {t("columns.assignedRepresentative")}
+            </TableHead>
             <TableHead
               className="hidden lg:table-cell"
               aria-sort={ariaSort("filing_date", sortBy, sortOrder)}
             >
               <SortButton
-                column={{ field: "filing_date", label: "Filing date" }}
+                field="filing_date"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onToggle={onToggleSort}
@@ -154,7 +173,7 @@ export function CaseTable({
               aria-sort={ariaSort("next_hearing_date", sortBy, sortOrder)}
             >
               <SortButton
-                column={{ field: "next_hearing_date", label: "Next hearing" }}
+                field="next_hearing_date"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onToggle={onToggleSort}
@@ -165,14 +184,14 @@ export function CaseTable({
               aria-sort={ariaSort("updated_at", sortBy, sortOrder)}
             >
               <SortButton
-                column={{ field: "updated_at", label: "Last updated" }}
+                field="updated_at"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onToggle={onToggleSort}
               />
             </TableHead>
-            <TableHead className="w-12 text-right">
-              <span className="sr-only">Actions</span>
+            <TableHead className="w-12 text-end">
+              <span className="sr-only">{tActions("openMenu")}</span>
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -205,7 +224,7 @@ export function CaseTable({
               </TableCell>
 
               <TableCell className="hidden text-muted-foreground lg:table-cell">
-                {legalCase.courtName ?? "—"}
+                {legalCase.courtName ?? tStates("notAvailable")}
               </TableCell>
 
               <TableCell className="hidden xl:table-cell">
@@ -221,14 +240,14 @@ export function CaseTable({
               </TableCell>
 
               <TableCell className="hidden text-muted-foreground lg:table-cell">
-                {formatDate(legalCase.nextHearingDate, "Not scheduled")}
+                {formatDate(legalCase.nextHearingDate, t("notScheduled"))}
               </TableCell>
 
               <TableCell className="hidden text-muted-foreground xl:table-cell">
                 {formatDateTime(legalCase.updatedAt)}
               </TableCell>
 
-              <TableCell className="text-right">
+              <TableCell className="text-end">
                 <CaseRowActions
                   legalCase={legalCase}
                   onEdit={onEdit}

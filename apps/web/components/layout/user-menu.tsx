@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { LogOut, Settings as SettingsIcon, UserRound } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { useLogout } from "@/hooks/use-logout";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -16,7 +17,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { ROUTES } from "@/lib/routes";
-import { ROLE_LABELS } from "@/types/user";
 
 /** Derive up-to-two-letter initials from a display name. */
 function initialsOf(name: string): string {
@@ -38,6 +38,9 @@ function initialsOf(name: string): string {
 export function UserMenu() {
   const user = useCurrentUser();
   const { logout, isPending } = useLogout();
+  const t = useTranslations("shell.userMenu");
+  const tA11y = useTranslations("common.a11y");
+  const tRoles = useTranslations("users.roles");
 
   if (!user) return null;
 
@@ -48,7 +51,7 @@ export function UserMenu() {
           variant="ghost"
           size="icon"
           className="rounded-full"
-          aria-label="Open account menu"
+          aria-label={tA11y("openAccountMenu")}
         >
           <Avatar className="h-8 w-8">
             {user.avatarUrl ? (
@@ -65,20 +68,20 @@ export function UserMenu() {
           </span>
           <span className="text-xs text-muted-foreground">{user.email}</span>
           <span className="mt-1 w-fit rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            {ROLE_LABELS[user.role]}
+            {tRoles(user.role)}
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href={ROUTES.settings}>
             <UserRound className="h-4 w-4" />
-            Profile
+            {t("profile")}
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link href={ROUTES.settings}>
             <SettingsIcon className="h-4 w-4" />
-            Settings
+            {t("settings")}
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -93,7 +96,7 @@ export function UserMenu() {
           }}
         >
           <LogOut className="h-4 w-4" />
-          {isPending ? "Signing out…" : "Sign out"}
+          {isPending ? t("signingOut") : t("signOut")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

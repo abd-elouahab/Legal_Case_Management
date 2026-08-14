@@ -11,6 +11,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import en from "@/messages/en.json";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -897,8 +898,8 @@ describe("DocumentVersionHistory", () => {
     const entries = screen.getAllByRole("listitem");
     expect(entries).toHaveLength(2);
     expect(within(entries[0]!).getByText("Version 2")).toBeInTheDocument();
-    expect(within(entries[0]!).getByText("Current")).toBeInTheDocument();
-    expect(within(entries[1]!).getByText("Version 1")).toBeInTheDocument();
+    expect(within(entries[0]!).getByText(en.documents.versions.current)).toBeInTheDocument();
+    expect(within(entries[1]!).getAllByText("Version 1").length).toBeGreaterThan(0);
   });
 
   it("lets a previous version be downloaded", async () => {
@@ -1113,7 +1114,7 @@ describe("DeleteDocumentDialog", () => {
     await user.click(screen.getByRole("button", { name: "Delete" }));
 
     expect(
-      await screen.findByText("You do not have permission to perform this action."),
+      await screen.findByText(en.errors.forbidden),
     ).toBeInTheDocument();
   });
 });

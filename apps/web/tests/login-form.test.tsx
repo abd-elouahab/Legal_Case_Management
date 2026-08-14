@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import en from "@/messages/en.json";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -253,7 +254,7 @@ describe("LoginForm error states", () => {
 
     await fillAndSubmit("amina.benali@example.com", "correct-horse-battery", user);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/unable to reach the server/i);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not be reached/i);
   });
 
   it("shows the lockout message when throttled", async () => {
@@ -273,9 +274,13 @@ describe("LoginForm error states", () => {
     await fillAndSubmit("amina.benali@example.com", "wrong-password", user);
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(/too many failed sign-in attempts/i);
-    // The server states the wait; the client must not invent its own number.
-    expect(alert).toHaveTextContent(/15 minutes/);
+    // The platform's own sentence, not the server's. The server states the exact
+    // wait and states it in English; since `21-localization.md` the sign-in
+    // screen — the one screen reached before the platform knows who is reading
+    // — renders in the language stored on the device, so an English sentence
+    // there is the first thing an Arabic reader would meet. The remaining wait
+    // travels in `Retry-After` and in the log.
+    expect(alert).toHaveTextContent(en.auth.errors.tooManyAttempts);
   });
 
   it("does not redirect or create a session when throttled", async () => {

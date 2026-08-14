@@ -24,8 +24,8 @@ export default function NotificationsPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Notifications"
-        description="Case updates, court decisions, document activity, and AI results."
+        titleKey="notifications.title"
+        descriptionKey="notifications.description"
       />
       <NotificationCenter />
     </PageContainer>

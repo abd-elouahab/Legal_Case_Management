@@ -1,12 +1,13 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Layers, TriangleAlert } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IndexStatusBadge } from "@/components/indexing/index-status-badge";
 import { useIndexMetrics } from "@/hooks/use-indexing";
-import { indexFailureLabel } from "@/types/indexing";
+import { useNumberFormat } from "@/hooks/use-number-format";
 
 /**
  * Platform-wide document-indexing health.
@@ -39,6 +40,10 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 export function IndexMetricsPanel() {
   const { data, isLoading, isError } = useIndexMetrics();
+  const t = useTranslations("indexing.metrics");
+  const tIndexing = useTranslations("indexing");
+  const tFailures = useTranslations("indexing.failures");
+  const { formatNumber, formatPercent } = useNumberFormat();
 
   if (isError) return null;
 
@@ -47,7 +52,7 @@ export function IndexMetricsPanel() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm">
           <Layers className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-          Search indexing
+          {t("title")}
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -61,8 +66,7 @@ export function IndexMetricsPanel() {
           <>
             {!data.enabled ? (
               <p className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
-                Document indexing is disabled on this deployment. Existing indexes stay
-                readable; no new work is scheduled.
+                {t("disabled")}
               </p>
             ) : !data.embeddingAvailable ? (
               <p
@@ -70,11 +74,7 @@ export function IndexMetricsPanel() {
                 className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
               >
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>
-                  The {data.embeddingModel} embedding model cannot be loaded, so new
-                  indexing will fail. Documents and their extracted text are unaffected,
-                  and every run can be rebuilt once it is available.
-                </span>
+                <span>{t("embeddingUnavailable", { model: data.embeddingModel })}</span>
               </p>
             ) : !data.vectorStoreAvailable ? (
               <p
@@ -82,46 +82,43 @@ export function IndexMetricsPanel() {
                 className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
               >
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>
-                  The search index is not reachable, so new indexing will fail. Documents
-                  and their extracted text are unaffected.
-                </span>
+                <span>{t("vectorStoreUnavailable")}</span>
               </p>
             ) : null}
 
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <Stat label="Documents indexed" value={data.indexed.toLocaleString()} />
-              <Stat label="Passages indexed" value={data.totalChunks.toLocaleString()} />
+              <Stat label={t("documentsIndexed")} value={formatNumber(data.indexed)} />
+              <Stat label={t("passagesIndexed")} value={formatNumber(data.totalChunks)} />
               <Stat
-                label="Average time"
+                label={t("averageTime")}
                 value={
                   data.averageDurationSeconds !== null
-                    ? `${data.averageDurationSeconds}s`
+                    ? t("seconds", { value: data.averageDurationSeconds })
                     : "—"
                 }
               />
-              <Stat label="Failures" value={data.failed.toLocaleString()} />
+              <Stat label={t("failures")} value={formatNumber(data.failed)} />
             </div>
 
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <Stat label="Success rate" value={`${data.successRate}%`} />
-              <Stat label="Failure rate" value={`${data.failureRate}%`} />
               <Stat
-                label="Passages per document"
-                value={
-                  data.averageChunksPerDocument !== null
-                    ? data.averageChunksPerDocument.toLocaleString()
-                    : "—"
-                }
+                label={t("successRate")}
+                value={formatPercent(data.successRate, { decimals: 0 })}
+              />
+              <Stat
+                label={t("failureRate")}
+                value={formatPercent(data.failureRate, { decimals: 0 })}
+              />
+              <Stat
+                label={t("passagesPerDocument")}
+                value={formatNumber(data.averageChunksPerDocument)}
               />
               {/* Reported by the vector database itself rather than summed from
                   the rows: a divergence between the two is exactly what an
                   operator opens this panel to find. */}
               <Stat
-                label="Vectors stored"
-                value={
-                  data.storedVectors !== null ? data.storedVectors.toLocaleString() : "—"
-                }
+                label={t("vectorsStored")}
+                value={formatNumber(data.storedVectors)}
               />
             </div>
 
@@ -146,12 +143,12 @@ export function IndexMetricsPanel() {
 
             {Object.keys(data.failuresByCode).length > 0 ? (
               <dl className="flex flex-col gap-1">
-                <dt className="text-xs text-muted-foreground">Failures by cause</dt>
+                <dt className="text-xs text-muted-foreground">{t("failuresByCause")}</dt>
                 {Object.entries(data.failuresByCode)
                   .sort(([, a], [, b]) => b - a)
                   .map(([code, count]) => (
                     <dd key={code} className="flex justify-between gap-4 text-xs">
-                      <span className="text-foreground">{indexFailureLabel(code)}</span>
+                      <span className="text-foreground">{tFailures(code)}</span>
                       <span className="tabular-nums text-muted-foreground">{count}</span>
                     </dd>
                   ))}
@@ -159,9 +156,14 @@ export function IndexMetricsPanel() {
             ) : null}
 
             <p className="text-xs text-muted-foreground">
-              {data.embeddingModel} · {data.embeddingDimensions} dimensions ·{" "}
-              {data.chunker} · {data.chunkSize}/{data.chunkOverlap} chars ·{" "}
-              {data.vectorCollection}
+              {t("configuration", {
+                model: data.embeddingModel,
+                dimensions: data.embeddingDimensions,
+                chunker: data.chunker,
+                chunkSize: data.chunkSize,
+                chunkOverlap: data.chunkOverlap,
+                collection: data.vectorCollection,
+              })}
             </p>
           </>
         )}

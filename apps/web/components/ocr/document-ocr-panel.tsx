@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { ChevronDown, ChevronUp, RefreshCw, ScanText } from "lucide-react";
 import { toast } from "sonner";
 
@@ -11,15 +12,15 @@ import { OcrStatusBadge } from "@/components/ocr/ocr-status-badge";
 import { OcrTextView } from "@/components/ocr/ocr-text-view";
 import {
   isOcrResultMissing,
-  ocrErrorMessage,
   useOcrCompletionSync,
+  useOcrErrorMessage,
   useOcrResult,
   useOcrText,
   useRetryOcr,
 } from "@/hooks/use-ocr";
-import { formatDateTime } from "@/lib/format";
+import { useDateFormat } from "@/hooks/use-date-format";
 import { PERMISSION } from "@/types/authorization";
-import { isOcrSupported, ocrFailureLabel, type OcrResult } from "@/types/ocr";
+import { isOcrSupported, type OcrResult } from "@/types/ocr";
 import type { LegalDocument } from "@/types/document";
 
 /**
@@ -51,34 +52,48 @@ function MetaRow({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 function OcrMetadata({ result }: { result: OcrResult }) {
+  const { formatDateTime } = useDateFormat();
+  const t = useTranslations("ocr.metadata");
   return (
     <dl className="flex flex-col gap-1.5">
       {result.pageCount !== null ? (
-        <MetaRow label="Pages" value={result.pageCount} />
+        <MetaRow label={t("pages")} value={result.pageCount} />
       ) : null}
       {result.confidence !== null ? (
-        <MetaRow label="Confidence" value={`${Math.round(result.confidence)}%`} />
+        <MetaRow
+          label={t("confidence")}
+          value={t("percent", { value: Math.round(result.confidence) })}
+        />
       ) : null}
       {result.detectedLanguage ? (
-        <MetaRow label="Language" value={result.detectedLanguage} />
+        // Shown as the engine reported it, deliberately. Unlike an indexing
+        // run's `detectedLanguage`, this is **not** an ISO 639-1 code: Tesseract
+        // answers with its own model names joined by `+` (`eng+fra+ara`), which
+        // is a description of what was loaded rather than a language anybody
+        // could translate. Passing it through a catalogue would humanize it into
+        // "Eng+fra+ara" and claim it was a word.
+        <MetaRow label={t("language")} value={result.detectedLanguage} />
       ) : null}
       {result.engine ? (
         <MetaRow
-          label="Engine"
+          label={t("engine")}
           value={result.engineVersion ? `${result.engine} ${result.engineVersion}` : result.engine}
         />
       ) : null}
       {result.startedAt ? (
-        <MetaRow label="Started" value={formatDateTime(result.startedAt)} />
+        <MetaRow label={t("started")} value={formatDateTime(result.startedAt)} />
       ) : null}
       {result.finishedAt ? (
-        <MetaRow label="Finished" value={formatDateTime(result.finishedAt)} />
+        <MetaRow label={t("finished")} value={formatDateTime(result.finishedAt)} />
       ) : null}
       {result.durationSeconds !== null ? (
-        <MetaRow label="Duration" value={`${result.durationSeconds}s`} />
+        <MetaRow
+          label={t("duration")}
+          value={t("seconds", { value: result.durationSeconds })}
+        />
       ) : null}
       {result.attemptCount > 1 ? (
-        <MetaRow label="Attempts" value={result.attemptCount} />
+        <MetaRow label={t("attempts")} value={result.attemptCount} />
       ) : null}
     </dl>
   );
@@ -86,6 +101,8 @@ function OcrMetadata({ result }: { result: OcrResult }) {
 
 function RetryButton({ document, result }: { document: LegalDocument; result?: OcrResult }) {
   const retry = useRetryOcr();
+  const t = useTranslations("ocr");
+  const errorMessage = useOcrErrorMessage();
 
   // Offered only when the server says a retry would be accepted. A run already
   // queued or extracting answers 409, and a button that produces an error the
@@ -95,9 +112,9 @@ function RetryButton({ document, result }: { document: LegalDocument; result?: O
   async function run() {
     try {
       await retry.mutateAsync({ documentId: document.id, version: document.version });
-      toast.success("Text extraction was queued.");
+      toast.success(t("queued"));
     } catch (error) {
-      toast.error(ocrErrorMessage(error));
+      toast.error(errorMessage(error));
     }
   }
 
@@ -111,7 +128,7 @@ function RetryButton({ document, result }: { document: LegalDocument; result?: O
         disabled={disabled}
       >
         <RefreshCw className="h-4 w-4" aria-hidden="true" />
-        {result ? "Retry extraction" : "Extract text"}
+        {result ? t("retry") : t("extract")}
       </Button>
     </Protected>
   );
@@ -119,6 +136,8 @@ function RetryButton({ document, result }: { document: LegalDocument; result?: O
 
 function ExtractedText({ document }: { document: LegalDocument }) {
   const [expanded, setExpanded] = React.useState(false);
+  const t = useTranslations("ocr");
+  const errorMessage = useOcrErrorMessage();
   const { data, isLoading, isError, error } = useOcrText(document.id, {
     enabled: expanded,
     version: document.version,
@@ -139,7 +158,7 @@ function ExtractedText({ document }: { document: LegalDocument }) {
         ) : (
           <ChevronDown className="h-4 w-4" aria-hidden="true" />
         )}
-        {expanded ? "Hide extracted text" : "View extracted text"}
+        {expanded ? t("hideText") : t("viewText")}
       </Button>
 
       {expanded ? (
@@ -150,7 +169,7 @@ function ExtractedText({ document }: { document: LegalDocument }) {
           </div>
         ) : isError || !data ? (
           <p role="alert" className="text-sm text-destructive">
-            {ocrErrorMessage(error)}
+            {errorMessage(error)}
           </p>
         ) : (
           <OcrTextView text={data} />
@@ -161,6 +180,9 @@ function ExtractedText({ document }: { document: LegalDocument }) {
 }
 
 export function DocumentOcrPanel({ document }: { document: LegalDocument }) {
+  const t = useTranslations("ocr");
+  const tFailures = useTranslations("ocr.failures");
+  const errorMessage = useOcrErrorMessage();
   const supported = isOcrSupported(document.fileExtension);
   const { data, isLoading, isError, error } = useOcrResult(document.id, {
     enabled: supported,
@@ -175,7 +197,7 @@ export function DocumentOcrPanel({ document }: { document: LegalDocument }) {
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h3 className="flex items-center gap-2 text-sm font-medium text-foreground">
         <ScanText className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-        Text extraction
+        {t("title")}
       </h3>
       {data ? <OcrStatusBadge status={data.status} /> : null}
     </div>
@@ -183,18 +205,15 @@ export function DocumentOcrPanel({ document }: { document: LegalDocument }) {
 
   if (!supported) {
     return (
-      <section className="flex flex-col gap-2" aria-label="Text extraction">
+      <section className="flex flex-col gap-2" aria-label={t("title")}>
         {heading}
-        <p className="text-sm text-muted-foreground">
-          Text extraction applies to PDFs and images. This file type already carries
-          machine-readable text.
-        </p>
+        <p className="text-sm text-muted-foreground">{t("notApplicable")}</p>
       </section>
     );
   }
 
   return (
-    <section className="flex flex-col gap-3" aria-label="Text extraction">
+    <section className="flex flex-col gap-3" aria-label={t("title")}>
       {heading}
 
       {isLoading ? (
@@ -204,29 +223,25 @@ export function DocumentOcrPanel({ document }: { document: LegalDocument }) {
         </div>
       ) : isOcrResultMissing(error) ? (
         <div className="flex flex-col items-start gap-3">
-          <p className="text-sm text-muted-foreground">
-            This document has not been processed yet.
-          </p>
+          <p className="text-sm text-muted-foreground">{t("notProcessed")}</p>
           <RetryButton document={document} />
         </div>
       ) : isError || !data ? (
         <p role="alert" className="text-sm text-destructive">
-          {ocrErrorMessage(error)}
+          {errorMessage(error)}
         </p>
       ) : (
         <div className="flex flex-col gap-3">
           {data.isActive ? (
             <p className="text-sm text-muted-foreground">
-              {data.status === "pending"
-                ? "Queued for extraction. This page updates automatically."
-                : "Reading the document. This page updates automatically."}
+              {data.status === "pending" ? t("waitingQueued") : t("waitingReading")}
             </p>
           ) : null}
 
           {data.status === "failed" ? (
             <div className="flex flex-col gap-1 rounded-md border border-destructive/30 bg-destructive/5 p-3">
               <p className="text-sm font-medium text-destructive">
-                {ocrFailureLabel(data.errorCode)}
+                {tFailures(data.errorCode ?? "unknown")}
               </p>
               {/* The server's own message: only it knows the specifics, and it is
                   written to be safe to show — it describes what went wrong with
@@ -234,9 +249,7 @@ export function DocumentOcrPanel({ document }: { document: LegalDocument }) {
               {data.errorMessage ? (
                 <p className="text-sm text-muted-foreground">{data.errorMessage}</p>
               ) : null}
-              <p className="text-xs text-muted-foreground">
-                The document itself is unaffected and can still be downloaded.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("failureNote")}</p>
             </div>
           ) : null}
 

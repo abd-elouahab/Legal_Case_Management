@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslations } from "next-intl";
 import { FileUp } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
@@ -19,9 +20,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/shared/spinner";
 import { UploadProgress } from "@/components/documents/upload-progress";
+import { useFieldError } from "@/hooks/use-field-error";
 import {
-  documentErrorMessage,
   documentFieldErrors,
+  useDocumentErrorMessage,
   useReplaceDocument,
 } from "@/hooks/use-documents";
 import {
@@ -53,6 +55,11 @@ export function ReplaceDocumentDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const replace = useReplaceDocument();
+  const t = useTranslations("documents.replaceDialog");
+  const tUpload = useTranslations("documents.upload");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useDocumentErrorMessage();
+  const fieldError = useFieldError();
   const [formError, setFormError] = React.useState<string | null>(null);
   const [progress, setProgress] = React.useState<number | null>(null);
 
@@ -103,8 +110,11 @@ export function ReplaceDocumentDialog({
       });
 
       toast.success(
-        `${updated.originalFilename} was saved as version ${updated.version}. ` +
-          `Version ${updated.version - 1} is still available.`,
+        t("replaced", {
+          filename: updated.originalFilename,
+          version: updated.version,
+          previous: updated.version - 1,
+        }),
       );
       onOpenChange(false);
     } catch (error) {
@@ -113,7 +123,7 @@ export function ReplaceDocumentDialog({
       for (const [field, message] of Object.entries(fields)) {
         if (field === "file") setError("file", { message });
       }
-      if (Object.keys(fields).length === 0) setFormError(documentErrorMessage(error));
+      if (Object.keys(fields).length === 0) setFormError(errorMessage(error));
     }
   });
 
@@ -123,11 +133,14 @@ export function ReplaceDocumentDialog({
     <Dialog open={open} onOpenChange={isPending ? undefined : onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Replace document</DialogTitle>
+          <DialogTitle>{t("title")}</DialogTitle>
           <DialogDescription>
             {document
-              ? `Upload a new version of ${document.originalFilename}. Version ${document.version} is kept and stays downloadable from the version history — nothing is overwritten.`
-              : "Upload a new version. Previous versions are kept and stay downloadable."}
+              ? t("description", {
+                  filename: document.originalFilename,
+                  version: document.version,
+                })
+              : t("descriptionGeneric")}
           </DialogDescription>
         </DialogHeader>
 
@@ -140,7 +153,7 @@ export function ReplaceDocumentDialog({
             ) : null}
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="replace-document-file">New file</Label>
+              <Label htmlFor="replace-document-file">{t("newFile")}</Label>
               <Input
                 id="replace-document-file"
                 type="file"
@@ -151,13 +164,17 @@ export function ReplaceDocumentDialog({
                 {...register("file")}
               />
               <p className="text-xs text-muted-foreground">
-                Supported types: {SUPPORTED_DOCUMENT_EXTENSIONS.join(", ")} — up to{" "}
-                {MAX_DOCUMENT_SIZE_MB} MB. The replacement may be a different type from the
-                file it replaces.
+                {t("supportedTypes", {
+                  types: SUPPORTED_DOCUMENT_EXTENSIONS.join(", "),
+                  maxSize: MAX_DOCUMENT_SIZE_MB,
+                })}
               </p>
               {chosenFile ? (
                 <p className="text-xs text-muted-foreground">
-                  {chosenFile.name} — {Math.max(1, Math.round(chosenFile.size / 1024))} KB
+                  {tUpload("chosenFile", {
+                    name: chosenFile.name,
+                    kilobytes: Math.max(1, Math.round(chosenFile.size / 1024)),
+                  })}
                 </p>
               ) : null}
               {errors.file ? (
@@ -166,12 +183,12 @@ export function ReplaceDocumentDialog({
                   role="alert"
                   className="text-sm text-destructive"
                 >
-                  {errors.file.message}
+                  {fieldError(errors.file.message)}
                 </p>
               ) : null}
             </div>
 
-            {isPending ? <UploadProgress percent={progress} label="Replacement progress" /> : null}
+            {isPending ? <UploadProgress percent={progress} label={t("progressLabel")} /> : null}
           </div>
 
           <DialogFooter>
@@ -181,18 +198,18 @@ export function ReplaceDocumentDialog({
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              {tActions("cancel")}
             </Button>
             <Button type="submit" disabled={isPending}>
               {isPending ? (
                 <>
                   <Spinner className="h-4 w-4 text-current" />
-                  Uploading…
+                  {tUpload("uploading")}
                 </>
               ) : (
                 <>
                   <FileUp className="h-4 w-4" />
-                  Upload new version
+                  {t("submit")}
                 </>
               )}
             </Button>

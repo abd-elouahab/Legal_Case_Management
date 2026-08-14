@@ -34,7 +34,8 @@ import { ROUTES } from "@/lib/routes";
 import { reportDetailSchema, reportMetricsSchema } from "@/lib/validation/report";
 import { useSessionStore } from "@/stores/session-store";
 import type { Report } from "@/types/report";
-import { REPORT_STATUSES, reportFailureLabel, reportTypeLabel } from "@/types/report";
+import { REPORT_STATUSES } from "@/types/report";
+import en from "@/messages/en.json";
 import { DEFAULT_REPORT_LIST_QUERY } from "@/types/report-management";
 import type { UserRole } from "@/types/user";
 import {
@@ -370,9 +371,14 @@ describe("generate report dialog", () => {
     await waitFor(() => expect(screen.getByLabelText("Report type")).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /generate/i }));
 
-    /* The server's own message, verbatim: only it knows how many runs the caller
-       already has in flight. */
-    expect(await screen.findByRole("alert")).toHaveTextContent(/3 reports being generated/i);
+    /* The platform's own sentence rather than the server's verbatim one. The
+       server knows the exact count and writes it in English; since
+       `21-localization.md` an English sentence is not something to put on an
+       Arabic screen, so the code selects a translated message and the count
+       stays in the log. */
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      en.reports.errors.tooManyActive,
+    );
   });
 });
 
@@ -483,7 +489,7 @@ describe("report detail", () => {
     );
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      reportFailureLabel("llm_unavailable"),
+      en.reports.failures.llm_unavailable,
     );
     expect(screen.getByRole("button", { name: /regenerate/i })).toBeInTheDocument();
   });
@@ -554,7 +560,7 @@ describe("report list", () => {
 
     renderWithQuery(<ReportList />);
 
-    expect(await screen.findByText(reportTypeLabel("case_summary"))).toBeInTheDocument();
+    expect(await screen.findByText(en.reports.types.case_summary)).toBeInTheDocument();
   });
 
   it("offers Generate when the history is empty", async () => {

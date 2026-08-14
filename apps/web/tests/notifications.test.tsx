@@ -487,7 +487,7 @@ describe("NotificationPreferencesForm", () => {
     signInAs("lawyer");
     mockFetch({
       [NOTIFICATION_ENDPOINTS.preferences]: {
-        body: notificationPreferencesPayload({}, { hearing_updates: false }),
+        body: notificationPreferencesPayload({}, { hearing_updates: { email: false } }),
       },
     });
 
@@ -536,7 +536,7 @@ describe("NotificationPreferencesForm", () => {
     const { requests } = mockFetch({
       [NOTIFICATION_ENDPOINTS.preferences]: [
         { body: notificationPreferencesPayload() },
-        { body: notificationPreferencesPayload({}, { hearing_updates: false }) },
+        { body: notificationPreferencesPayload({}, { hearing_updates: { email: false } }) },
       ],
     });
 

@@ -20,13 +20,8 @@
 export const INDEX_STATUSES = ["pending", "indexing", "indexed", "failed"] as const;
 export type IndexStatus = (typeof INDEX_STATUSES)[number];
 
-/** Human-readable status labels (future: i18n keys). */
-export const INDEX_STATUS_LABELS: Record<IndexStatus, string> = {
-  pending: "Queued",
-  indexing: "Indexing",
-  indexed: "Searchable",
-  failed: "Failed",
-};
+/** Where the words live: `indexing.statuses` in the message catalogues. */
+export const INDEX_STATUS_NAMESPACE = "indexing.statuses";
 
 /**
  * Why a run ended without a usable index.
@@ -47,25 +42,9 @@ export const INDEX_FAILURE_CODES = [
 ] as const;
 export type KnownIndexFailureCode = (typeof INDEX_FAILURE_CODES)[number];
 
-const INDEX_FAILURE_LABELS: Record<KnownIndexFailureCode, string> = {
-  invalid_ocr_output: "No extracted text",
-  chunking_failure: "Text could not be divided",
-  embedding_failure: "Embedding service failed",
-  vector_store_unavailable: "Search index unavailable",
-  timeout: "Took too long",
-  unknown: "Did not complete",
-};
+/** Where the words live: `indexing.failures` in the message catalogues. */
+export const INDEX_FAILURE_NAMESPACE = "indexing.failures";
 
-/** A short label for a failure cause, falling back to a readable identifier. */
-export function indexFailureLabel(code: string | null): string {
-  if (!code) return "Failed";
-
-  const known = INDEX_FAILURE_LABELS[code as KnownIndexFailureCode];
-  if (known) return known;
-
-  const words = code.replace(/_/g, " ").trim();
-  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "Failed";
-}
 
 /**
  * Language codes a chunk can be labelled with.
@@ -73,18 +52,16 @@ export function indexFailureLabel(code: string | null): string {
  * ISO 639-1, matching `apps/api/core/indexing.py`. `und` is "undetermined" and is
  * a legitimate answer for a page of figures — not an error.
  */
-export const INDEX_LANGUAGE_LABELS: Record<string, string> = {
-  ar: "Arabic",
-  fr: "French",
-  en: "English",
-  und: "Undetermined",
-};
+/**
+ * Where a language code's name lives: `common.languages` in the catalogues.
+ *
+ * Shared with search and with the rest of the platform rather than owned here:
+ * "Arabic" is the same word on an indexing panel and on a search result, and two
+ * copies is how they start to differ. A code no catalogue names renders through
+ * the provider's fallback, which is what the old `?? code` did.
+ */
+export const INDEX_LANGUAGE_NAMESPACE = "common.languages";
 
-/** A readable name for a language code, falling back to the code itself. */
-export function indexLanguageLabel(code: string | null): string | null {
-  if (!code) return null;
-  return INDEX_LANGUAGE_LABELS[code] ?? code;
-}
 
 /** The document an indexing run belongs to, as shown beside the run. */
 export interface IndexDocumentSummary {

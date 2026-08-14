@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Save } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
@@ -17,7 +18,8 @@ import {
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/shared/spinner";
 import { UserFormFieldset } from "@/components/users/user-form";
-import { fieldErrors, useUpdateUser, userErrorMessage } from "@/hooks/use-users";
+import { fieldErrors, useUpdateUser, useUserErrorMessage } from "@/hooks/use-users";
+import { useFieldError } from "@/hooks/use-field-error";
 import { editUserFormSchema, type EditUserFormValues } from "@/lib/validation/user";
 import type { ManagedUser } from "@/types/user";
 import type { UpdateUserPayload } from "@/types/user-management";
@@ -73,6 +75,10 @@ export function EditUserDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const updateUser = useUpdateUser();
+  const t = useTranslations("users.editDialog");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useUserErrorMessage();
+  const fieldError = useFieldError();
   const [formError, setFormError] = React.useState<string | null>(null);
 
   const form = useForm<EditUserFormValues>({
@@ -129,7 +135,7 @@ export function EditUserDialog({
 
     if (Object.keys(payload).length === 0) {
       // The API rejects an empty PATCH; there is genuinely nothing to save.
-      toast.info("No changes to save.");
+      toast.info(t("noChanges"));
       onOpenChange(false);
       return;
     }
@@ -143,7 +149,7 @@ export function EditUserDialog({
       for (const [field, message] of Object.entries(fields)) {
         setError(field as keyof EditUserFormValues, { message });
       }
-      if (Object.keys(fields).length === 0) setFormError(userErrorMessage(error));
+      if (Object.keys(fields).length === 0) setFormError(errorMessage(error));
     }
   });
 
@@ -153,11 +159,11 @@ export function EditUserDialog({
     <Dialog open={open} onOpenChange={isPending ? undefined : onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Edit user</DialogTitle>
+          <DialogTitle>{t("title")}</DialogTitle>
           <DialogDescription>
             {user
               ? `Update ${user.fullName}'s details, role, or account status.`
-              : "Update this user's details."}
+              : t("descriptionGeneric")}
           </DialogDescription>
         </DialogHeader>
 
@@ -171,12 +177,12 @@ export function EditUserDialog({
               phone: register("phone"),
             }}
             errors={{
-              firstName: errors.firstName?.message,
-              lastName: errors.lastName?.message,
-              email: errors.email?.message,
-              phone: errors.phone?.message,
-              role: errors.role?.message,
-              status: errors.status?.message,
+              firstName: fieldError(errors.firstName?.message),
+              lastName: fieldError(errors.lastName?.message),
+              email: fieldError(errors.email?.message),
+              phone: fieldError(errors.phone?.message),
+              role: fieldError(errors.role?.message),
+              status: fieldError(errors.status?.message),
             }}
             role={role}
             onRoleChange={(value) => setValue("role", value, { shouldValidate: true })}
@@ -193,18 +199,18 @@ export function EditUserDialog({
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              {tActions("cancel")}
             </Button>
             <Button type="submit" disabled={isPending}>
               {isPending ? (
                 <>
                   <Spinner className="h-4 w-4 text-current" />
-                  Saving…
+                  {tActions("saving")}
                 </>
               ) : (
                 <>
                   <Save className="h-4 w-4" />
-                  Save changes
+                  {tActions("saveChanges")}
                 </>
               )}
             </Button>

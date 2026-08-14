@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { FileText, Sparkles } from "lucide-react";
 
 import { Protected } from "@/components/auth/protected";
@@ -14,7 +15,7 @@ import { ReportTableSkeleton } from "@/components/reports/report-table-skeleton"
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorState } from "@/components/shared/error-state";
 import { Button } from "@/components/ui/button";
-import { reportErrorMessage, useReports } from "@/hooks/use-reports";
+import { useReportErrorMessage, useReports } from "@/hooks/use-reports";
 import { PERMISSION } from "@/types/authorization";
 import type { Report } from "@/types/report";
 import {
@@ -47,14 +48,19 @@ import {
  */
 export function ReportList({
   caseId,
-  title = "Reports",
+  title,
   description,
 }: {
   /** Pins the list, the Generate dialog, and the reset to one case. */
   caseId?: string;
+  /** Already translated by the caller; falls back to the page's own heading. */
   title?: string;
   description?: string;
 }) {
+  const t = useTranslations("reports");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useReportErrorMessage();
+
   const base = React.useMemo<ReportListQuery>(
     () => ({ ...DEFAULT_REPORT_LIST_QUERY, caseId: caseId ?? null }),
     [caseId],
@@ -100,7 +106,7 @@ export function ReportList({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <h2 id="report-list-heading" className="text-lg font-semibold text-foreground">
-            {title}
+            {title ?? t("caseSection.title")}
           </h2>
           {description ? (
             <p className="text-sm text-muted-foreground">{description}</p>
@@ -110,7 +116,7 @@ export function ReportList({
         <Protected allOf={[PERMISSION.reportsGenerate, PERMISSION.aiGenerateReport]}>
           <Button type="button" onClick={() => setGenerating(true)}>
             <Sparkles className="h-4 w-4" aria-hidden="true" />
-            Generate report
+            {t("generateDialog.title")}
           </Button>
         </Protected>
       </div>
@@ -126,8 +132,8 @@ export function ReportList({
         <ReportTableSkeleton showCase={!caseId} />
       ) : reports.isError ? (
         <ErrorState
-          title="Reports could not be loaded"
-          description={reportErrorMessage(reports.error)}
+          title={t("errors.listTitle")}
+          description={errorMessage(reports.error)}
           onRetry={() => void reports.refetch()}
         />
       ) : page && page.items.length > 0 ? (
@@ -153,24 +159,24 @@ export function ReportList({
       ) : hasFilters ? (
         <EmptyState
           icon={FileText}
-          title="No matching reports"
-          description="No report in your history matches these filters."
+          titleKey="reports.empty.filteredTitle"
+          descriptionKey="reports.empty.filteredDescription"
           action={
             <Button type="button" variant="outline" onClick={() => setQuery(base)}>
-              Clear filters
+              {tActions("clearFilters")}
             </Button>
           }
         />
       ) : (
         <EmptyState
           icon={FileText}
-          title="No reports yet"
-          description="Generate a structured, cited report from this case's indexed documents. It is written in the background, section by section."
+          titleKey="reports.empty.title"
+          descriptionKey="reports.empty.description"
           action={
             <Protected allOf={[PERMISSION.reportsGenerate, PERMISSION.aiGenerateReport]}>
               <Button type="button" onClick={() => setGenerating(true)}>
                 <Sparkles className="h-4 w-4" aria-hidden="true" />
-                Generate report
+                {t("generateDialog.title")}
               </Button>
             </Protected>
           }

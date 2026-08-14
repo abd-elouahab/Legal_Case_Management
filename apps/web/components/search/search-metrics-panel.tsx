@@ -1,11 +1,13 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Search, TriangleAlert } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSearchMetrics } from "@/hooks/use-search";
-import { searchFailureLabel } from "@/types/search";
+import { useDateFormat } from "@/hooks/use-date-format";
+import { useNumberFormat } from "@/hooks/use-number-format";
 
 /**
  * Platform-wide semantic-search health.
@@ -42,6 +44,10 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 export function SearchMetricsPanel() {
   const { data, isLoading, isError } = useSearchMetrics();
+  const t = useTranslations("search.metrics");
+  const tFailures = useTranslations("search.failures");
+  const { formatNumber, formatPercent } = useNumberFormat();
+  const { formatDateTime } = useDateFormat();
 
   if (isError) return null;
 
@@ -50,7 +56,7 @@ export function SearchMetricsPanel() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm">
           <Search className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-          Semantic search
+          {t("title")}
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -64,8 +70,7 @@ export function SearchMetricsPanel() {
           <>
             {!data.enabled ? (
               <p className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
-                Semantic search is disabled on this deployment. Indexed documents are
-                unaffected; only searching them is refused.
+                {t("disabled")}
               </p>
             ) : !data.embeddingAvailable ? (
               <p
@@ -73,10 +78,7 @@ export function SearchMetricsPanel() {
                 className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
               >
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>
-                  The {data.embeddingModel} embedding model cannot be loaded, so every
-                  search will fail. Documents and their indexes are unaffected.
-                </span>
+                <span>{t("embeddingUnavailable", { model: data.embeddingModel })}</span>
               </p>
             ) : !data.vectorStoreAvailable ? (
               <p
@@ -84,54 +86,59 @@ export function SearchMetricsPanel() {
                 className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
               >
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>
-                  The search index is not reachable, so every search will fail. Documents
-                  and their extracted text are unaffected.
-                </span>
+                <span>{t("vectorStoreUnavailable")}</span>
               </p>
             ) : null}
 
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <Stat label="Searches" value={data.totalSearches.toLocaleString()} />
+              <Stat label={t("searches")} value={formatNumber(data.totalSearches)} />
               <Stat
-                label="Average time"
+                label={t("averageTime")}
                 value={
                   data.averageLatencyMs !== null
-                    ? `${Math.round(data.averageLatencyMs)} ms`
+                    ? t("milliseconds", {
+                        value: formatNumber(Math.round(data.averageLatencyMs)),
+                      })
                     : "—"
                 }
               />
               <Stat
-                label="Average relevance"
-                value={
-                  data.averageScore !== null
-                    ? `${Math.round(data.averageScore * 100)}%`
-                    : "—"
-                }
+                label={t("averageRelevance")}
+                value={formatPercent(
+                  data.averageScore !== null ? data.averageScore * 100 : null,
+                  { decimals: 0 },
+                )}
               />
-              <Stat label="Failures" value={data.failedSearches.toLocaleString()} />
+              <Stat label={t("failures")} value={formatNumber(data.failedSearches)} />
             </div>
 
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <Stat label="Success rate" value={`${data.successRate}%`} />
-              <Stat label="Failure rate" value={`${data.failureRate}%`} />
               <Stat
-                label="Results per search"
-                value={
-                  data.averageResults !== null ? data.averageResults.toLocaleString() : "—"
-                }
+                label={t("successRate")}
+                value={formatPercent(data.successRate, { decimals: 0 })}
               />
-              <Stat label="Passages returned" value={data.totalResults.toLocaleString()} />
+              <Stat
+                label={t("failureRate")}
+                value={formatPercent(data.failureRate, { decimals: 0 })}
+              />
+              <Stat
+                label={t("resultsPerSearch")}
+                value={formatNumber(data.averageResults)}
+              />
+              <Stat
+                label={t("passagesReturned")}
+                value={formatNumber(data.totalResults)}
+              />
             </div>
 
             {Object.keys(data.failuresByCode).length > 0 ? (
               <dl className="flex flex-col gap-1">
-                <dt className="text-xs text-muted-foreground">Failures by cause</dt>
+                <dt className="text-xs text-muted-foreground">{t("failuresByCause")}</dt>
                 {Object.entries(data.failuresByCode)
                   .sort(([, a], [, b]) => b - a)
                   .map(([code, count]) => (
                     <dd key={code} className="flex justify-between gap-4 text-xs">
-                      <span className="text-foreground">{searchFailureLabel(code)}</span>
+                      <span className="text-foreground">{tFailures(code)}</span>
                       <span className="tabular-nums text-muted-foreground">{count}</span>
                     </dd>
                   ))}
@@ -139,13 +146,20 @@ export function SearchMetricsPanel() {
             ) : null}
 
             <p className="text-xs text-muted-foreground">
-              {data.embeddingModel} · {data.embeddingDimensions} dimensions ·{" "}
-              {data.ranker} ranking · {data.vectorCollection} · up to {data.maxLimit}{" "}
-              results
+              {t("configuration", {
+                model: data.embeddingModel,
+                dimensions: data.embeddingDimensions,
+                ranker: data.ranker,
+                collection: data.vectorCollection,
+                maxLimit: data.maxLimit,
+              })}
             </p>
-            <p className="text-xs text-muted-foreground">
-              Counted on this API instance since{" "}
-              <time dateTime={data.since}>{new Date(data.since).toLocaleString()}</time>.
+            {/* A plain interpolation rather than `t.rich` with a `<time>`: the
+                machine-readable timestamp is on the wrapper, so the semantics
+                survive without a message that has to carry markup a translator
+                could drop. */}
+            <p className="text-xs text-muted-foreground" data-since={data.since}>
+              {t("since", { at: formatDateTime(data.since) })}
             </p>
           </>
         )}

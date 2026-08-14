@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 
 import {
   AlertDialog,
@@ -13,7 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/shared/spinner";
-import { assistantErrorMessage, useDeleteConversation } from "@/hooks/use-assistant";
+import { useAssistantErrorMessage, useDeleteConversation } from "@/hooks/use-assistant";
 import type { Conversation } from "@/types/assistant";
 
 /**
@@ -43,6 +44,9 @@ export function DeleteConversationDialog({
   onDeleted?: (id: string) => void;
 }) {
   const remove = useDeleteConversation();
+  const t = useTranslations("assistant.deleteConversation");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useAssistantErrorMessage();
   const [error, setError] = React.useState<string | null>(null);
 
   // Cleared as the dialog opens or closes rather than from an effect: an effect
@@ -62,7 +66,7 @@ export function DeleteConversationDialog({
         onDeleted?.(conversation.id);
         setOpen(false);
       },
-      onError: (failure) => setError(assistantErrorMessage(failure)),
+      onError: (failure) => setError(errorMessage(failure)),
     });
   }
 
@@ -71,13 +75,9 @@ export function DeleteConversationDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            Delete{conversation ? ` “${conversation.title}”` : " this conversation"}?
+            {conversation ? t("title", { title: conversation.title }) : t("titleGeneric")}
           </AlertDialogTitle>
-          <AlertDialogDescription>
-            The conversation and its answers will no longer appear anywhere in the
-            platform, and you will not be able to reopen it. If you only want it out of
-            your list, archive it instead — an archived conversation stays readable.
-          </AlertDialogDescription>
+          <AlertDialogDescription>{t("description")}</AlertDialogDescription>
         </AlertDialogHeader>
 
         {error ? (
@@ -88,16 +88,16 @@ export function DeleteConversationDialog({
 
         <AlertDialogFooter>
           <AlertDialogCancel disabled={remove.isPending} onClick={() => setError(null)}>
-            Cancel
+            {tActions("cancel")}
           </AlertDialogCancel>
           <Button variant="destructive" onClick={confirm} disabled={remove.isPending}>
             {remove.isPending ? (
               <>
                 <Spinner className="h-4 w-4 text-current" />
-                Deleting…
+                {t("deleting")}
               </>
             ) : (
-              "Delete"
+              tActions("delete")
             )}
           </Button>
         </AlertDialogFooter>

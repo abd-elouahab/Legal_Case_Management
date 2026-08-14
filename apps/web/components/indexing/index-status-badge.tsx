@@ -1,8 +1,11 @@
+"use client";
+
+import { useTranslations } from "next-intl";
 import { Clock, Loader2, Search, TriangleAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { INDEX_STATUS_LABELS, type IndexStatus } from "@/types/indexing";
+import type { IndexStatus } from "@/types/indexing";
 
 /**
  * Status badge for one document-indexing run.
@@ -43,6 +46,7 @@ export function IndexStatusBadge({
   className?: string;
 }) {
   const Icon = STATUS_ICONS[status];
+  const t = useTranslations("indexing.statuses");
 
   return (
     <Badge variant="outline" className={cn("gap-1.5", STATUS_STYLES[status], className)}>
@@ -50,7 +54,7 @@ export function IndexStatusBadge({
         className={cn("h-3.5 w-3.5", status === "indexing" && "animate-spin")}
         aria-hidden="true"
       />
-      {INDEX_STATUS_LABELS[status]}
+      {t(status)}
     </Badge>
   );
 }

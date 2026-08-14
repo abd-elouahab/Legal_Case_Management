@@ -41,8 +41,16 @@ type SummaryWire = ReturnType<typeof notificationSummarySchema.parse>;
 type PreferencesWire = ReturnType<typeof notificationPreferencesSchema.parse>;
 type MetricsWire = ReturnType<typeof notificationMetricsSchema.parse>;
 
-/** Map one API notification onto the app's {@link Notification}. */
-function toNotification(payload: NotificationWire): Notification {
+/**
+ * Map one API notification onto the app's {@link Notification}.
+ *
+ * Exported for exactly one other caller: the dashboard's notifications widget,
+ * which receives the same rendered rows inside its payload. It reuses this rather
+ * than repeating the projection, because a notification's title and message are
+ * produced by the server in the reader's language and a second mapper would be a
+ * second place for that to be got wrong.
+ */
+export function toNotification(payload: NotificationWire): Notification {
   return {
     id: payload.id,
     category: payload.category,
@@ -89,6 +97,7 @@ function toPreferences(payload: PreferencesWire): NotificationPreference[] {
     preferenceKey: entry.preference_key,
     inApp: entry.in_app,
     email: entry.email,
+    whatsapp: entry.whatsapp,
     isDefault: entry.is_default,
   }));
 }
@@ -249,6 +258,7 @@ export async function updateNotificationPreferences(
         preference_key: entry.preferenceKey,
         ...(entry.inApp === undefined ? {} : { in_app: entry.inApp }),
         ...(entry.email === undefined ? {} : { email: entry.email }),
+        ...(entry.whatsapp === undefined ? {} : { whatsapp: entry.whatsapp }),
       })),
     },
   });

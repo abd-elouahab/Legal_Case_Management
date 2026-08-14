@@ -1,18 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 import { NotificationIcon } from "@/components/notifications/notification-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatEventTime } from "@/lib/format";
+import { useDateFormat } from "@/hooks/use-date-format";
 import { cn } from "@/lib/utils";
-import {
-  categoryLabel,
-  notificationHref,
-  NOTIFICATION_PRIORITY_LABELS,
-  type Notification,
-} from "@/types/notification";
+import { notificationHref, type Notification } from "@/types/notification";
 
 /**
  * One notification, as it appears in the panel and in the history page.
@@ -51,6 +47,13 @@ export function NotificationItem({
   onNavigate?: () => void;
   className?: string;
 }) {
+  const { formatEventTime } = useDateFormat();
+  const t = useTranslations("notifications.item");
+  // The category registry is open on the server, so a category this build has
+  // never heard of resolves through the provider's fallback to a humanized form
+  // of itself — which is exactly what `categoryLabel` used to do by hand.
+  const tCategories = useTranslations("notifications.categories");
+  const tPriorities = useTranslations("notifications.priorities");
   const href = notificationHref(notification);
   const timestamp = formatEventTime(notification.createdAt);
   const isUrgent =
@@ -80,7 +83,7 @@ export function NotificationItem({
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
         <span>{timestamp}</span>
         <span aria-hidden="true">•</span>
-        <span>{categoryLabel(notification.category)}</span>
+        <span>{tCategories(notification.category)}</span>
         {notification.actor ? (
           <>
             <span aria-hidden="true">•</span>
@@ -91,13 +94,13 @@ export function NotificationItem({
           <Badge
             variant="outline"
             className={cn(
-              "ml-1",
+              "ms-1",
               notification.priority === "critical"
                 ? "border-destructive/30 bg-destructive/10 text-destructive"
                 : "border-warning/30 bg-warning/10 text-warning",
             )}
           >
-            {NOTIFICATION_PRIORITY_LABELS[notification.priority]}
+            {tPriorities(notification.priority)}
           </Badge>
         ) : null}
       </div>
@@ -138,9 +141,9 @@ export function NotificationItem({
           // The title is the only thing that distinguishes one of these buttons
           // from the next in a list of ten, so it is what a screen reader
           // announces rather than a bare "Mark as read".
-          aria-label={`Mark “${notification.title}” as read`}
+          aria-label={t("markReadFor", { title: notification.title })}
         >
-          Mark read
+          {t("markRead")}
         </Button>
       ) : null}
     </li>

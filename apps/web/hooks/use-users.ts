@@ -19,6 +19,7 @@ import {
   updateUser,
 } from "@/lib/api/users";
 import { ApiError, NetworkError } from "@/lib/api/errors";
+import { useErrorMessage, type ErrorCodeMap } from "@/hooks/use-error-message";
 import type { ManagedUser } from "@/types/user";
 import type {
   CreateUserPayload,
@@ -57,36 +58,24 @@ export const userKeys = {
 };
 
 /**
- * Translate a failure into a message safe to show an administrator.
+ * Translate a failure into a sentence in the reader's language.
  *
- * Branches on the API's machine-readable `code` rather than on message text,
- * which is localizable and may change.
+ * Branches on the API's machine-readable `code` rather than on message text —
+ * which the server writes in English, with no knowledge of who is reading it.
+ * `hooks/use-error-message.ts` records why that matters; the short version is
+ * that an interface which is Arabic everywhere except when something goes wrong
+ * is not localized. Codes with no entry here fall through to the shared
+ * `errors.*` sentences and then to a generic one.
  */
-export function userErrorMessage(error: unknown): string {
-  if (error instanceof NetworkError) return error.message;
+const USER_ERRORS: ErrorCodeMap = {
+  email_already_exists: "emailTaken",
+  user_not_found: "notFound",
+  cannot_modify_own_account: "cannotModifyOwn",
+  missing_token: "sessionExpired",
+};
 
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case "email_already_exists":
-        return "A user with this email address already exists.";
-      case "user_not_found":
-        return "This user no longer exists. Refresh the list and try again.";
-      case "cannot_modify_own_account":
-        return "You cannot change your own role or account status.";
-      case "validation_error":
-        return error.details[0]?.message ?? "Check the details you entered.";
-      case "forbidden":
-        return "You do not have permission to perform this action.";
-      case "invalid_token":
-      case "token_expired":
-      case "missing_token":
-        return "Your session has expired. Sign in again to continue.";
-      default:
-        return error.message || "Something went wrong. Please try again.";
-    }
-  }
-
-  return "Something went wrong. Please try again.";
+export function useUserErrorMessage(): (error: unknown) => string {
+  return useErrorMessage("users.errors", USER_ERRORS);
 }
 
 /**

@@ -247,6 +247,65 @@ export const NOTIFICATION_ENDPOINTS = {
 } as const;
 
 /**
+ * Dashboard endpoint paths, relative to the version prefix.
+ *
+ * Four, and only two of them are ever called on a page load. `dashboard` is the
+ * **aggregated** endpoint the spec asks for — one request for the whole page,
+ * rather than one per widget — and `widget` is what makes a single tile
+ * refreshable without re-reading the other eighteen. They serve the same loader
+ * on the server, so a refreshed card cannot drift from the one beside it.
+ *
+ * **There is no create, update, or delete path, and there will not be one.** The
+ * dashboard owns no data: every figure on it is read from the module that does,
+ * under that module's own authorization. Saved layouts and customization are out
+ * of scope for `19-dashboard-analytics.md`, and their absence here is what keeps
+ * that true.
+ *
+ * `widgets` is the catalog: which tiles this caller may load, of what shape, and
+ * **which events make each of them stale**. It is read once on mount, and it is
+ * why this app has no widget-to-event table of its own.
+ */
+export const DASHBOARD_ENDPOINTS = {
+  dashboard: "/dashboard",
+  widgets: "/dashboard/widgets",
+  widget: (key: string) => `/dashboard/widgets/${encodeURIComponent(key)}`,
+  metrics: "/dashboard/metrics",
+} as const;
+
+/**
+ * Settings endpoint paths, relative to the version prefix.
+ *
+ * **What is absent is the design.** There is no `settings/notifications` here,
+ * and there will not be one: notification and communication preferences are the
+ * Notification Service's and are read and written through
+ * {@link NOTIFICATION_ENDPOINTS.preferences}. `GET /settings` names them in its
+ * section list rather than embedding a copy, so one stored thing has one endpoint
+ * — which is `20-settings.md`'s *"each feature should own its configuration"*
+ * visible in the shape of the client as well as of the API.
+ *
+ * `overview` is the aggregated read the page loads with — sections, profile,
+ * settings, and the platform's maintenance posture in one request — and the
+ * others exist so a single panel can save and refetch without re-reading the
+ * whole page.
+ *
+ * `sessions` is one path with two verbs: `GET` lists the caller's live sign-ins,
+ * `DELETE` ends every one of them except the one making the request. There is
+ * deliberately no path for ending *one specific* other session — signing out
+ * everywhere else is the control somebody reaches for when they think an account
+ * is compromised, and choosing which intruder to leave signed in is not.
+ */
+export const SETTINGS_ENDPOINTS = {
+  overview: "/settings",
+  profile: "/settings/profile",
+  preferences: "/settings/preferences",
+  sessions: "/settings/sessions",
+  password: "/settings/password",
+  administration: "/settings/administration",
+  maintenance: "/settings/maintenance",
+  metrics: "/settings/metrics",
+} as const;
+
+/**
  * Timeline endpoint paths, relative to the version prefix.
  *
  * Read-only, and the shape says so: there is no create, update, or delete path
@@ -256,4 +315,60 @@ export const NOTIFICATION_ENDPOINTS = {
 export const TIMELINE_ENDPOINTS = {
   caseTimeline: (caseId: string) => `/cases/${encodeURIComponent(caseId)}/timeline`,
   detail: (eventId: string) => `/timeline/${encodeURIComponent(eventId)}`,
+} as const;
+
+/**
+ * Localization endpoint paths, relative to the version prefix.
+ *
+ * Three, and what is **absent** is the design. There is no `messages` path: a
+ * translation catalogue is a static asset this application ships and imports, and
+ * serving it from an authenticated API would put the login screen's own copy
+ * behind a login. There is no path that *sets* a language either — a language
+ * preference is a setting, written through `SETTINGS_ENDPOINTS.preferences` like
+ * every other one.
+ *
+ * `report` is the only write here, and it writes nothing: it hands the platform
+ * the translation keys a browser could not render, which are counted and
+ * discarded. It is the sole path by which `21-localization.md`'s *"translation
+ * loading failures"* and *"missing translations"* — both of which happen in a
+ * browser — reach an operator.
+ */
+export const LOCALIZATION_ENDPOINTS = {
+  languages: "/localization/languages",
+  report: "/localization/report",
+  metrics: "/localization/metrics",
+} as const;
+
+/**
+ * Monitoring endpoint paths, relative to the version prefix.
+ *
+ * Nine reads and **no write** — monitoring owns no data, so there is nothing
+ * here to create, change, or delete. `overview` is the aggregate the page loads
+ * with; the rest exist so a single panel can refetch without re-reading the other
+ * eight, and they serve the very loaders the aggregate loops over, so a refreshed
+ * panel cannot drift from the one beside it. That is the same split
+ * {@link DASHBOARD_ENDPOINTS} makes, for the same reason.
+ *
+ * **`export` is absent from this application's use, deliberately.** It renders
+ * the Prometheus text exposition format for a *scraper*, is gated on a separate
+ * permission (`monitoring:export`) so a scraper's credential need not be able to
+ * read the security feed or the trace buffer, and there is nothing a browser
+ * would do with it. It is named here because this file is the platform's endpoint
+ * map rather than this app's.
+ *
+ * **The liveness and readiness probes are not here either.** They live at
+ * `/health` and `/ready`, outside the version prefix and outside authentication,
+ * because an orchestrator has no credentials — see `apps/api/api/health.py`.
+ */
+export const MONITORING_ENDPOINTS = {
+  overview: "/monitoring/overview",
+  health: "/monitoring/health",
+  metrics: "/monitoring/metrics",
+  performance: "/monitoring/performance",
+  jobs: "/monitoring/jobs",
+  errors: "/monitoring/errors",
+  security: "/monitoring/security",
+  traces: "/monitoring/traces",
+  alerts: "/monitoring/alerts",
+  export: "/monitoring/export",
 } as const;

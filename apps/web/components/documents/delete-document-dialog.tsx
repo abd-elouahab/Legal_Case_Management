@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import {
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/shared/spinner";
-import { documentErrorMessage, useDeleteDocument } from "@/hooks/use-documents";
+import { useDeleteDocument, useDocumentErrorMessage } from "@/hooks/use-documents";
 import type { LegalDocument } from "@/types/document";
 
 /**
@@ -41,6 +42,9 @@ export function DeleteDocumentDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const remove = useDeleteDocument();
+  const t = useTranslations("documents.deleteDialog");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useDocumentErrorMessage();
   const [error, setError] = React.useState<string | null>(null);
 
   // Clear a stale error from a previous attempt when the dialog reopens.
@@ -58,10 +62,10 @@ export function DeleteDocumentDialog({
 
     try {
       await remove.mutateAsync(document.id);
-      toast.success(`${document.originalFilename} was deleted.`);
+      toast.success(t("deleted", { filename: document.originalFilename }));
       onOpenChange(false);
     } catch (cause) {
-      setError(documentErrorMessage(cause));
+      setError(errorMessage(cause));
     }
   }
 
@@ -72,14 +76,11 @@ export function DeleteDocumentDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            Delete {document ? document.originalFilename : "this document"}?
+            {document
+              ? t("title", { filename: document.originalFilename })
+              : t("titleGeneric")}
           </AlertDialogTitle>
-          <AlertDialogDescription>
-            The document is withdrawn from the case and will no longer appear in
-            lists, searches, or downloads. It is kept — not destroyed — along with
-            every stored version, because a legal document is never permanently
-            removed without authorization.
-          </AlertDialogDescription>
+          <AlertDialogDescription>{t("description")}</AlertDialogDescription>
         </AlertDialogHeader>
 
         {error ? (
@@ -89,15 +90,15 @@ export function DeleteDocumentDialog({
         ) : null}
 
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={isPending}>{tActions("cancel")}</AlertDialogCancel>
           <Button variant="destructive" onClick={confirm} disabled={isPending}>
             {isPending ? (
               <>
                 <Spinner className="h-4 w-4 text-current" />
-                Deleting…
+                {t("deleting")}
               </>
             ) : (
-              "Delete"
+              tActions("delete")
             )}
           </Button>
         </AlertDialogFooter>

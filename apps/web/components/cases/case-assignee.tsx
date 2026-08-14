@@ -1,3 +1,7 @@
+"use client";
+
+import { useTranslations } from "next-intl";
+
 import { UserAvatar } from "@/components/users/user-avatar";
 import { cn } from "@/lib/utils";
 import type { CaseUserSummary } from "@/types/case";
@@ -14,15 +18,18 @@ import type { CaseUserSummary } from "@/types/case";
  */
 export function CaseAssignee({
   user,
-  emptyLabel = "Unassigned",
+  emptyLabel,
   className,
 }: {
   user: CaseUserSummary | null;
+  /** Already translated by the caller; falls back to the shared wording. */
   emptyLabel?: string;
   className?: string;
 }) {
+  const t = useTranslations("cases");
+
   if (!user) {
-    return <span className={cn("text-sm text-muted-foreground", className)}>{emptyLabel}</span>;
+    return <span className={cn("text-sm text-muted-foreground", className)}>{emptyLabel ?? t("unassigned")}</span>;
   }
 
   return (

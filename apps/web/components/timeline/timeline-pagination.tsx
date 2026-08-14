@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Spinner } from "@/components/shared/spinner";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,10 @@ export function TimelinePagination({
   onPageChange: (page: number) => void;
   isLoading?: boolean;
 }) {
+  const t = useTranslations("timeline.pagination");
+  const tCommon = useTranslations("common.pagination");
+  const tActions = useTranslations("common.actions");
+
   const first = totalRecords === 0 ? 0 : (page - 1) * pageSize + 1;
   const last = Math.min(page * pageSize, totalRecords);
 
@@ -41,16 +46,12 @@ export function TimelinePagination({
     <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
       <p className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
         {isLoading ? <Spinner className="h-4 w-4" /> : null}
-        {totalRecords === 0
-          ? "No activity"
-          : `Showing ${first}–${last} of ${totalRecords} ${
-              totalRecords === 1 ? "entry" : "entries"
-            }`}
+        {t("summary", { from: first, to: last, count: totalRecords })}
       </p>
 
       <div className="flex items-center gap-2">
         <span className="text-sm text-muted-foreground">
-          Page {page} of {totalPages}
+          {tCommon("pageOf", { page, total: totalPages })}
         </span>
 
         <Button
@@ -60,8 +61,8 @@ export function TimelinePagination({
           onClick={() => onPageChange(page - 1)}
           disabled={isLoading || page <= 1}
         >
-          <ChevronLeft className="h-4 w-4" />
-          Previous
+          <ChevronLeft data-flip-rtl className="h-4 w-4" />
+          {tActions("previous")}
         </Button>
 
         <Button
@@ -72,7 +73,7 @@ export function TimelinePagination({
           disabled={isLoading || page >= totalPages}
         >
           Next
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight data-flip-rtl className="h-4 w-4" />
         </Button>
       </div>
     </div>

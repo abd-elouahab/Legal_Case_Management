@@ -38,6 +38,7 @@ from core.exceptions import (
     RagUnavailableError,
     SearchAccessDeniedError,
 )
+from core.localization import default_language
 from core.rag import INSUFFICIENT_EVIDENCE_MARKER, NO_EVIDENCE_MESSAGES, RagFailureCode
 from models.case import Case
 from models.document import Document, DocumentCategory
@@ -392,7 +393,7 @@ class TestNoEvidence:
     ) -> None:
         outcome = rag_service.answer(ask(), actor=lawyer)
 
-        assert outcome.answer == NO_EVIDENCE_MESSAGES["fr"]
+        assert outcome.answer == NO_EVIDENCE_MESSAGES[default_language()]
 
     def test_the_no_evidence_message_follows_the_answer_language(
         self, rag_service: Any, lawyer: User
@@ -435,7 +436,7 @@ class TestNoEvidence:
 
         assert outcome.insufficient_evidence is True
         assert outcome.grounded is False
-        assert outcome.answer == NO_EVIDENCE_MESSAGES["fr"]
+        assert outcome.answer == NO_EVIDENCE_MESSAGES[default_language()]
         assert INSUFFICIENT_EVIDENCE_MARKER not in outcome.answer
 
     def test_a_declined_answer_carries_no_citations(

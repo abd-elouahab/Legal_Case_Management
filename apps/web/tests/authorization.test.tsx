@@ -25,10 +25,22 @@ import {
   isAllowed,
 } from "@/lib/authorization/access";
 import { accessRuleForPath } from "@/lib/authorization/routes";
+import messages from "@/messages/en.json";
 import { useSessionStore } from "@/stores/session-store";
 import { PERMISSION, PERMISSIONS } from "@/types/authorization";
 import type { UserRole } from "@/types/user";
 import { ROLE_PERMISSIONS, sessionUserWithRole } from "./helpers";
+
+/**
+ * The label the sidebar renders for a navigation key.
+ *
+ * Resolved from the shipped catalogue rather than from the config, because the
+ * config holds a **key**: asserting on `titleKey` would assert that the
+ * navigation matches itself, while this asserts on the words a user reads.
+ */
+function navLabel(key: string): string {
+  return (messages.navigation.items as Record<string, string>)[key];
+}
 
 let pathname = "/dashboard";
 
@@ -442,7 +454,10 @@ describe("SidebarNav", () => {
     signInAs("administrator");
     render(<SidebarNav />);
 
-    expect(visibleLinks()).toEqual(navItems.map((item) => item.title));
+    // The labels are the catalogue's, resolved the way the sidebar resolves
+    // them — asserting on `titleKey` would assert that the config matches
+    // itself.
+    expect(visibleLinks()).toEqual(navItems.map((item) => navLabel(item.titleKey)));
   });
 
   it("hides user management from a lawyer", () => {
@@ -486,7 +501,7 @@ describe("SidebarNav", () => {
         const rule = accessRuleForPath(item.href);
         const allowed =
           rule === null || isAllowed(rule, { role, permissions: ROLE_PERMISSIONS[role] });
-        expect(links.includes(item.title)).toBe(allowed);
+        expect(links.includes(navLabel(item.titleKey))).toBe(allowed);
       }
       unmount();
     }

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { ChevronLeft, ChevronRight, Search as SearchIcon, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -14,10 +15,12 @@ import { SearchResultCard } from "@/components/search/search-result-card";
 import { Spinner } from "@/components/shared/spinner";
 import {
   isSearchUnavailable,
-  searchErrorMessage,
   SEARCH_PAGE_SIZE,
+  useSearchErrorMessage,
   useSearchSession,
 } from "@/hooks/use-search";
+import { useFieldError } from "@/hooks/use-field-error";
+import { useNumberFormat } from "@/hooks/use-number-format";
 import { MAX_QUERY_LENGTH, searchFormSchema } from "@/lib/validation/search";
 import { EMPTY_SEARCH_FILTERS, type SearchFilters } from "@/types/search";
 
@@ -55,6 +58,12 @@ export function SemanticSearch({
   compact?: boolean;
 } = {}) {
   const session = useSearchSession();
+  const t = useTranslations("search");
+  const tActions = useTranslations("common.actions");
+  const tPagination = useTranslations("common.pagination");
+  const errorMessage = useSearchErrorMessage();
+  const fieldError = useFieldError();
+  const { formatNumber, formatPercent } = useNumberFormat();
   const [input, setInput] = React.useState("");
   const [filters, setFilters] = React.useState<SearchFilters>(() =>
     caseId ? { ...EMPTY_SEARCH_FILTERS, caseId } : EMPTY_SEARCH_FILTERS,
@@ -74,7 +83,7 @@ export function SemanticSearch({
 
     const parsed = searchFormSchema.safeParse({ query: input });
     if (!parsed.success) {
-      setValidationError(parsed.error.issues[0]?.message ?? "Enter a search query.");
+      setValidationError(fieldError(parsed.error.issues[0]?.message) ?? t("enterQuery"));
       return;
     }
 
@@ -92,19 +101,19 @@ export function SemanticSearch({
   return (
     <section className="flex flex-col gap-6" aria-labelledby="semantic-search-heading">
       <h2 id="semantic-search-heading" className="sr-only">
-        Semantic search
+        {t("heading")}
       </h2>
 
       <Card>
         <CardContent className="flex flex-col gap-4 py-4">
           <form onSubmit={submit} className="flex flex-col gap-2" role="search">
             <Label htmlFor="semantic-search-query">
-              {compact ? "Search this case's documents" : "Search your documents"}
+              {compact ? t("labelCase") : t("label")}
             </Label>
             <div className="flex flex-col gap-2 sm:flex-row">
               <div className="relative flex-1">
                 <SearchIcon
-                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                  className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
                   aria-hidden="true"
                 />
                 <Input
@@ -113,8 +122,8 @@ export function SemanticSearch({
                   value={input}
                   maxLength={MAX_QUERY_LENGTH}
                   onChange={(event) => setInput(event.target.value)}
-                  placeholder="Ask in your own words — for example, when is the rent payable?"
-                  className="pl-9"
+                  placeholder={t("placeholder")}
+                  className="ps-9"
                   aria-invalid={validationError !== null}
                   aria-describedby={
                     validationError ? "semantic-search-query-error" : undefined
@@ -125,12 +134,12 @@ export function SemanticSearch({
                 {session.isSearching ? (
                   <>
                     <Spinner className="h-4 w-4" />
-                    Searching
+                    {t("searching")}
                   </>
                 ) : (
                   <>
                     <SearchIcon className="h-4 w-4" aria-hidden="true" />
-                    Search
+                    {tActions("search")}
                   </>
                 )}
               </Button>
@@ -144,10 +153,7 @@ export function SemanticSearch({
                 {validationError}
               </p>
             ) : (
-              <p className="text-xs text-muted-foreground">
-                Natural language, in Arabic, French, or English — a question in one
-                language finds passages written in the others.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("hint")}</p>
             )}
           </form>
 
@@ -167,8 +173,8 @@ export function SemanticSearch({
         >
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span>
-            {searchErrorMessage(session.error)}
-            {unavailable ? " Your documents and their text are unaffected." : null}
+            {errorMessage(session.error)}
+            {unavailable ? ` ${t("documentsUnaffected")}` : null}
           </span>
         </p>
       ) : null}
@@ -185,24 +191,27 @@ export function SemanticSearch({
         response.results.length === 0 ? (
           <EmptyState
             icon={SearchIcon}
-            title="No matching passages"
-            description={
-              "Nothing in the documents you can access is close to that question. Try " +
-              "different wording, or widen the filters. Documents are searchable once " +
-              "their text has been extracted and indexed."
-            }
+            titleKey="search.empty.noResultsTitle"
+            descriptionKey="search.empty.noResultsDescription"
           />
         ) : (
           <div className="flex flex-col gap-4">
+            {/* The query is a `dir="auto"` element of its own rather than an
+                interpolation: an Arabic question inside a French sentence needs
+                its own direction, which a placeholder cannot carry. */}
             <p className="text-sm text-muted-foreground" aria-live="polite">
-              {response.resultCount} passage{response.resultCount === 1 ? "" : "s"} for{" "}
-              <span className="font-medium text-foreground">
+              {t("resultCount", { count: response.resultCount })}{" "}
+              <span className="font-medium text-foreground" dir="auto">
                 &ldquo;{response.query}&rdquo;
               </span>
               {response.topScore !== null
-                ? ` · best match ${Math.round(response.topScore * 100)}%`
+                ? ` · ${t("bestMatch", {
+                    percent: formatPercent(Math.round(response.topScore * 100), {
+                      decimals: 0,
+                    }),
+                  })}`
                 : null}{" "}
-              · {response.durationMs} ms
+              · {t("durationMs", { value: formatNumber(response.durationMs) })}
             </p>
 
             <div className="flex flex-col gap-3">
@@ -226,11 +235,11 @@ export function SemanticSearch({
                   onClick={session.previousPage}
                   disabled={session.page === 0 || session.isSearching}
                 >
-                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                  Previous
+                  <ChevronLeft data-flip-rtl className="h-4 w-4" aria-hidden="true" />
+                  {tActions("previous")}
                 </Button>
                 <span className="text-sm text-muted-foreground">
-                  Page {session.page + 1}
+                  {tPagination("page", { page: session.page + 1 })}
                 </span>
                 <Button
                   type="button"
@@ -239,8 +248,8 @@ export function SemanticSearch({
                   onClick={session.nextPage}
                   disabled={!response.hasMore || session.isSearching}
                 >
-                  Next
-                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                  {tActions("next")}
+                  <ChevronRight data-flip-rtl className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </div>
             ) : null}
@@ -251,11 +260,8 @@ export function SemanticSearch({
       {!session.submitted && !session.isSearching && !session.error ? (
         <EmptyState
           icon={SearchIcon}
-          title="Nothing searched yet"
-          description={
-            "Ask a question in your own words. Results are passages from the documents " +
-            "on cases you have access to, each with the file, page, and relevance."
-          }
+          titleKey="search.empty.notSearchedTitle"
+          descriptionKey="search.empty.notSearchedDescription"
         />
       ) : null}
     </section>

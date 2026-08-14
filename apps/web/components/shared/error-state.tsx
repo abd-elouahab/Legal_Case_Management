@@ -1,4 +1,7 @@
+"use client";
+
 import { AlertTriangle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -11,18 +14,22 @@ import { cn } from "@/lib/utils";
  * copy user-friendly and never expose stack traces (per code standards).
  */
 export function ErrorState({
-  title = "Something went wrong",
-  description = "An unexpected error occurred. Please try again.",
+  title,
+  description,
   onRetry,
-  retryLabel = "Try again",
+  retryLabel,
   className,
 }: {
+  /** Overrides the default copy. Each falls back to the shared failure wording. */
   title?: string;
   description?: string;
   onRetry?: () => void;
   retryLabel?: string;
   className?: string;
 }) {
+  const t = useTranslations("shared.error");
+  const tActions = useTranslations("common.actions");
+
   return (
     <div
       role="alert"
@@ -35,12 +42,16 @@ export function ErrorState({
         <AlertTriangle className="h-10 w-10" aria-hidden="true" />
       </span>
       <div className="flex flex-col gap-1">
-        <h3 className="text-base font-medium text-foreground">{title}</h3>
-        <p className="max-w-sm text-sm text-muted-foreground">{description}</p>
+        <h3 className="text-base font-medium text-foreground">
+          {title ?? t("title")}
+        </h3>
+        <p className="max-w-sm text-sm text-muted-foreground">
+          {description ?? t("description")}
+        </p>
       </div>
       {onRetry ? (
         <Button variant="outline" onClick={onRetry} className="mt-2">
-          {retryLabel}
+          {retryLabel ?? tActions("retry")}
         </Button>
       ) : null}
     </div>

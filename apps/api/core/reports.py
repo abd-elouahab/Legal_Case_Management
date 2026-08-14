@@ -47,7 +47,8 @@ from enum import StrEnum
 from types import MappingProxyType
 
 from core.indexing import LANGUAGE_ARABIC, LANGUAGE_ENGLISH, LANGUAGE_FRENCH
-from core.rag import CITATION_MARKER_PATTERN, SUPPORTED_ANSWER_LANGUAGES
+from core.localization import resolve_language
+from core.rag import CITATION_MARKER_PATTERN
 from models.report import ReportStatus, ReportType
 
 #: Revision of the template set below.
@@ -842,15 +843,18 @@ def resolve_report_language(requested: str | None) -> str:
     Deliberately simpler than :func:`~core.rag.resolve_answer_language`, and the
     difference is instructive: that function has a *question* to detect from, and
     a report request has no free text at all. So there is nothing to detect —
-    only an explicit choice to honour, and French to fall back to, which is the
-    fallback ``project-overview.md`` supports by naming Arabic and French as the
-    platform's interface and AI-interaction languages.
+    only an explicit choice to honour, and the application's default to fall back
+    to.
+
+    ``21-localization.md`` requires a generated report to use *"the user's
+    preferred language by default"* while letting a user *"explicitly request a
+    report in another supported language"*. Both halves are honoured one layer
+    up, in :class:`~services.report.ReportService`, which passes the request's
+    language and then the requester's stored preference as the two candidates —
+    because a *preference* is a fact about an account and this module has no
+    account to read one from.
     """
-    if requested:
-        wanted = requested.strip().lower()
-        if wanted in SUPPORTED_ANSWER_LANGUAGES:
-            return wanted
-    return LANGUAGE_FRENCH
+    return resolve_language(requested)
 
 
 def default_report_title(report_type: ReportType, *, case_number: str, language: str) -> str:

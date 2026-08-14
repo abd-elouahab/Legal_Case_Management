@@ -1,11 +1,12 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Download } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/shared/spinner";
-import { formatDateTime } from "@/lib/format";
+import { useDateFormat } from "@/hooks/use-date-format";
 import type { DocumentVersion, LegalDocument } from "@/types/document";
 
 /**
@@ -29,16 +30,19 @@ export function DocumentVersionHistory({
   /** The version currently being fetched, so only its button shows a spinner. */
   downloadingVersion?: number | null;
 }) {
+  const { formatDateTime } = useDateFormat();
+  const t = useTranslations("documents.versions");
+  const tActions = useTranslations("common.actions");
   const newestFirst = [...document.versions].sort((a, b) => b.version - a.version);
 
   return (
     <section className="flex flex-col gap-3" aria-labelledby="document-version-history">
       <h3 id="document-version-history" className="text-sm font-medium text-foreground">
-        Version history
+        {t("title")}
       </h3>
 
       {newestFirst.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No versions recorded.</p>
+        <p className="text-sm text-muted-foreground">{t("none")}</p>
       ) : (
         <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
           {newestFirst.map((version) => (
@@ -49,11 +53,11 @@ export function DocumentVersionHistory({
               <div className="flex flex-col gap-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium text-foreground">
-                    Version {version.version}
+                    {t("version", { version: version.version })}
                   </span>
                   {version.version === document.version ? (
                     <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">
-                      Current
+                      {t("current")}
                     </Badge>
                   ) : null}
                   <span className="text-xs text-muted-foreground">{version.fileSizeLabel}</span>
@@ -73,19 +77,23 @@ export function DocumentVersionHistory({
                 size="sm"
                 onClick={() => onDownloadVersion(version)}
                 disabled={downloadingVersion !== null}
+                // One label rather than a visible "Download" plus an `sr-only`
+                // fragment: a sentence assembled from two elements cannot be
+                // reordered by a translator, and the fragment used to repeat the
+                // entry's own heading verbatim.
+                aria-label={t("downloadVersion", { version: version.version })}
               >
                 {downloadingVersion === version.version ? (
                   <>
                     <Spinner className="h-4 w-4 text-current" />
-                    Downloading…
+                    {t("downloading")}
                   </>
                 ) : (
                   <>
                     <Download className="h-4 w-4" />
-                    Download
+                    {tActions("download")}
                   </>
                 )}
-                <span className="sr-only"> version {version.version}</span>
               </Button>
             </li>
           ))}

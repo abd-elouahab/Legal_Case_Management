@@ -2,7 +2,8 @@
 
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
-import { ApiError, NetworkError } from "@/lib/api/errors";
+import { NetworkError } from "@/lib/api/errors";
+import { useErrorMessage, type ErrorCodeMap } from "@/hooks/use-error-message";
 import { fetchCaseTimeline, fetchTimelineEvent } from "@/lib/api/timeline";
 import type { TimelineEvent } from "@/types/timeline";
 import type { TimelinePage, TimelineQuery } from "@/types/timeline-management";
@@ -40,34 +41,25 @@ export const timelineKeys = {
 };
 
 /**
- * Translate a failure into a message safe to show the user.
+ * Translate a failure into a sentence in the reader's language.
  *
- * Branches on the API's machine-readable `code` rather than on message text,
- * which is localizable and may change.
+ * Branches on the API's machine-readable `code` rather than on message text —
+ * which the server writes in English, with no knowledge of who is reading it.
+ * `hooks/use-error-message.ts` records why that matters; the short version is
+ * that an interface which is Arabic everywhere except when something goes wrong
+ * is not localized. Codes with no entry here fall through to the shared
+ * `errors.*` sentences and then to a generic one.
  */
-export function timelineErrorMessage(error: unknown): string {
-  if (error instanceof NetworkError) return error.message;
+const TIMELINE_ERRORS: ErrorCodeMap = {
+  timeline_event_not_found: "entryNotFound",
+  case_not_found: "caseNotFound",
+  validation_error: "invalidFilters",
+  forbidden: "noAccess",
+  missing_token: "sessionExpired",
+};
 
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case "timeline_event_not_found":
-        return "This activity entry no longer exists.";
-      case "case_not_found":
-        return "That case no longer exists. Refresh the page and try again.";
-      case "validation_error":
-        return error.details[0]?.message ?? "Check the filters you applied.";
-      case "forbidden":
-        return "You do not have permission to view this case's activity.";
-      case "invalid_token":
-      case "token_expired":
-      case "missing_token":
-        return "Your session has expired. Sign in again to continue.";
-      default:
-        return error.message || "Something went wrong. Please try again.";
-    }
-  }
-
-  return "Something went wrong. Please try again.";
+export function useTimelineErrorMessage(): (error: unknown) => string {
+  return useErrorMessage("timeline.errors", TIMELINE_ERRORS);
 }
 
 /**

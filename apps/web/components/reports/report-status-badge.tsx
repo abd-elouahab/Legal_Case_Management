@@ -1,8 +1,11 @@
+"use client";
+
+import { useTranslations } from "next-intl";
 import { Clock, FileCheck2, Loader2, TriangleAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { REPORT_STATUS_LABELS, type ReportStatus } from "@/types/report";
+import type { ReportStatus } from "@/types/report";
 
 /**
  * Status badge for one report generation run.
@@ -39,6 +42,7 @@ export function ReportStatusBadge({
   className?: string;
 }) {
   const Icon = STATUS_ICONS[status];
+  const t = useTranslations("reports.statuses");
 
   return (
     <Badge variant="outline" className={cn("gap-1.5", STATUS_STYLES[status], className)}>
@@ -46,7 +50,7 @@ export function ReportStatusBadge({
         className={cn("h-3.5 w-3.5", status === "processing" && "animate-spin")}
         aria-hidden="true"
       />
-      {REPORT_STATUS_LABELS[status]}
+      {t(status)}
     </Badge>
   );
 }

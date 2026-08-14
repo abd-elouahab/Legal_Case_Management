@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { FileStack, SearchX, Upload } from "lucide-react";
 import { toast } from "sonner";
 
@@ -21,7 +22,11 @@ import { IndexMetricsPanel } from "@/components/indexing/index-metrics-panel";
 import { OcrMetricsPanel } from "@/components/ocr/ocr-metrics-panel";
 import { SearchMetricsPanel } from "@/components/search/search-metrics-panel";
 import { useDocumentListQuery } from "@/hooks/use-document-list-query";
-import { documentErrorMessage, useDocuments, useDownloadDocument } from "@/hooks/use-documents";
+import {
+  useDocumentErrorMessage,
+  useDocuments,
+  useDownloadDocument,
+} from "@/hooks/use-documents";
 import { PERMISSION } from "@/types/authorization";
 import type { LegalDocument } from "@/types/document";
 
@@ -55,6 +60,9 @@ export function DocumentList({ caseId }: { caseId?: string } = {}) {
   const list = useDocumentListQuery(caseId ? { caseId } : {});
   const { data, isLoading, isFetching, isError, error, refetch } = useDocuments(list.query);
   const download = useDownloadDocument();
+  const t = useTranslations("documents");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useDocumentErrorMessage();
 
   const [dialog, setDialog] = React.useState<DialogState>({ kind: "none" });
   const close = React.useCallback(() => setDialog({ kind: "none" }), []);
@@ -64,10 +72,10 @@ export function DocumentList({ caseId }: { caseId?: string } = {}) {
       try {
         await download.mutateAsync({ id: document.id, filename: document.originalFilename });
       } catch (cause) {
-        toast.error(documentErrorMessage(cause));
+        toast.error(errorMessage(cause));
       }
     },
-    [download],
+    [download, errorMessage],
   );
 
   const documents = data?.items ?? [];
@@ -109,7 +117,7 @@ export function DocumentList({ caseId }: { caseId?: string } = {}) {
           <Protected permission={PERMISSION.documentsUpload}>
             <Button onClick={() => setDialog({ kind: "upload" })}>
               <Upload className="h-4 w-4" />
-              Upload document
+              {t("uploadDialog.title")}
             </Button>
           </Protected>
         </div>
@@ -121,8 +129,8 @@ export function DocumentList({ caseId }: { caseId?: string } = {}) {
         <DocumentTableSkeleton showCase={!caseId} />
       ) : isError ? (
         <ErrorState
-          title="Could not load documents"
-          description={documentErrorMessage(error)}
+          title={t("errors.listTitle")}
+          description={errorMessage(error)}
           onRetry={() => void refetch()}
         />
       ) : documents.length === 0 ? (
@@ -131,24 +139,24 @@ export function DocumentList({ caseId }: { caseId?: string } = {}) {
         list.isFiltered ? (
           <EmptyState
             icon={SearchX}
-            title="No documents match your filters"
-            description="Try a different search term, category, or date range, or clear the filters to see everything."
+            titleKey="documents.empty.filteredTitle"
+            descriptionKey="documents.empty.filteredDescription"
             action={
               <Button variant="outline" onClick={list.reset}>
-                Clear filters
+                {tActions("clearFilters")}
               </Button>
             }
           />
         ) : (
           <EmptyState
             icon={FileStack}
-            title="No documents yet"
-            description="Upload the first contract, filing, or piece of evidence to start building the case file."
+            titleKey="documents.empty.title"
+            descriptionKey="documents.empty.description"
             action={
               <Protected permission={PERMISSION.documentsUpload}>
                 <Button onClick={() => setDialog({ kind: "upload" })}>
                   <Upload className="h-4 w-4" />
-                  Upload document
+                  {t("uploadDialog.title")}
                 </Button>
               </Protected>
             }

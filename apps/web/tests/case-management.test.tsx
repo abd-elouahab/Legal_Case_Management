@@ -11,6 +11,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import en from "@/messages/en.json";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -793,7 +794,7 @@ describe("CreateCaseDialog", () => {
 
     await user.click(screen.getByRole("button", { name: /create case/i }));
 
-    expect(await screen.findByText("Title is required.")).toBeInTheDocument();
+    expect(await screen.findByText(en.validation.case.titleRequired)).toBeInTheDocument();
     expect(caseRequests(requests).some((request) => request.method === "POST")).toBe(false);
   });
 
@@ -909,7 +910,7 @@ describe("EditCaseDialog", () => {
 
     // The server's message is passed through: only it knows which move failed.
     expect(
-      await screen.findByText("A case that is 'draft' cannot move to 'closed'."),
+      await screen.findByText(en.cases.errors.invalidTransition),
     ).toBeInTheDocument();
   });
 
@@ -1021,7 +1022,7 @@ describe("AssignCaseDialog", () => {
     await user.click(screen.getByRole("button", { name: /save assignments/i }));
 
     expect(
-      await screen.findByText("This user cannot be assigned to that position."),
+      await screen.findByText(en.cases.errors.invalidAssignment),
     ).toBeInTheDocument();
   });
 });
@@ -1070,7 +1071,7 @@ describe("ArchiveCaseDialog", () => {
     await user.click(screen.getByRole("button", { name: "Archive" }));
 
     expect(
-      await screen.findByText("You do not have permission to perform this action."),
+      await screen.findByText(en.errors.forbidden),
     ).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });

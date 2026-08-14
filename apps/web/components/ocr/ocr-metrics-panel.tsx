@@ -1,12 +1,13 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Activity, TriangleAlert } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OcrStatusBadge } from "@/components/ocr/ocr-status-badge";
 import { useOcrMetrics } from "@/hooks/use-ocr";
-import { ocrFailureLabel } from "@/types/ocr";
+import { useNumberFormat } from "@/hooks/use-number-format";
 
 /**
  * Platform-wide text-extraction health.
@@ -37,6 +38,10 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 export function OcrMetricsPanel() {
   const { data, isLoading, isError } = useOcrMetrics();
+  const t = useTranslations("ocr.metrics");
+  const tOcr = useTranslations("ocr");
+  const tFailures = useTranslations("ocr.failures");
+  const { formatNumber, formatPercent } = useNumberFormat();
 
   if (isError) return null;
 
@@ -45,7 +50,7 @@ export function OcrMetricsPanel() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm">
           <Activity className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-          Text extraction
+          {tOcr("title")}
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -59,8 +64,7 @@ export function OcrMetricsPanel() {
           <>
             {!data.enabled ? (
               <p className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
-                Text extraction is disabled on this deployment. Existing results stay
-                readable; no new work is scheduled.
+                {t("disabled")}
               </p>
             ) : !data.engineAvailable ? (
               <p
@@ -68,26 +72,28 @@ export function OcrMetricsPanel() {
                 className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
               >
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>
-                  The {data.engine} engine is not reachable, so new extractions will fail.
-                  Uploaded documents are unaffected and every run can be retried once it is
-                  installed.
-                </span>
+                <span>{t("engineUnavailable", { engine: data.engine })}</span>
               </p>
             ) : null}
 
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <Stat label="Success rate" value={`${data.successRate}%`} />
-              <Stat label="Failure rate" value={`${data.failureRate}%`} />
               <Stat
-                label="Average time"
+                label={t("successRate")}
+                value={formatPercent(data.successRate, { decimals: 0 })}
+              />
+              <Stat
+                label={t("failureRate")}
+                value={formatPercent(data.failureRate, { decimals: 0 })}
+              />
+              <Stat
+                label={t("averageTime")}
                 value={
                   data.averageDurationSeconds !== null
-                    ? `${data.averageDurationSeconds}s`
+                    ? t("seconds", { value: data.averageDurationSeconds })
                     : "—"
                 }
               />
-              <Stat label="Runs" value={data.totalRuns.toLocaleString()} />
+              <Stat label={t("runs")} value={formatNumber(data.totalRuns)} />
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -107,12 +113,12 @@ export function OcrMetricsPanel() {
 
             {Object.keys(data.failuresByCode).length > 0 ? (
               <dl className="flex flex-col gap-1">
-                <dt className="text-xs text-muted-foreground">Failures by cause</dt>
+                <dt className="text-xs text-muted-foreground">{t("failuresByCause")}</dt>
                 {Object.entries(data.failuresByCode)
                   .sort(([, a], [, b]) => b - a)
                   .map(([code, count]) => (
                     <dd key={code} className="flex justify-between gap-4 text-xs">
-                      <span className="text-foreground">{ocrFailureLabel(code)}</span>
+                      <span className="text-foreground">{tFailures(code)}</span>
                       <span className="tabular-nums text-muted-foreground">{count}</span>
                     </dd>
                   ))}

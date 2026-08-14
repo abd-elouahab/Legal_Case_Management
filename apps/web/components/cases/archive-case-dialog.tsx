@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import {
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/shared/spinner";
-import { caseErrorMessage, useArchiveCase } from "@/hooks/use-cases";
+import { useArchiveCase, useCaseErrorMessage } from "@/hooks/use-cases";
 import type { LegalCase } from "@/types/case";
 
 /**
@@ -40,6 +41,9 @@ export function ArchiveCaseDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const archive = useArchiveCase();
+  const t = useTranslations("cases.archiveDialog");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useCaseErrorMessage();
   const [error, setError] = React.useState<string | null>(null);
 
   // Clear a stale error from a previous attempt when the dialog reopens.
@@ -58,10 +62,10 @@ export function ArchiveCaseDialog({
 
     try {
       await archive.mutateAsync(legalCase.id);
-      toast.success(`Case ${legalCase.caseNumber} was archived.`);
+      toast.success(t("archived", { caseNumber: legalCase.caseNumber }));
       onOpenChange(false);
     } catch (cause) {
-      setError(caseErrorMessage(cause));
+      setError(errorMessage(cause));
     }
   }
 
@@ -71,14 +75,14 @@ export function ArchiveCaseDialog({
     <AlertDialog open={open} onOpenChange={isPending ? undefined : onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
+          {/* The case number is interpolated rather than concatenated, so a
+              language that puts the object before the verb can say so. */}
           <AlertDialogTitle>
-            Archive {legalCase ? legalCase.caseNumber : "this case"}?
+            {legalCase
+              ? t("title", { caseNumber: legalCase.caseNumber })
+              : t("titleGeneric")}
           </AlertDialogTitle>
-          <AlertDialogDescription>
-            The case leaves the active workload but is kept — not deleted — so its
-            documents, timeline, and history stay intact. It remains searchable,
-            and you can restore it at any time.
-          </AlertDialogDescription>
+          <AlertDialogDescription>{t("description")}</AlertDialogDescription>
         </AlertDialogHeader>
 
         {error ? (
@@ -88,15 +92,15 @@ export function ArchiveCaseDialog({
         ) : null}
 
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={isPending}>{tActions("cancel")}</AlertDialogCancel>
           <Button variant="destructive" onClick={confirm} disabled={isPending}>
             {isPending ? (
               <>
                 <Spinner className="h-4 w-4 text-current" />
-                Archiving…
+                {t("archiving")}
               </>
             ) : (
-              "Archive"
+              t("confirm")
             )}
           </Button>
         </AlertDialogFooter>

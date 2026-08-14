@@ -11,10 +11,17 @@ from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Response, status
 
-from api.deps import AccessTokenPayload, AuthServiceDep, ClientIp, CurrentUser
+from api.deps import (
+    AccessTokenPayload,
+    AuthServiceDep,
+    ClientIp,
+    ClientUserAgent,
+    CurrentUser,
+)
 from api.v1.auth.cookies import clear_refresh_cookie, set_refresh_cookie
 from core.config import settings
 from core.exceptions import MissingTokenError
+from core.observability import SecurityEventType
 from schemas.auth import (
     ChangePasswordRequest,
     ChangePasswordResponse,
@@ -26,6 +33,7 @@ from schemas.auth import (
 from schemas.errors import ErrorResponse
 from schemas.user import UserRead
 from services.auth import TokenPair
+from services.security_monitor import get_security_monitor
 
 router = APIRouter()
 
@@ -77,6 +85,7 @@ def login(
     response: Response,
     auth: AuthServiceDep,
     client_ip: ClientIp,
+    user_agent: ClientUserAgent,
 ) -> TokenResponse:
     """Verify credentials and start a session.
 
@@ -88,7 +97,22 @@ def login(
     Repeated failures are throttled per account and per client IP: after too many
     consecutive failures the endpoint responds 429 until the lockout expires.
     """
-    user, tokens = auth.login(payload.email, payload.password, ip_address=client_ip)
+    user, tokens = auth.login(
+        payload.email,
+        payload.password,
+        ip_address=client_ip,
+        user_agent=user_agent,
+    )
+    # The **denominator**. Every way a sign-in can fail is already an exception
+    # that `core/exceptions.py` classifies, so failures need no code anywhere;
+    # a success is not an exception, and without it a failure count cannot be
+    # read — fifty failures out of fifty is an attack and fifty out of fifty
+    # thousand is a Monday. Recorded here rather than in `AuthService` because
+    # `22-monitoring.md` allows a module to *emit* a metric and forbids it to
+    # hold monitoring logic, and one call with no branch is the former.
+    get_security_monitor().record(
+        SecurityEventType.LOGIN_SUCCEEDED, role=user.role.value, source=client_ip
+    )
     return _token_response(response, UserRead.model_validate(user), tokens)
 
 
@@ -102,6 +126,8 @@ def login(
 def refresh_tokens(
     response: Response,
     auth: AuthServiceDep,
+    client_ip: ClientIp,
+    user_agent: ClientUserAgent,
     refresh_cookie: RefreshCookie = None,
     payload: RefreshRequest | None = None,
 ) -> TokenResponse:
@@ -115,7 +141,7 @@ def refresh_tokens(
     if not token:
         raise MissingTokenError("No refresh token was provided.")
 
-    user, tokens = auth.refresh(token)
+    user, tokens = auth.refresh(token, ip_address=client_ip, user_agent=user_agent)
     return _token_response(response, UserRead.model_validate(user), tokens)
 
 
@@ -140,8 +166,15 @@ def logout(
     though JWTs are otherwise valid until they expire.
     """
     token = (payload.refresh_token if payload else None) or refresh_cookie
-    auth.logout(current_user, access_payload.jti, access_payload.expires_at, token)
+    auth.logout(
+        current_user,
+        access_payload.jti,
+        access_payload.expires_at,
+        token,
+        session_id=access_payload.session_id,
+    )
     clear_refresh_cookie(response)
+    get_security_monitor().record(SecurityEventType.LOGOUT, role=current_user.role.value)
     return MessageResponse(message="Signed out successfully.")
 
 
@@ -192,6 +225,13 @@ def change_password(
     )
 
     set_refresh_cookie(response, tokens.refresh.token)
+    # A password change ends every other session, which is indistinguishable from
+    # a mass revocation in every other signal the platform emits — so it is worth
+    # a line of its own in the security feed. The event carries a role and nothing
+    # else: never the account, and obviously never either password.
+    get_security_monitor().record(
+        SecurityEventType.PASSWORD_CHANGED, role=current_user.role.value
+    )
     return ChangePasswordResponse(
         message="Password changed successfully. Other devices have been signed out.",
         access_token=tokens.access.token,

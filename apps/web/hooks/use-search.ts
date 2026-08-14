@@ -10,6 +10,7 @@ import {
 
 import { fetchSearchMetrics, searchDocuments } from "@/lib/api/search";
 import { ApiError, NetworkError } from "@/lib/api/errors";
+import { useErrorMessage, type ErrorCodeMap } from "@/hooks/use-error-message";
 import {
   EMPTY_SEARCH_FILTERS,
   type SearchFilters,
@@ -54,43 +55,29 @@ export const searchKeys = {
 };
 
 /**
- * Translate a failure into a message safe to show the user.
+ * Translate a failure into a sentence in the reader's language.
  *
- * Branches on the API's machine-readable `code` rather than on message text,
- * which is localizable and may change. The two dependency outages carry the
- * server's own message through verbatim, because only the server knows whether
- * the model or the vector database is the one that is down.
+ * Branches on the API's machine-readable `code` rather than on message text —
+ * which the server writes in English, with no knowledge of who is reading it.
+ * `hooks/use-error-message.ts` records why that matters; the short version is
+ * that an interface which is Arabic everywhere except when something goes wrong
+ * is not localized. Codes with no entry here fall through to the shared
+ * `errors.*` sentences and then to a generic one.
  */
-export function searchErrorMessage(error: unknown): string {
-  if (error instanceof NetworkError) return error.message;
+const SEARCH_ERRORS: ErrorCodeMap = {
+  search_disabled: "disabled",
+  embedding_unavailable: "embeddingUnavailable",
+  vector_store_unavailable: "vectorStoreUnavailable",
+  search_filter_too_broad: "filterTooBroad",
+  invalid_search_query: "invalidQuery",
+  case_not_found: "caseNotFound",
+  document_not_found: "documentNotFound",
+  forbidden: "noFilterAccess",
+  missing_token: "sessionExpired",
+};
 
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case "search_disabled":
-        return "Semantic search is currently disabled on this platform.";
-      case "embedding_unavailable":
-      case "vector_store_unavailable":
-        return error.message;
-      case "search_filter_too_broad":
-        return error.message;
-      case "invalid_search_query":
-        return "Enter a search query of at least two characters.";
-      case "case_not_found":
-        return "That case no longer exists. Clear the filter and search again.";
-      case "document_not_found":
-        return "That document no longer exists. Clear the filter and search again.";
-      case "forbidden":
-        return "You do not have access to the case or document you filtered by.";
-      case "invalid_token":
-      case "token_expired":
-      case "missing_token":
-        return "Your session has expired. Sign in again to continue.";
-      default:
-        return error.message || "Something went wrong. Please try again.";
-    }
-  }
-
-  return "Something went wrong. Please try again.";
+export function useSearchErrorMessage(): (error: unknown) => string {
+  return useErrorMessage("search.errors", SEARCH_ERRORS);
 }
 
 /** Whether a failure is a dependency outage rather than anything about the request. */

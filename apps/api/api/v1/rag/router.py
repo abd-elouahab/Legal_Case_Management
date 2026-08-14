@@ -43,7 +43,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 
 from api.authorization import require_permission
-from api.deps import RagServiceDep
+from api.deps import LanguageDirectoryDep, RagServiceDep
+from services.localization import chosen_language
 from core.permissions import Permission
 from models.user import User
 from schemas.errors import ErrorResponse
@@ -108,7 +109,12 @@ _UNAVAILABLE: dict[int | str, dict[str, object]] = {
     summary="Answer a question from indexed legal documents",
     responses={**_UNAUTHORIZED, **_FORBIDDEN, **_NOT_FOUND, **_VALIDATION, **_UNAVAILABLE},
 )
-def answer_question(actor: Asker, rag: RagServiceDep, request: RagRequest) -> RagAnswerResponse:
+def answer_question(
+    actor: Asker,
+    rag: RagServiceDep,
+    languages: LanguageDirectoryDep,
+    request: RagRequest,
+) -> RagAnswerResponse:
     """Answer a question using only the case documents this caller may read.
 
     The question is retrieved against with the **same model the documents were
@@ -133,8 +139,25 @@ def answer_question(actor: Asker, rag: RagServiceDep, request: RagRequest) -> Ra
 
     Arabic, French, and English share one retrieval space, so a question in one
     language finds passages written in the others; `language` chooses which one
-    the answer is written in, and is detected from the question when omitted.
+    the answer is written in. Omitted, it is **the caller's own stored language
+    preference** — ``21-localization.md``'s *"respond in the user's preferred
+    language by default"* — and detection from the question is what remains for a
+    caller who has never chosen one. Deliberately the *choice* rather than the
+    resolved default: an account that has expressed no opinion is better served by
+    the language of its own question than by the deployment's answer, which is
+    ``code-standards.md``'s *"AI must detect and respond in the user's selected
+    language"* read as the two halves it is.
+
+    The default is applied **here rather than in the pipeline**, and deliberately:
+    :class:`~services.rag.RagService` holds no repository and no database session,
+    which is the property that makes *"the pipeline retrieves only through the
+    search service"* structural. Handing it a settings lookup to save one line in a
+    router would be the first exception to that.
     """
+    if request.language is None:
+        preferred = chosen_language(languages, actor.id)
+        if preferred is not None:
+            request = request.model_copy(update={"language": preferred})
     return rag.answer(request, actor=actor).to_response()
 
 

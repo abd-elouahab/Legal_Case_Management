@@ -9,6 +9,14 @@ import * as React from "react";
  * own `<html>`/`<body>`. Kept intentionally dependency-free (no providers or
  * theme context are guaranteed available here). Dark background is inlined to
  * match the platform surface.
+ *
+ * **The one screen on the platform that is not translated, and structurally so.**
+ * It is the boundary that catches a failure of the root layout — the layout that
+ * mounts `LocaleProvider` — so by the time this renders there is no catalogue,
+ * no locale, and no guarantee that a dynamic import would resolve. Reaching for
+ * `useTranslations` here would replace a legible English sentence with a second
+ * crash. `app/not-found.tsx` is inside that layout and *is* translated; the
+ * difference between the two files is exactly this one.
  */
 export default function GlobalError({
   error,

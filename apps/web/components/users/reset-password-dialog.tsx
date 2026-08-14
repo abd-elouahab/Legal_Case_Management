@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { AlertCircle, Check, Copy, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 
@@ -15,7 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/shared/spinner";
-import { useResetUserPassword, userErrorMessage } from "@/hooks/use-users";
+import { useResetUserPassword, useUserErrorMessage } from "@/hooks/use-users";
 import type { ManagedUser } from "@/types/user";
 
 /**
@@ -39,6 +40,9 @@ export function ResetPasswordDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const resetPassword = useResetUserPassword();
+  const t = useTranslations("users.resetPasswordDialog");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useUserErrorMessage();
   const [temporaryPassword, setTemporaryPassword] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [copied, setCopied] = React.useState(false);
@@ -65,7 +69,7 @@ export function ResetPasswordDialog({
       const result = await resetPassword.mutateAsync(user.id);
       setTemporaryPassword(result.temporaryPassword);
     } catch (cause) {
-      setError(userErrorMessage(cause));
+      setError(errorMessage(cause));
     }
   }
 
@@ -75,11 +79,11 @@ export function ResetPasswordDialog({
     try {
       await navigator.clipboard.writeText(temporaryPassword);
       setCopied(true);
-      toast.success("Temporary password copied.");
+      toast.success(t("copied"));
     } catch {
       // Clipboard access can be denied or unavailable (insecure context). The
       // password is on screen either way, so this is not worth an error banner.
-      toast.error("Copy it manually — the clipboard is unavailable.");
+      toast.error(t("copyRefused"));
     }
   }
 
@@ -91,12 +95,14 @@ export function ResetPasswordDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {isRevealed ? "Temporary password" : `Reset password for ${user?.fullName ?? "user"}?`}
+            {isRevealed
+              ? t("revealedTitle")
+              : t("title", { name: user?.fullName ?? "" })}
           </DialogTitle>
           <DialogDescription>
             {isRevealed
-              ? "Share this with the user through a trusted channel. It is not shown again."
-              : "A new temporary password is generated. The user is signed out of every device and must choose a new password before continuing."}
+              ? t("revealedDescription")
+              : t("description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -117,7 +123,7 @@ export function ResetPasswordDialog({
               variant="outline"
               size="icon"
               onClick={copy}
-              aria-label="Copy temporary password"
+              aria-label={t("copyLabel")}
             >
               {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
             </Button>
@@ -127,7 +133,7 @@ export function ResetPasswordDialog({
         <DialogFooter>
           {isRevealed ? (
             <Button type="button" onClick={() => onOpenChange(false)}>
-              Done
+              {t("done")}
             </Button>
           ) : (
             <>
@@ -137,18 +143,18 @@ export function ResetPasswordDialog({
                 onClick={() => onOpenChange(false)}
                 disabled={isPending}
               >
-                Cancel
+                {tActions("cancel")}
               </Button>
               <Button type="button" onClick={confirm} disabled={isPending}>
                 {isPending ? (
                   <>
                     <Spinner className="h-4 w-4 text-current" />
-                    Resetting…
+                    {t("resetting")}
                   </>
                 ) : (
                   <>
                     <KeyRound className="h-4 w-4" />
-                    Reset password
+                    {t("confirm")}
                   </>
                 )}
               </Button>

@@ -1984,8 +1984,92 @@ def email_delivery_service(db_session: Session, email_provider, email_metrics, e
     )
 
 
+# --------------------------------------------------------------------------- #
+# WhatsApp delivery fixtures
+# --------------------------------------------------------------------------- #
+
+
 @pytest.fixture
-def notification_channels(email_delivery_service):  # type: ignore[no-untyped-def]
+def whatsapp_provider():  # type: ignore[no-untyped-def]
+    """A provider that accepts every message and records it, sending nothing.
+
+    The real :class:`~services.whatsapp_provider.NullWhatsAppProvider` rather than
+    a bespoke double, for the reason ``email_provider`` uses the real null email
+    backend — and one more that is specific to this channel: a test suite cannot
+    have a WhatsApp Business account, an approved template, or a real phone number
+    to send to, so substituting here is not a convenience but the only way this
+    feature is testable at all.
+    """
+    from services.whatsapp_provider import NullWhatsAppProvider
+
+    return NullWhatsAppProvider()
+
+
+@pytest.fixture
+def whatsapp_metrics():  # type: ignore[no-untyped-def]
+    """A fresh WhatsApp metrics recorder per test.
+
+    Per test rather than the process-wide one, for the reason every other
+    ``*_metrics`` fixture here is: the real recorder counts for the life of the
+    process.
+    """
+    from services.whatsapp_metrics import InMemoryWhatsAppMetrics
+
+    return InMemoryWhatsAppMetrics()
+
+
+@pytest.fixture
+def whatsapp_queue(db_session: Session, whatsapp_provider, whatsapp_metrics):  # type: ignore[no-untyped-def]
+    """An inline WhatsApp queue, so a queued delivery is sent before the assertion.
+
+    In production this is a bounded thread pool and the message goes out moments
+    later; here the assertion is about the *outcome*, and a test that waits for a
+    thread is a test that will eventually be flaky.
+
+    The service the runner builds is given **no queue of its own**, exactly as the
+    real worker's is: a send does not schedule more sends.
+    """
+    from services.job_queue import InlineJobQueue
+    from services.whatsapp_delivery import build_whatsapp_delivery_service
+    from services.whatsapp_templates import get_whatsapp_template_renderer
+
+    def _run(job) -> None:  # type: ignore[no-untyped-def]
+        build_whatsapp_delivery_service(
+            db_session,
+            provider=whatsapp_provider,
+            templates=get_whatsapp_template_renderer(),
+            queue=None,
+            metrics=whatsapp_metrics,
+        ).process(job)
+
+    return InlineJobQueue(_run, name="whatsapp")
+
+
+@pytest.fixture
+def whatsapp_delivery_service(  # type: ignore[no-untyped-def]
+    db_session: Session, whatsapp_provider, whatsapp_metrics, whatsapp_queue
+):
+    """The WhatsApp Delivery Service on the test database.
+
+    The real descriptors are deliberately *not* substituted: they are files under
+    source control with no external dependency, and their parameter count and
+    order are the contract with the approved template — so the message composed
+    here is the message production would compose.
+    """
+    from services.whatsapp_delivery import build_whatsapp_delivery_service
+    from services.whatsapp_templates import get_whatsapp_template_renderer
+
+    return build_whatsapp_delivery_service(
+        db_session,
+        provider=whatsapp_provider,
+        templates=get_whatsapp_template_renderer(),
+        queue=whatsapp_queue,
+        metrics=whatsapp_metrics,
+    )
+
+
+@pytest.fixture
+def notification_channels(email_delivery_service, whatsapp_delivery_service):  # type: ignore[no-untyped-def]
     """The delivery channels a created notification batch is offered to.
 
     A factory taking a session, matching what
@@ -1993,10 +2077,16 @@ def notification_channels(email_delivery_service):  # type: ignore[no-untyped-de
     and ignoring it, because every fixture here already shares the one test
     session. That is the only difference from production, and it is what lets an
     assertion read the delivery rows the subscriber just wrote.
+
+    **Both channels, always**, rather than one per test file: each is gated by its
+    own feature switch inside its own ``dispatch``, so a test that has not turned a
+    channel on gets nothing from it — which is both the production behaviour and
+    the arrangement that catches a channel leaking into a test that is not about
+    it.
     """
 
     def _channels(_session):  # type: ignore[no-untyped-def]
-        return (email_delivery_service,)
+        return (email_delivery_service, whatsapp_delivery_service)
 
     return _channels
 
@@ -2099,6 +2189,151 @@ def make_notification(db_session: Session):  # type: ignore[no-untyped-def]
     return _make
 
 
+# --------------------------------------------------------------------------- #
+# Dashboard fixtures
+#
+# Two, and the shortness of the list is worth noting: the dashboard has no
+# provider, no queue, no worker, and no external service, because it reads the
+# database and returns. Everything else it uses — the repository, the access
+# policy, the widget catalog — is the application's own and is deliberately not
+# doubled, so a test exercises the real authorization and the real queries.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def dashboard_metrics():  # type: ignore[no-untyped-def]
+    """A fresh dashboard metrics recorder per test.
+
+    Per test rather than the process-wide one, for the reason every other
+    ``*_metrics`` fixture here is: the real recorder counts for the life of the
+    process, so "one dashboard was loaded" would otherwise depend on how many
+    every earlier test loaded.
+    """
+    from services.dashboard_metrics import InMemoryDashboardMetrics
+
+    return InMemoryDashboardMetrics()
+
+
+@pytest.fixture(autouse=True)
+def dashboard_cache():  # type: ignore[no-untyped-def]
+    """Empty the platform-wide widget cache around every test.
+
+    Autouse and on both sides, because the cache is module-level and keyed by
+    widget and window rather than by caller: without this, a test that stores a
+    figure would hand it to the next test's database, which is a *different*
+    in-memory database. It is the one piece of state this feature keeps between
+    requests, and it is why the feature has a fixture at all.
+    """
+    from services.dashboard import clear_dashboard_cache
+
+    clear_dashboard_cache()
+    yield
+    clear_dashboard_cache()
+
+
+# --------------------------------------------------------------------------- #
+# Settings fixtures
+# --------------------------------------------------------------------------- #
+
+
+class InMemorySessionRegistry:
+    """Test double for :class:`~services.session_registry.SessionRegistry`.
+
+    Mirrors the real contract — record, list, remove, clear-except-one — without
+    Redis. The real registry *fails soft*, so a suite without Redis would still
+    pass with it in place; it would pass by reporting **no sessions**, which is
+    exactly what the active-sessions tests need to assert about. A double that
+    actually remembers is the only way to tell "the list works" from "the list is
+    empty because nothing recorded".
+
+    Expiry is honoured on read, matching the real store, so a test can build a
+    session that has already lapsed and assert it is not listed.
+    """
+
+    def __init__(self) -> None:
+        self._sessions: dict[uuid.UUID, dict[str, object]] = {}
+
+    def record(
+        self,
+        user_id: uuid.UUID,
+        session_id: str,
+        *,
+        expires_at: datetime,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> None:
+        from services.session_registry import SessionRecord
+
+        now = datetime.now(UTC)
+        existing = self._sessions.setdefault(user_id, {}).get(session_id)
+        created_at = existing.created_at if isinstance(existing, SessionRecord) else now
+
+        self._sessions[user_id][session_id] = SessionRecord(
+            session_id=session_id,
+            created_at=created_at,
+            last_seen_at=now,
+            expires_at=expires_at,
+            ip_address=ip_address
+            or (existing.ip_address if isinstance(existing, SessionRecord) else None),
+            user_agent=user_agent
+            or (existing.user_agent if isinstance(existing, SessionRecord) else None),
+        )
+
+    def list_sessions(self, user_id: uuid.UUID):  # type: ignore[no-untyped-def]
+        from services.session_registry import SessionRecord
+
+        now = datetime.now(UTC)
+        records = [
+            record
+            for record in self._sessions.get(user_id, {}).values()
+            if isinstance(record, SessionRecord) and record.expires_at > now
+        ]
+        return sorted(records, key=lambda record: record.created_at, reverse=True)
+
+    def remove(self, user_id: uuid.UUID, session_id: str) -> None:
+        self._sessions.get(user_id, {}).pop(session_id, None)
+
+    def clear(self, user_id: uuid.UUID, *, keep: str | None = None) -> None:
+        stored = self._sessions.get(user_id, {})
+        self._sessions[user_id] = (
+            {keep: stored[keep]} if keep is not None and keep in stored else {}
+        )
+
+
+@pytest.fixture
+def session_registry() -> InMemorySessionRegistry:
+    """A fresh in-memory record of live sign-ins per test."""
+    return InMemorySessionRegistry()
+
+
+@pytest.fixture
+def settings_metrics():  # type: ignore[no-untyped-def]
+    """A fresh settings metrics recorder per test.
+
+    Per test rather than the process-wide one, for the reason every other
+    ``*_metrics`` fixture here is: the real recorder counts for the life of the
+    process, so "one setting was changed" would otherwise depend on how many every
+    earlier test changed.
+    """
+    from services.settings_metrics import InMemorySettingsMetrics
+
+    return InMemorySettingsMetrics()
+
+
+@pytest.fixture
+def localization_metrics():  # type: ignore[no-untyped-def]
+    """A fresh localization metrics recorder per test.
+
+    Per test rather than the process-wide one, for the reason every other
+    ``*_metrics`` fixture here is — and more strongly than most: two of the four
+    figures it holds are *reported by clients*, so a shared recorder would make
+    "one missing key was reported" depend on how many every earlier test reported.
+    """
+    from services.localization_metrics import InMemoryLocalizationMetrics
+
+    return InMemoryLocalizationMetrics()
+
+
 @pytest.fixture
 def api_client(
     db_session: Session,
@@ -2125,6 +2360,14 @@ def api_client(
     email_provider,  # type: ignore[no-untyped-def]
     email_metrics,  # type: ignore[no-untyped-def]
     email_queue,  # type: ignore[no-untyped-def]
+    whatsapp_provider,  # type: ignore[no-untyped-def]
+    whatsapp_metrics,  # type: ignore[no-untyped-def]
+    whatsapp_queue,  # type: ignore[no-untyped-def]
+    dashboard_metrics,  # type: ignore[no-untyped-def]
+    dashboard_cache,  # type: ignore[no-untyped-def]
+    session_registry: InMemorySessionRegistry,
+    settings_metrics,  # type: ignore[no-untyped-def]
+    localization_metrics,  # type: ignore[no-untyped-def]
 ) -> Iterator[TestClient]:
     """A TestClient whose external collaborators are all doubles.
 
@@ -2141,6 +2384,7 @@ def api_client(
     """
     from api.deps import (
         get_assistant_metrics_recorder,
+        get_dashboard_metrics_recorder,
         get_document_storage,
         get_email_job_queue,
         get_email_metrics_recorder,
@@ -2150,6 +2394,7 @@ def api_client(
         get_follow_up_suggester_dependency,
         get_index_job_queue,
         get_llm_provider_dependency,
+        get_localization_metrics_recorder,
         get_login_throttle,
         get_notification_metrics_recorder,
         get_notification_subscriber_dependency,
@@ -2159,9 +2404,14 @@ def api_client(
         get_report_job_queue,
         get_search_metrics_recorder,
         get_session_factory,
+        get_session_registry,
+        get_settings_metrics_recorder,
         get_token_revocation_store,
         get_vector_searcher_dependency,
         get_vector_store_dependency,
+        get_whatsapp_job_queue,
+        get_whatsapp_metrics_recorder,
+        get_whatsapp_provider_dependency,
     )
     from api.v1.websocket.router import get_manager
     from db.session import get_db
@@ -2216,6 +2466,42 @@ def api_client(
     app.dependency_overrides[get_email_provider_dependency] = lambda: email_provider
     app.dependency_overrides[get_email_job_queue] = lambda: email_queue
     app.dependency_overrides[get_email_metrics_recorder] = lambda: email_metrics
+    # The WhatsApp provider, its queue, and its recorder, for the same three
+    # reasons one channel over — and for one more that is specific to this one: a
+    # test suite cannot have a WhatsApp Business account, an approved template, or
+    # a real number to send to, so the discarding provider is not a convenience
+    # here but the only way the channel is exercisable at all. The **descriptors
+    # are deliberately not overridden**: their parameter count and order are the
+    # contract with the approved template, so the message composed here is the
+    # message production composes.
+    app.dependency_overrides[get_whatsapp_provider_dependency] = lambda: whatsapp_provider
+    app.dependency_overrides[get_whatsapp_job_queue] = lambda: whatsapp_queue
+    app.dependency_overrides[get_whatsapp_metrics_recorder] = lambda: whatsapp_metrics
+    # The dashboard recorder, for the reason every other recorder here is
+    # overridden. Its collaborators are otherwise **all the application's own** —
+    # there is no dashboard queue, no provider, and no external service to double,
+    # because the dashboard reads the database and nothing else. The one thing
+    # that does need clearing between tests is the platform-wide widget cache,
+    # which the `dashboard_cache` fixture handles.
+    app.dependency_overrides[get_dashboard_metrics_recorder] = lambda: dashboard_metrics
+    # The session registry, because the real one is Redis-backed and — unlike the
+    # denylist — **fails soft**: without this override the active-sessions tests
+    # would pass by reporting an empty list, which is indistinguishable from the
+    # feature being broken. The settings recorder, for the reason every other
+    # recorder here is overridden. Everything else the Settings module needs is
+    # the application's own: there is no queue, no provider, and no external
+    # service, because it reads and writes the database and delegates the rest.
+    app.dependency_overrides[get_session_registry] = lambda: session_registry
+    app.dependency_overrides[get_settings_metrics_recorder] = lambda: settings_metrics
+    # Localization overrides **only** the metrics recorder. The language
+    # directory underneath it is the application's own, reading the same
+    # `user_settings` rows the Settings API writes — which is the whole point of
+    # these tests: a preference saved through one endpoint has to reach an email,
+    # a WhatsApp message, and a notification feed without anything being
+    # substituted in between.
+    app.dependency_overrides[get_localization_metrics_recorder] = (
+        lambda: localization_metrics
+    )
     try:
         with TestClient(app) as test_client:
             yield test_client

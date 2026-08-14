@@ -22,6 +22,7 @@ import {
   withdrawFeedback,
 } from "@/lib/api/assistant";
 import { ApiError, NetworkError } from "@/lib/api/errors";
+import { useErrorMessage, type ErrorCodeMap } from "@/hooks/use-error-message";
 import type {
   AssistantCitation,
   AssistantMetrics,
@@ -67,56 +68,38 @@ export const assistantKeys = {
 };
 
 /**
- * Translate a failure into a message safe to show the user.
+ * Translate a failure into a sentence in the reader's language.
  *
- * Branches on the API's machine-readable `code` rather than on message text,
- * which is localizable and may change. The dependency outages carry the server's
- * own message through verbatim, because only the server knows whether retrieval
- * or the model is the one that is down.
+ * Branches on the API's machine-readable `code` rather than on message text —
+ * which the server writes in English, with no knowledge of who is reading it.
+ * `hooks/use-error-message.ts` records why that matters; the short version is
+ * that an interface which is Arabic everywhere except when something goes wrong
+ * is not localized. Codes with no entry here fall through to the shared
+ * `errors.*` sentences and then to a generic one.
  */
-export function assistantErrorMessage(error: unknown): string {
-  if (error instanceof NetworkError) return error.message;
+const ASSISTANT_ERRORS: ErrorCodeMap = {
+  assistant_disabled: "disabled",
+  rag_disabled: "disabled",
+  retrieval_unavailable: "retrievalUnavailable",
+  llm_unavailable: "modelUnavailable",
+  llm_failure: "modelFailure",
+  malformed_response: "malformedResponse",
+  timeout: "timeout",
+  context_overflow: "contextOverflow",
+  conversation_not_found: "conversationNotFound",
+  conversation_message_not_found: "messageNotFound",
+  conversation_archived: "conversationArchived",
+  conversation_full: "conversationFull",
+  invalid_feedback_target: "invalidFeedbackTarget",
+  invalid_question: "invalidQuestion",
+  search_filter_too_broad: "filterTooBroad",
+  case_not_found: "caseNotFound",
+  forbidden: "noCaseAccess",
+  missing_token: "sessionExpired",
+};
 
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case "assistant_disabled":
-      case "rag_disabled":
-        return "The AI assistant is currently disabled on this platform.";
-      case "retrieval_unavailable":
-      case "llm_unavailable":
-      case "llm_failure":
-      case "malformed_response":
-      case "timeout":
-      case "context_overflow":
-        return error.message;
-      case "conversation_not_found":
-        return "That conversation no longer exists.";
-      case "conversation_message_not_found":
-        return "That message no longer exists.";
-      case "conversation_archived":
-        return "This conversation is archived. Restore it, or start a new one, to continue.";
-      case "conversation_full":
-        return error.message;
-      case "invalid_feedback_target":
-        return "Only the assistant's answers can be rated.";
-      case "invalid_question":
-        return "Enter a question of at least two characters.";
-      case "search_filter_too_broad":
-        return error.message;
-      case "case_not_found":
-        return "That case no longer exists.";
-      case "forbidden":
-        return "You do not have access to the case you asked about.";
-      case "invalid_token":
-      case "token_expired":
-      case "missing_token":
-        return "Your session has expired. Sign in again to continue.";
-      default:
-        return error.message || "Something went wrong. Please try again.";
-    }
-  }
-
-  return "Something went wrong. Please try again.";
+export function useAssistantErrorMessage(): (error: unknown) => string {
+  return useErrorMessage("assistant.errors", ASSISTANT_ERRORS);
 }
 
 /** Whether a failure is a dependency outage rather than anything about the request. */

@@ -177,41 +177,20 @@ export const SEARCH_FAILURE_CODES = [
 ] as const;
 export type KnownSearchFailureCode = (typeof SEARCH_FAILURE_CODES)[number];
 
-const SEARCH_FAILURE_LABELS: Record<KnownSearchFailureCode, string> = {
-  embedding_unavailable: "Search model unavailable",
-  vector_store_unavailable: "Search index unavailable",
-  unknown: "Search did not complete",
-};
+/** Where the words live: `search.failures` in the message catalogues. */
+export const SEARCH_FAILURE_NAMESPACE = "search.failures";
 
-/** A short label for a failure cause, falling back to a readable identifier. */
-export function searchFailureLabel(code: string | null): string {
-  if (!code) return "Search failed";
-
-  const known = SEARCH_FAILURE_LABELS[code as KnownSearchFailureCode];
-  if (known) return known;
-
-  const words = code.replace(/_/g, " ").trim();
-  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "Search failed";
-}
 
 /**
- * Languages a passage can be labelled with.
+ * Where a passage's language name lives: `common.languages` in the catalogues.
  *
- * ISO 639-1, matching `apps/api/core/indexing.py`. `und` is "undetermined" and
- * is a legitimate answer for a page of figures — not an error.
+ * The platform's shared vocabulary rather than search's own, so "Arabic" is one
+ * word on a result card, an indexing panel, and a generate-report dialog. `und`
+ * is "undetermined" and is a legitimate answer for a page of figures — not an
+ * error — so it has a name of its own there.
  */
-export const SEARCH_LANGUAGE_LABELS: Record<string, string> = {
-  ar: "Arabic",
-  fr: "French",
-  en: "English",
-  und: "Undetermined",
-};
+export const SEARCH_LANGUAGE_NAMESPACE = "common.languages";
 
-/** A readable name for a language code, falling back to the code itself. */
-export function searchLanguageLabel(code: string | null): string {
-  if (!code) return "Unknown";
-  return SEARCH_LANGUAGE_LABELS[code] ?? code.toUpperCase();
-}
 
 /**
  * A relevance score as a percentage, for display.

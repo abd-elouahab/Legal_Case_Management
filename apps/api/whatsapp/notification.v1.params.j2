@@ -1,0 +1,50 @@
+{#
+  The general-purpose platform notification, as an ordered parameter list.
+
+  ONE PARAMETER PER LINE, in order. Blank lines are dropped by
+  `services/whatsapp_templates.py`, so control flow can be indented freely without
+  producing an empty slot.
+
+  Rendered by the NON-escaping Jinja environment, which is the safe setting here:
+  a parameter is delivered as text into a slot in an approved template and is
+  never markup, so escaping would put `&#39;` into a French case description on
+  somebody's phone. Whitespace inside a parameter is collapsed by
+  `core.whatsapp.sanitize_parameter`, because the Cloud API refuses a body
+  parameter containing a newline, a tab, or four consecutive spaces.
+
+  Every value here comes from `chrome` or from the notification itself. There is
+  deliberately no wording of its own and no `{% if language %}` branch — the
+  localization lives in `core/notifications.py` and `core/whatsapp.py` beside the
+  rest of the platform's text, so this file is structure and nothing else.
+
+  ---------------------------------------------------------------------------
+  THE APPROVED TEMPLATE THIS MATCHES
+  ---------------------------------------------------------------------------
+  Register a template named `notification`, category UTILITY, in each language
+  the deployment sends (fr, ar, en_US), with a body of exactly four variables:
+
+      {{1}}
+
+      *{{2}}*
+      {{3}}
+
+      {{4}}
+
+  {{1}} greeting        — "Bonjour Amina"
+  {{2}} title           — the notification's heading, from core/notifications.py
+  {{3}} message         — the notification's sentence, same source
+  {{4}} where to read it — the deep link, or a sentence saying to open the
+                           platform when no base URL is configured
+
+  The count and the order below ARE the contract with that template. Changing
+  either without re-submitting the template produces error 132000 on every
+  message — which is recorded as `template_rejected`, one delivery at a time.
+#}
+{{ chrome.greeting }}
+{{ title }}
+{{ message }}
+{% if action_url %}
+{{ chrome.action_label }}: {{ action_url }}
+{% else %}
+{{ chrome.no_link }}
+{% endif %}

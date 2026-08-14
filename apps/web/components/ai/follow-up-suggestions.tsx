@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -36,13 +37,15 @@ export function FollowUpSuggestions({
   onSelect: (question: string) => void;
   disabled?: boolean;
 }) {
+  const t = useTranslations("assistant.suggestions");
+
   if (suggestions.length === 0) return null;
 
   return (
-    <section className="flex flex-col gap-2" aria-label="Suggested follow-up questions">
+    <section className="flex flex-col gap-2" aria-label={t("label")}>
       <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         <Sparkles className="h-4 w-4" aria-hidden="true" />
-        Ask next
+        {t("askNext")}
       </p>
       <ul className="flex flex-wrap gap-2">
         {suggestions.map((suggestion) => (
@@ -53,7 +56,7 @@ export function FollowUpSuggestions({
               size="sm"
               disabled={disabled}
               onClick={() => onSelect(suggestion)}
-              className="h-auto whitespace-normal py-1.5 text-left text-xs"
+              className="h-auto whitespace-normal py-1.5 text-start text-xs"
             >
               <span dir="auto">{suggestion}</span>
             </Button>

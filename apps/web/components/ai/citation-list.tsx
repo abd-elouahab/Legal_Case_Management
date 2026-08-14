@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { ChevronDown, FileText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +42,7 @@ import { citationRelevancePercent, type AssistantCitation } from "@/types/assist
  */
 export function CitationList({ citations }: { citations: AssistantCitation[] }) {
   const [expanded, setExpanded] = React.useState<Set<number>>(() => new Set());
+  const t = useTranslations("assistant.citations");
 
   if (citations.length === 0) return null;
 
@@ -56,12 +58,11 @@ export function CitationList({ citations }: { citations: AssistantCitation[] }) 
   }
 
   return (
-    <section className="flex flex-col gap-2" aria-label="Sources">
+    <section className="flex flex-col gap-2" aria-label={t("label")}>
       <p className="text-xs font-medium text-muted-foreground">
         {/* Distinct documents rather than citations: two passages of one contract
             are one source to a lawyer. */}
-        {citations.length} source{citations.length === 1 ? "" : "s"} from {documents} document
-        {documents === 1 ? "" : "s"}
+        {t("summary", { sources: citations.length, documents })}
       </p>
 
       <ul className="flex flex-col gap-2">
@@ -82,25 +83,31 @@ export function CitationList({ citations }: { citations: AssistantCitation[] }) 
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-foreground">
                       <FileText
-                        className="mr-1 inline h-4 w-4 align-text-bottom text-muted-foreground"
+                        className="me-1 inline h-4 w-4 align-text-bottom text-muted-foreground"
                         aria-hidden="true"
                       />
                       {citation.documentName}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Page {citation.pageNumber} · Version {citation.documentVersion}
+                      {t("pageAndVersion", {
+                        page: citation.pageNumber,
+                        version: citation.documentVersion,
+                      })}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
                   {/* The number *and* the word, never colour alone (WCAG AA). */}
-                  <Badge variant="secondary" title={`Similarity ${citation.score}`}>
-                    {relevance}% match
+                  <Badge
+                    variant="secondary"
+                    title={t("similarity", { score: citation.score })}
+                  >
+                    {t("match", { percent: relevance })}
                   </Badge>
                   {!citation.referenced ? (
-                    <Badge variant="outline" title="Retrieved, but not cited in the answer">
-                      Not cited
+                    <Badge variant="outline" title={t("notCitedTitle")}>
+                      {t("notCited")}
                     </Badge>
                   ) : null}
                 </div>
@@ -119,13 +126,13 @@ export function CitationList({ citations }: { citations: AssistantCitation[] }) 
                     className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`}
                     aria-hidden="true"
                   />
-                  {open ? "Hide excerpt" : "Show excerpt"}
+                  {open ? t("hideExcerpt") : t("showExcerpt")}
                 </Button>
                 <Link
                   href={caseRoute(citation.caseId)}
                   className="text-xs font-medium text-primary underline-offset-4 hover:underline"
                 >
-                  Open case
+                  {t("openCase")}
                 </Link>
               </div>
 
@@ -137,7 +144,7 @@ export function CitationList({ citations }: { citations: AssistantCitation[] }) 
                   {citation.excerpt}
                   {citation.excerptTruncated ? (
                     <span className="mt-1 block text-xs text-muted-foreground">
-                      This passage was shortened to fit the answer&apos;s context budget.
+                      {t("truncated")}
                     </span>
                   ) : null}
                 </p>

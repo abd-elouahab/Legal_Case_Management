@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { Search, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -14,13 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useReportTemplates } from "@/hooks/use-reports";
-import {
-  REPORT_STATUSES,
-  REPORT_STATUS_LABELS,
-  reportTypeLabel,
-  type ReportStatus,
-  type ReportType,
-} from "@/types/report";
+import { REPORT_STATUSES, type ReportStatus, type ReportType } from "@/types/report";
 import type { ReportListQuery } from "@/types/report-management";
 
 /**
@@ -53,6 +48,10 @@ export function ReportFilters({
   disabled?: boolean;
 }) {
   const templates = useReportTemplates();
+  const t = useTranslations("reports.filters");
+  const tStatuses = useTranslations("reports.statuses");
+  const tTypes = useTranslations("reports.types");
+  const tActions = useTranslations("common.actions");
   const [search, setSearch] = React.useState(query.search ?? "");
 
   // Keep the box in step when the query is reset from outside — adjusted during
@@ -76,24 +75,24 @@ export function ReportFilters({
       }}
     >
       <div className="flex flex-1 flex-col gap-2">
-        <Label htmlFor="report-search">Search</Label>
+        <Label htmlFor="report-search">{tActions("search")}</Label>
         <div className="flex gap-2">
           <Input
             id="report-search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search report titles"
+            placeholder={t("searchPlaceholder")}
             disabled={disabled}
           />
           <Button type="submit" variant="outline" disabled={disabled}>
             <Search className="h-4 w-4" aria-hidden="true" />
-            <span className="sr-only sm:not-sr-only">Search</span>
+            <span className="sr-only sm:not-sr-only">{tActions("search")}</span>
           </Button>
         </div>
       </div>
 
       <div className="flex flex-col gap-2 sm:w-44">
-        <Label htmlFor="report-status">Status</Label>
+        <Label htmlFor="report-status">{t("status")}</Label>
         <Select
           value={query.status ?? "all"}
           onValueChange={(value) =>
@@ -102,13 +101,13 @@ export function ReportFilters({
           disabled={disabled}
         >
           <SelectTrigger id="report-status">
-            <SelectValue placeholder="All" />
+            <SelectValue placeholder={t("all")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="all">{t("allStatuses")}</SelectItem>
             {REPORT_STATUSES.map((status) => (
               <SelectItem key={status} value={status}>
-                {REPORT_STATUS_LABELS[status]}
+                {tStatuses(status)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -116,7 +115,7 @@ export function ReportFilters({
       </div>
 
       <div className="flex flex-col gap-2 sm:w-52">
-        <Label htmlFor="report-type">Type</Label>
+        <Label htmlFor="report-type">{t("type")}</Label>
         <Select
           value={query.reportType ?? "all"}
           onValueChange={(value) =>
@@ -125,13 +124,13 @@ export function ReportFilters({
           disabled={disabled}
         >
           <SelectTrigger id="report-type">
-            <SelectValue placeholder="All" />
+            <SelectValue placeholder={t("all")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All types</SelectItem>
+            <SelectItem value="all">{t("allTypes")}</SelectItem>
             {(templates.data ?? []).map((template) => (
               <SelectItem key={template.reportType} value={template.reportType}>
-                {reportTypeLabel(template.reportType)}
+                {tTypes(template.reportType)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -141,7 +140,7 @@ export function ReportFilters({
       {hasFilters ? (
         <Button type="button" variant="ghost" onClick={onReset} disabled={disabled}>
           <X className="h-4 w-4" aria-hidden="true" />
-          Clear
+          {tActions("clear")}
         </Button>
       ) : null}
     </form>

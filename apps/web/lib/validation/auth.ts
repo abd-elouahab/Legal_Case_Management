@@ -13,6 +13,8 @@
 
 import { z } from "zod";
 
+import { vm } from "@/lib/validation/messages";
+
 import { PERMISSIONS } from "@/types/authorization";
 import { USER_ROLES } from "@/types/user";
 
@@ -40,32 +42,32 @@ function byteLength(value: string): number {
 export const loginFormSchema = z.object({
   email: z
     .string()
-    .min(1, "Email is required.")
-    .email("Enter a valid email address.")
+    .min(1, vm("validation.auth.emailRequired"))
+    .email(vm("validation.auth.emailInvalid"))
     .transform((value) => value.trim().toLowerCase()),
-  password: z.string().min(1, "Password is required."),
+  password: z.string().min(1, vm("validation.auth.passwordRequired")),
 });
 
 export type LoginFormValues = z.input<typeof loginFormSchema>;
 
 export const changePasswordFormSchema = z
   .object({
-    currentPassword: z.string().min(1, "Current password is required."),
+    currentPassword: z.string().min(1, vm("validation.auth.currentPasswordRequired")),
     newPassword: z
       .string()
-      .min(MIN_PASSWORD_LENGTH, `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`)
+      .min(MIN_PASSWORD_LENGTH, vm("validation.auth.passwordTooShort", { min: MIN_PASSWORD_LENGTH }))
       .refine(
         (value) => byteLength(value) <= MAX_PASSWORD_BYTES,
-        `Password must not exceed ${MAX_PASSWORD_BYTES} bytes.`,
+        vm("validation.auth.passwordTooLong", { max: MAX_PASSWORD_BYTES }),
       ),
-    confirmPassword: z.string().min(1, "Confirm your new password."),
+    confirmPassword: z.string().min(1, vm("validation.auth.confirmPassword")),
   })
   .refine((values) => values.newPassword === values.confirmPassword, {
-    message: "Passwords do not match.",
+    message: vm("validation.auth.passwordsDoNotMatch"),
     path: ["confirmPassword"],
   })
   .refine((values) => values.newPassword !== values.currentPassword, {
-    message: "New password must be different from the current password.",
+    message: vm("validation.auth.passwordUnchanged"),
     path: ["newPassword"],
   });
 

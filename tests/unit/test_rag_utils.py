@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import pytest
 
+from core.localization import default_language
 from core.rag import (
     CITATION_MARKER_PATTERN,
     FAILURE_MESSAGES,
@@ -152,11 +153,18 @@ class TestAnswerLanguage:
         assert resolve_answer_language("متى يؤدى الكراء الشهري؟") == "ar"
         assert resolve_answer_language("Quand le loyer doit-il être payé ?") == "fr"
 
-    def test_an_undetectable_question_falls_back_to_french(self) -> None:
-        """`und` is not an instruction; French is the platform's working language."""
-        assert resolve_answer_language("2024 / 1187") == "fr"
+    def test_an_undetectable_question_falls_back_to_the_application_default(
+        self,
+    ) -> None:
+        """`und` is not an instruction, and the platform has no better guess than
+        the deployment's own default — see `resolve_answer_language` for why that
+        replaced a hard-coded French when `21-localization.md` made English an
+        interface language."""
+        assert resolve_answer_language("2024 / 1187") == default_language()
 
     def test_an_unsupported_request_falls_through_to_detection(self) -> None:
+        """The question carries diacritics, so detection answers before the
+        default is ever reached — which is the point of falling *through*."""
         assert resolve_answer_language("Quand le loyer est-il dû ?", "de") == "fr"
 
     def test_supported_languages_are_the_three_the_platform_serves(self) -> None:

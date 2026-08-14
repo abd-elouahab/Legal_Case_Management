@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -16,15 +17,10 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { PERMISSION } from "@/types/authorization";
 import {
   DOCUMENT_CATEGORIES,
-  DOCUMENT_CATEGORY_LABELS,
   SUPPORTED_DOCUMENT_EXTENSIONS,
   type DocumentCategory,
 } from "@/types/document";
-import {
-  hasActiveFilters,
-  SEARCH_LANGUAGE_LABELS,
-  type SearchFilters,
-} from "@/types/search";
+import { hasActiveFilters, type SearchFilters } from "@/types/search";
 
 /**
  * Metadata filters for a search.
@@ -64,6 +60,10 @@ export function SearchFiltersBar({
   disabled?: boolean;
 }) {
   const { can } = usePermissions();
+  const t = useTranslations("search.filters");
+  const tCategories = useTranslations("documents.categories");
+  const tLanguages = useTranslations("common.languages");
+  const tActions = useTranslations("common.actions");
   // Only offered to callers who may read the case list; everyone else has no way
   // to resolve a case name from an identifier, so the control would be a list of
   // UUIDs.
@@ -82,17 +82,17 @@ export function SearchFiltersBar({
     <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end">
       {showCaseFilter && can(PERMISSION.casesView) ? (
         <div className="flex flex-col gap-2 lg:w-64">
-          <Label htmlFor="search-case-filter">Case</Label>
+          <Label htmlFor="search-case-filter">{t("case")}</Label>
           <Select
             value={filters.caseId ?? ANY}
             onValueChange={(value) => set("caseId", value === ANY ? null : value)}
             disabled={disabled}
           >
             <SelectTrigger id="search-case-filter">
-              <SelectValue placeholder="All cases" />
+              <SelectValue placeholder={t("allCases")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={ANY}>All cases</SelectItem>
+              <SelectItem value={ANY}>{t("allCases")}</SelectItem>
               {cases.cases.map((option) => (
                 <SelectItem key={option.id} value={option.id}>
                   {option.caseNumber} — {option.title}
@@ -104,7 +104,7 @@ export function SearchFiltersBar({
       ) : null}
 
       <div className="flex flex-col gap-2 lg:w-52">
-        <Label htmlFor="search-category-filter">Category</Label>
+        <Label htmlFor="search-category-filter">{t("category")}</Label>
         <Select
           value={filters.categories?.[0] ?? ANY}
           onValueChange={(value) =>
@@ -113,13 +113,13 @@ export function SearchFiltersBar({
           disabled={disabled}
         >
           <SelectTrigger id="search-category-filter">
-            <SelectValue placeholder="All categories" />
+            <SelectValue placeholder={t("allCategories")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ANY}>All categories</SelectItem>
+            <SelectItem value={ANY}>{t("allCategories")}</SelectItem>
             {DOCUMENT_CATEGORIES.map((option) => (
               <SelectItem key={option} value={option}>
-                {DOCUMENT_CATEGORY_LABELS[option]}
+                {tCategories(option)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -127,17 +127,17 @@ export function SearchFiltersBar({
       </div>
 
       <div className="flex flex-col gap-2 lg:w-40">
-        <Label htmlFor="search-type-filter">File type</Label>
+        <Label htmlFor="search-type-filter">{t("fileType")}</Label>
         <Select
           value={filters.fileTypes?.[0] ?? ANY}
           onValueChange={(value) => set("fileTypes", value === ANY ? null : [value])}
           disabled={disabled}
         >
           <SelectTrigger id="search-type-filter">
-            <SelectValue placeholder="All types" />
+            <SelectValue placeholder={t("allTypes")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ANY}>All types</SelectItem>
+            <SelectItem value={ANY}>{t("allTypes")}</SelectItem>
             {SUPPORTED_DOCUMENT_EXTENSIONS.map((option) => (
               <SelectItem key={option} value={option}>
                 {option.toUpperCase()}
@@ -148,20 +148,20 @@ export function SearchFiltersBar({
       </div>
 
       <div className="flex flex-col gap-2 lg:w-40">
-        <Label htmlFor="search-language-filter">Language</Label>
+        <Label htmlFor="search-language-filter">{t("language")}</Label>
         <Select
           value={filters.languages?.[0] ?? ANY}
           onValueChange={(value) => set("languages", value === ANY ? null : [value])}
           disabled={disabled}
         >
           <SelectTrigger id="search-language-filter">
-            <SelectValue placeholder="All languages" />
+            <SelectValue placeholder={t("allLanguages")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ANY}>All languages</SelectItem>
+            <SelectItem value={ANY}>{t("allLanguages")}</SelectItem>
             {LANGUAGES.map((option) => (
               <SelectItem key={option} value={option}>
-                {SEARCH_LANGUAGE_LABELS[option]}
+                {tLanguages(option)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -184,7 +184,7 @@ export function SearchFiltersBar({
           }
         >
           <X className="h-4 w-4" aria-hidden="true" />
-          Clear filters
+          {tActions("clearFilters")}
         </Button>
       ) : null}
     </div>

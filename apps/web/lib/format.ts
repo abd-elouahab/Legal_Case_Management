@@ -1,115 +1,18 @@
 /**
- * Display formatting helpers.
+ * Display formatting that does not depend on a language.
  *
- * Dates arrive from the API as ISO-8601 strings and must never be shown raw.
- * Formatting goes through `Intl`, which already knows about locale conventions —
- * so when localization (next-intl) lands, these take a locale argument instead of
- * defaulting to the platform locale, and nothing above them changes.
+ * **This module used to hold every date helper on the platform, pinned to one
+ * locale.** `21-localization.md` is what emptied it: a timestamp depends on the
+ * reader's language, time zone, date style, and time style, all four of which are
+ * *settings*, and a module-level `Intl.DateTimeFormat` cannot read a setting. Two
+ * formatters also meant an Arabic reader saw their hearing date one way on the
+ * case page and another way in the timeline beneath it, which is exactly the
+ * *"consistent translations"* the spec asks for.
+ *
+ * Dates, times, and relative event times now come from `hooks/use-date-format.ts`;
+ * numbers, percentages, and file sizes from `hooks/use-number-format.ts`. What is
+ * left here is what has no locale in it.
  */
-
-/**
- * Locale used until language switching ships.
- *
- * `undefined` would use the *browser's* locale, which differs between the server
- * render and the client and produces a hydration mismatch. Pinning it keeps the
- * two identical.
- */
-const DEFAULT_LOCALE = "en-GB";
-
-const DATE_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
-
-const DATE_TIME_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
-function parse(value: string | null | undefined): Date | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-/** Format a date, or return `fallback` when there is nothing to show. */
-export function formatDate(value: string | null | undefined, fallback = "—"): string {
-  const date = parse(value);
-  return date ? DATE_FORMAT.format(date) : fallback;
-}
-
-/** Format a date and time, or return `fallback`. */
-export function formatDateTime(value: string | null | undefined, fallback = "—"): string {
-  const date = parse(value);
-  return date ? DATE_TIME_FORMAT.format(date) : fallback;
-}
-
-const TIME_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
-const DAY_MONTH_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
-  day: "numeric",
-  month: "long",
-});
-
-const DAY_MONTH_YEAR_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
-  day: "numeric",
-  month: "long",
-  year: "numeric",
-});
-
-/** Whether two instants fall on the same calendar day, in the viewer's timezone. */
-function isSameDay(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
-
-/**
- * Format an event's time the way an activity feed reads it.
- *
- * `Today • 14:32`, `Yesterday • 09:15`, `24 July • 14:32`, and `24 July 2025 •
- * 14:32` once the year stops being obvious — which is the progression
- * `08-timeline.md`'s examples show. The year is omitted for the current year
- * because repeating it on every entry of a case opened this year is noise.
- *
- * **Relative to *now*, so it must only be rendered on the client.** The timeline
- * is fetched client-side (the access token lives in browser memory), so there is
- * no server render of these values to disagree with — but a future server
- * component must not call this without pinning `now`.
- *
- * @param now Injectable for testing; defaults to the current instant.
- */
-export function formatEventTime(
-  value: string | null | undefined,
-  now: Date = new Date(),
-): string {
-  const date = parse(value);
-  if (!date) return "—";
-
-  const time = TIME_FORMAT.format(date);
-
-  if (isSameDay(date, now)) return `Today • ${time}`;
-
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  if (isSameDay(date, yesterday)) return `Yesterday • ${time}`;
-
-  const day =
-    date.getFullYear() === now.getFullYear()
-      ? DAY_MONTH_FORMAT.format(date)
-      : DAY_MONTH_YEAR_FORMAT.format(date);
-
-  return `${day} • ${time}`;
-}
 
 /**
  * Initials for an avatar fallback.
@@ -117,6 +20,13 @@ export function formatEventTime(
  * Uses the first character of the first two words, so "Amina Benali" → "AB".
  * Falls back to the first character of whatever is available rather than
  * rendering an empty circle.
+ *
+ * **Not localized, and deliberately not.** A name is a name in every language —
+ * translating one would be renaming a person — and `toUpperCase()` without a
+ * locale argument is the right call for the same reason: an Arabic name has no
+ * case to change, and a Turkish dotless *ı* is a hazard this platform does not
+ * have, since a person's initials must not depend on which language the reader
+ * happens to be using.
  */
 export function initials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);

@@ -48,9 +48,13 @@ from fastapi import APIRouter, Depends, Query, status
 from api.authorization import require_permission
 from api.deps import (
     EmailDeliveryServiceDep,
+    LanguageDirectoryDep,
+    LocalizationMetricsDep,
     NotificationServiceDep,
     NotificationSubscriberDep,
+    WhatsAppDeliveryServiceDep,
 )
+from core.localization import is_supported
 from core.notifications import (
     ChannelPreference,
     ChannelPreferenceUpdate,
@@ -75,6 +79,9 @@ from schemas.notification import (
     NotificationReadRequest,
     NotificationSummaryRead,
 )
+from schemas.whatsapp import WhatsAppMetricsQuery, WhatsAppMetricsRead
+from services.localization import LanguageDirectory, resolve_actor_language
+from services.localization_metrics import LocalizationMetricsRecorder
 
 logger = structlog.get_logger(__name__)
 
@@ -214,20 +221,21 @@ def update_notification_preferences(
     Anything omitted keeps its current value.
 
     **Partial per channel as well as per key.** An entry carrying only `in_app`
-    leaves `email` exactly as it was — which is what stops a client written before
-    the email channel existed from switching it off by not mentioning it, and what
-    the next channel inherits for free.
+    leaves `email` and `whatsapp` exactly as they were — which is what stopped a
+    client written before either channel existed from switching it off by not
+    mentioning it. That protection was designed for the email channel and cost
+    nothing when WhatsApp arrived, which is what it was for.
 
     Switching a preference off stops *new* notifications of that kind being
-    created — or, for `email`, being sent — and does not remove the ones already
-    in the feed, which is the only behaviour that makes "turn this off" a decision
-    somebody can reverse.
+    created — or, for `email` and `whatsapp`, being sent — and does not remove the
+    ones already in the feed, which is the only behaviour that makes "turn this
+    off" a decision somebody can reverse.
     """
     return _to_preferences(
         notifications.update_preferences(
             {
                 entry.preference_key: ChannelPreferenceUpdate(
-                    in_app=entry.in_app, email=entry.email
+                    in_app=entry.in_app, email=entry.email, whatsapp=entry.whatsapp
                 )
                 for entry in payload.preferences
             },
@@ -250,6 +258,7 @@ def _to_preferences(
                 preference_key=key,
                 in_app=values[key].in_app,
                 email=values[key].email,
+                whatsapp=values[key].whatsapp,
                 is_default=values[key].is_default,
             )
             for key in NotificationPreferenceKey
@@ -409,6 +418,98 @@ def get_email_metrics(
     )
 
 
+@router.get(
+    "/whatsapp/metrics",
+    response_model=WhatsAppMetricsRead,
+    status_code=status.HTTP_200_OK,
+    summary="WhatsApp delivery metrics",
+    responses={**_UNAUTHORIZED, **_FORBIDDEN},
+)
+def get_whatsapp_metrics(
+    actor: NotificationMonitor,
+    messages: WhatsAppDeliveryServiceDep,
+    query: Annotated[WhatsAppMetricsQuery, Query()],
+) -> WhatsAppMetricsRead:
+    """Return platform-wide WhatsApp delivery health.
+
+    The six figures `18-whatsapp-delivery-channel.md`'s Monitoring section names —
+    **queued messages, delivered messages, failed deliveries, retry count, average
+    delivery latency, and provider response time** — plus the skip counters that
+    explain a low delivery rate and the breakdowns that say what is being sent and
+    why something failed.
+
+    **The figures come from two places, and the response says which.** Counts of
+    rows are SQL aggregates: exact, surviving a restart, and the same on every API
+    instance — which matters here because "how many messages are stuck?" is the
+    first question after a deployment. Retries, latency, provider response time,
+    and skips accumulate in *this* process and carry `since`.
+
+    **The last two are separate on purpose.** `average_delivery_latency_ms` is what
+    the platform is responsible for end to end and is mostly queue wait;
+    `average_provider_response_ms` is the Cloud API call alone. One number would
+    answer neither "are we slow?" nor "is WhatsApp slow?".
+
+    `delivered` means "a provider accepted it and issued an identifier", not "it
+    was read". WhatsApp does publish real receipts, on an inbound webhook this spec
+    does not ask for — the same line `/notifications/email/metrics` draws between
+    "the relay took it" and "somebody opened it".
+
+    `configuration_errors` is the one field that is neither a count nor a
+    breakdown, and it is the spec's *"provide meaningful error messages"*: a
+    deployment that switched the channel on and forgot a setting reads that
+    setting's **name** here. Never its value — a credential does not become safe to
+    return because the endpoint is administrative.
+
+    **There is deliberately no endpoint that lists deliveries.** A delivery names a
+    person, a rule, a moment, and a phone number, so a list of them would be a live
+    index of who the platform messages about what — and a phone number is more
+    identifying than an address, because it is a device somebody carries.
+    Troubleshooting a specific complaint is a query against `whatsapp_deliveries`
+    under the database's own access controls.
+
+    An administrative view, so it is gated on `notifications:monitor` — **no new
+    permission**, exactly as the email channel added none. WhatsApp is a *delivery
+    channel* for notifications rather than a feature of its own: a deployment that
+    trusts somebody with notification health is trusting them with the same
+    information one channel at a time.
+
+    **Registered before `/{notification_id}`** for the same reason `/summary` is.
+    """
+    metrics = messages.metrics(window_days=query.window_days)
+    statistics = metrics.statistics
+    counters = metrics.counters
+
+    return WhatsAppMetricsRead(
+        since=counters.since,
+        enabled=metrics.enabled,
+        provider=metrics.provider,
+        provider_available=metrics.provider_available,
+        configuration_errors=metrics.configuration_errors,
+        templates_available=metrics.templates_available,
+        total_deliveries=statistics.total,
+        queued=statistics.pending,
+        sending=statistics.sending,
+        delivered=statistics.delivered,
+        failed=statistics.failed,
+        delivery_rate=statistics.delivery_rate,
+        recipients=statistics.recipients,
+        attempts=statistics.attempts,
+        queued_this_process=counters.queued,
+        delivered_this_process=counters.delivered,
+        failed_this_process=counters.failed,
+        retried=counters.retried,
+        skipped=counters.skipped,
+        average_delivery_latency_ms=counters.average_delivery_latency_ms,
+        average_provider_response_ms=counters.average_provider_response_ms,
+        delivered_by_rule=counters.delivered_by_rule,
+        failures_by_code=counters.failures_by_code,
+        stored_failures_by_code=statistics.by_failure_code,
+        retries_by_code=counters.retries_by_code,
+        skipped_by_reason=counters.skipped_by_reason,
+        window_days=metrics.window_days,
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Announcements
 # --------------------------------------------------------------------------- #
@@ -534,6 +635,8 @@ def mark_all_notifications_read(
 def list_notifications(
     actor: Recipient,
     notifications: NotificationServiceDep,
+    languages: LanguageDirectoryDep,
+    metrics: LocalizationMetricsDep,
     query: Annotated[NotificationListQuery, Query()],
 ) -> NotificationPage:
     """List the caller's own notifications, newest first.
@@ -547,20 +650,30 @@ def list_notifications(
     the spec's "notification filtering", and every one of them executes in SQL:
     filtering after the fact would return short pages and make the totals lie.
 
-    **The titles and messages are rendered in `language`**, defaulting to French.
-    A notification stores no prose — only the rule that produced it and the few
-    values its sentence interpolates — so switching the interface to Arabic
-    re-renders the *whole history* rather than only what arrives afterwards.
+    **The titles and messages are rendered in `language`**, defaulting to the
+    caller's own stored preference. A notification stores no prose — only the rule
+    that produced it and the few values its sentence interpolates — so switching
+    the interface to Arabic re-renders the *whole history* rather than only what
+    arrives afterwards.
+
+    Since ``21-localization.md`` shipped, a client that sends no `language` gets
+    the language it would get everywhere else — their Settings answer, then the
+    platform's default, then the application's — rather than a constant. The query
+    parameter is still honoured above it, because a client that has *just* switched
+    language needs the feed to follow before the setting has round-tripped.
 
     `unread_count` comes back with the page because the panel that renders one
     also draws the badge, and making it ask twice would be two round trips to
     render one popover.
     """
     page = notifications.list_notifications(query, actor=actor)
+    language = _reader_language(
+        query.language, actor=actor, languages=languages, metrics=metrics
+    )
 
     return NotificationPage.build(
         [
-            NotificationRead.from_row(notification, language=query.language)
+            NotificationRead.from_row(notification, language=language)
             for notification in page.results
         ],
         total=page.total,
@@ -582,9 +695,16 @@ def get_notification(
     notification_id: uuid.UUID,
     actor: Recipient,
     notifications: NotificationServiceDep,
+    languages: LanguageDirectoryDep,
+    metrics: LocalizationMetricsDep,
     language: Annotated[
         str | None,
-        Query(description="ISO 639-1 code to render the title and message in."),
+        Query(
+            description=(
+                "ISO 639-1 code to render the title and message in. Defaults to "
+                "the caller's own language preference."
+            )
+        ),
     ] = None,
 ) -> NotificationRead:
     """Return one notification.
@@ -600,8 +720,46 @@ def get_notification(
     disclosure this feature must not make.
     """
     return NotificationRead.from_row(
-        notifications.get_notification(notification_id, actor=actor), language=language
+        notifications.get_notification(notification_id, actor=actor),
+        language=_reader_language(
+            language, actor=actor, languages=languages, metrics=metrics
+        ),
     )
+
+
+def _reader_language(
+    requested: str | None,
+    *,
+    actor: User,
+    languages: LanguageDirectory,
+    metrics: LocalizationMetricsRecorder,
+) -> str:
+    """Which language this reader's feed is rendered in, and record the choice.
+
+    ``21-localization.md``'s selection chain applied to the one surface where a
+    stored row is re-rendered per request: an explicit request first — a client
+    that has just switched language needs the feed to follow before the setting
+    has round-tripped — then the reader's own preference.
+
+    **An unsupported request is counted rather than refused.** A client sending
+    ``?language=de`` gets its notifications in the default language and a metric
+    records that it asked for something the platform does not serve, which is the
+    spec's *"handle unsupported language"* and *"log unsupported locale
+    requests"*. Refusing would take somebody's whole notification feed away over a
+    presentation detail.
+
+    The recorded resolution is where the *"active languages"* figure comes from —
+    counted by **language**, never by reader, for the reason
+    :mod:`services.notification_metrics` counts by rule rather than by recipient.
+    """
+    if requested is not None and not is_supported(requested):
+        metrics.record_unsupported_locale()
+        logger.info("unsupported_locale_requested", surface="notifications")
+        requested = None
+
+    resolved = resolve_actor_language(languages, actor.id, requested=requested)
+    metrics.record_resolution(resolved)
+    return resolved
 
 
 __all__ = ["router"]

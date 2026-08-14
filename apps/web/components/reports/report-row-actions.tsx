@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Eye, MoreHorizontal, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -12,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { reportErrorMessage, useRegenerateReport } from "@/hooks/use-reports";
+import { useRegenerateReport, useReportErrorMessage } from "@/hooks/use-reports";
 import { PERMISSION } from "@/types/authorization";
 import type { Report } from "@/types/report";
 
@@ -36,13 +37,16 @@ export function ReportRowActions({
   onDelete: (report: Report) => void;
 }) {
   const regenerate = useRegenerateReport();
+  const t = useTranslations("reports.actions");
+  const tActions = useTranslations("common.actions");
+  const errorMessage = useReportErrorMessage();
 
   async function onRegenerate() {
     try {
       await regenerate.mutateAsync(report.id);
-      toast.success("Report queued again.");
+      toast.success(t("queuedAgain"));
     } catch (error) {
-      toast.error(reportErrorMessage(error));
+      toast.error(errorMessage(error));
     }
   }
 
@@ -53,7 +57,7 @@ export function ReportRowActions({
           type="button"
           variant="ghost"
           size="icon"
-          aria-label={`Actions for ${report.title}`}
+          aria-label={t("menuFor", { title: report.title })}
         >
           <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
         </Button>
@@ -62,7 +66,7 @@ export function ReportRowActions({
       <DropdownMenuContent align="end">
         <DropdownMenuItem onSelect={() => onView(report)}>
           <Eye className="h-4 w-4" aria-hidden="true" />
-          Open
+          {t("open")}
         </DropdownMenuItem>
 
         {report.isTerminal ? (
@@ -72,7 +76,7 @@ export function ReportRowActions({
               disabled={regenerate.isPending}
             >
               <RefreshCw className="h-4 w-4" aria-hidden="true" />
-              Regenerate
+              {t("regenerate")}
             </DropdownMenuItem>
           </Protected>
         ) : null}
@@ -81,7 +85,7 @@ export function ReportRowActions({
 
         <DropdownMenuItem variant="destructive" onSelect={() => onDelete(report)}>
           <Trash2 className="h-4 w-4" aria-hidden="true" />
-          Delete
+          {tActions("delete")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,14 +19,16 @@ import { cn } from "@/lib/utils";
  */
 export function UploadProgress({
   percent,
-  label = "Upload progress",
+  label,
   className,
 }: {
   /** 0–100, or `null` while the total size is unknown. */
   percent: number | null;
+  /** Already translated by the caller; falls back to the shared wording. */
   label?: string;
   className?: string;
 }) {
+  const t = useTranslations("documents.upload");
   const isIndeterminate = percent === null;
   const clamped = isIndeterminate ? 0 : Math.min(100, Math.max(0, percent));
 
@@ -32,7 +36,7 @@ export function UploadProgress({
     <div className={cn("flex flex-col gap-1.5", className)}>
       <div
         role="progressbar"
-        aria-label={label}
+        aria-label={label ?? t("progressLabel")}
         aria-valuemin={0}
         aria-valuemax={100}
         {...(isIndeterminate ? {} : { "aria-valuenow": clamped })}
@@ -48,7 +52,7 @@ export function UploadProgress({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        {isIndeterminate ? "Uploading…" : `Uploading… ${clamped}%`}
+        {isIndeterminate ? t("uploading") : t("uploadingPercent", { percent: clamped })}
       </p>
     </div>
   );

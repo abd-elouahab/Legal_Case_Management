@@ -18,6 +18,8 @@
 
 import { z } from "zod";
 
+import { vm } from "@/lib/validation/messages";
+
 import {
   ANNOUNCEMENT_KINDS,
   NOTIFICATION_PREFERENCE_KEYS,
@@ -62,10 +64,10 @@ export const announcementSchema = z.object({
   message: z
     .string()
     .trim()
-    .min(1, "Write what you want everyone to see.")
+    .min(1, vm("validation.notification.messageRequired"))
     .max(
       MAX_ANNOUNCEMENT_LENGTH,
-      `Keep the announcement under ${MAX_ANNOUNCEMENT_LENGTH} characters.`,
+      vm("validation.notification.announcementTooLong", { max: MAX_ANNOUNCEMENT_LENGTH }),
     ),
 });
 
@@ -134,6 +136,7 @@ export const notificationPreferencesSchema = z.object({
       preference_key: z.enum(NOTIFICATION_PREFERENCE_KEYS),
       in_app: z.boolean(),
       email: z.boolean(),
+      whatsapp: z.boolean(),
       is_default: z.boolean(),
     }),
   ),

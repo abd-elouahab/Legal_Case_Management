@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
 
@@ -11,7 +12,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/shared/spinner";
-import { reportErrorMessage, useExportReport, useReportMetrics } from "@/hooks/use-reports";
+import {
+  useExportReport,
+  useReportErrorMessage,
+  useReportMetrics,
+} from "@/hooks/use-reports";
 import { usePermissions } from "@/hooks/use-permissions";
 import { PERMISSION } from "@/types/authorization";
 import {
@@ -44,6 +49,8 @@ export function ReportExportMenu({
   disabled?: boolean;
 }) {
   const exportReport = useExportReport();
+  const t = useTranslations("reports.export");
+  const errorMessage = useReportErrorMessage();
   const { can } = usePermissions();
   // Gated, because the metrics endpoint is administrative. A lawyer simply gets
   // the full list — see the component docstring for why that is the right
@@ -63,9 +70,9 @@ export function ReportExportMenu({
         format,
         fallbackName: `${report.title}.${format === "pdf" ? "pdf" : "md"}`,
       });
-      toast.success(`Report exported as ${REPORT_FORMAT_LABELS[format]}.`);
+      toast.success(t("exported", { format: REPORT_FORMAT_LABELS[format] }));
     } catch (error) {
-      toast.error(reportErrorMessage(error));
+      toast.error(errorMessage(error));
     }
   }
 
@@ -80,7 +87,7 @@ export function ReportExportMenu({
           ) : (
             <Download className="h-4 w-4" aria-hidden="true" />
           )}
-          Export
+          {t("label")}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

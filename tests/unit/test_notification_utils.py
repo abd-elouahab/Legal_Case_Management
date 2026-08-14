@@ -15,6 +15,7 @@ import pytest
 
 from core.events import DomainEvent, DomainEventType, case_topic
 from core.indexing import LANGUAGE_ARABIC, LANGUAGE_ENGLISH, LANGUAGE_FRENCH
+from core.localization import default_language
 from core.notifications import (
     ANNOUNCEMENT_RULES,
     DEFAULT_PREFERENCES,
@@ -343,9 +344,11 @@ class TestRendering:
         )
         assert len(rendered.message) <= MAX_MESSAGE_LENGTH
 
-    def test_an_unsupported_language_falls_back_to_french(self) -> None:
-        assert resolve_notification_language("de") == LANGUAGE_FRENCH
-        assert resolve_notification_language(None) == LANGUAGE_FRENCH
+    def test_an_unsupported_language_falls_back_to_the_application_default(
+        self,
+    ) -> None:
+        assert resolve_notification_language("de") == default_language()
+        assert resolve_notification_language(None) == default_language()
         assert resolve_notification_language("  AR ") == LANGUAGE_ARABIC
 
 
