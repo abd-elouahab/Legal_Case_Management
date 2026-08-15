@@ -94,9 +94,7 @@ way:
 
 ```python
 class Embedder(Protocol):          # 1. a protocol, a few methods wide
-    @property
     def model_name(self) -> str: ...
-    @property
     def dimensions(self) -> int: ...
     def is_available(self) -> bool: ...
     def embed(self, texts: Sequence[str]) -> list[list[float]]: ...
@@ -113,7 +111,7 @@ def get_embedder() -> Embedder:     # 4. one resolver
     return EMBEDDER_FACTORIES[settings.embedding_backend]()
 ```
 
-That shape appears seven times:
+That shape appears eight times:
 
 | Boundary | Protocol | Ships | Setting |
 | --- | --- | --- | --- |
@@ -238,6 +236,14 @@ upload committed → OcrQueue (bounded thread pool) → OcrWorker → ocr_result
   request handlers it shares a process with.
 - **`OCR_MAX_PAGES=100`** so a 900-page bundle yields a *partial* result rather
   than a guaranteed timeout.
+- **`OCR_TIMEOUT_SECONDS` is a whole-run deadline**, shared across every page and
+  decremented as pages are consumed — not a per-page limit, which at a 100-page
+  cap would let one document run for hours. The consequence is that **it must be
+  sized against `OCR_MAX_PAGES`**: measured throughput on this deployment is
+  ~4.2 s/page at 300 DPI with `eng+fra+ara`, so the 100-page cap needs ~420 s. A
+  timeout smaller than that creates a page cap the engine can never reach, and
+  every document past the crossover fails identically — which is exactly what a
+  50-page filing did at the original 180 s.
 - **A completed run publishes a domain event**, which is how the browser's
   extraction panel advances from *Queued* to *Completed* with nothing polling.
 

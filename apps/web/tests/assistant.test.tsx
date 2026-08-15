@@ -250,51 +250,97 @@ describe("assistant API client", () => {
 // --------------------------------------------------------------------------- //
 
 describe("CitationList", () => {
-  it("shows the complete reference for every source", () => {
-    // A generated statement with no provenance is unusable in a legal context.
-    render(<CitationList citations={[citationFor()]} />);
+  // The list is collapsed by default now, so most of these open it first. That
+  // step is the assertion for the disclosure itself, and every other assertion
+  // below is unchanged: what is reachable did not change, only what is first.
+  async function open(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole("button", { name: /show sources/i }));
+  }
 
-    expect(screen.getByText("bail-commercial.pdf")).toBeInTheDocument();
+  it("shows the complete reference for every source", async () => {
+    // A generated statement with no provenance is unusable in a legal context.
+    const user = userEvent.setup();
+    render(<CitationList citations={[citationFor()]} />);
+    await open(user);
+
+    expect(screen.getAllByText("bail-commercial.pdf").length).toBeGreaterThan(0);
     expect(screen.getByText(/Page 4/)).toBeInTheDocument();
     expect(screen.getByText(/Version 1/)).toBeInTheDocument();
   });
 
-  it("shows relevance as a percentage with a label, never colour alone", () => {
+  it("names the document in the collapsed summary", () => {
+    // "2 sources" alone says nothing a reader can act on; the point of the
+    // collapsed line is to be worth reading without expanding it.
     render(<CitationList citations={[citationFor()]} />);
 
+    expect(screen.getByText(/1 source · bail-commercial\.pdf/)).toBeInTheDocument();
+  });
+
+  it("keeps the score off a cited source and on an uncited one", async () => {
+    // Beside a cited source the cosine score answers a question nobody asked and
+    // is misread as confidence in the answer. Among the passages the answer did
+    // not cite it is the only reason they are on screen.
+    const user = userEvent.setup();
+    render(
+      <CitationList
+        citations={[citationFor({ marker: 1 }), citationFor({ marker: 2, referenced: false })]}
+      />,
+    );
+    await open(user);
+
+    expect(screen.queryByText("84% match")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /1 more passage retrieved/i }));
     expect(screen.getByText("84% match")).toBeInTheDocument();
   });
 
-  it("keeps the marker the answer cites", () => {
+  it("keeps the marker the answer cites", async () => {
     // The `[2]` in the prose and the second entry are the same source, because
     // the pipeline assigned the marker before the model wrote a word.
+    const user = userEvent.setup();
     render(<CitationList citations={[citationFor({ marker: 2 })]} />);
+    await open(user);
 
     expect(screen.getByText("2")).toBeInTheDocument();
   });
 
-  it("marks a source the answer did not cite rather than hiding it", () => {
-    // A model that forgot a marker has not made the evidence disappear.
-    render(<CitationList citations={[citationFor({ referenced: false })]} />);
+  it("counts a source the answer did not cite rather than dropping it", async () => {
+    // A model that forgot a marker has not made the evidence disappear. It moves
+    // behind a disclosure; it is never removed, and the count is stated up front.
+    const user = userEvent.setup();
+    const citation = citationFor({ referenced: false });
+    render(<CitationList citations={[citation]} />);
 
-    expect(screen.getByText("Not cited")).toBeInTheDocument();
+    expect(screen.getByText(/1 passage was retrieved, none cited/)).toBeInTheDocument();
+
+    await open(user);
+    await user.click(screen.getByRole("button", { name: /1 more passage retrieved/i }));
+    expect(screen.getAllByText("bail-commercial.pdf").length).toBeGreaterThan(0);
   });
 
   it("counts distinct documents rather than citations", async () => {
     // Two passages of one contract are one source to a lawyer.
     render(
       <CitationList
-        citations={[citationFor({ marker: 1 }), citationFor({ marker: 2, page_number: 7 })]}
+        citations={[
+          citationFor({ marker: 1, document_id: "aaaaaaaa-1111-4111-8111-111111111111" }),
+          citationFor({
+            marker: 2,
+            page_number: 7,
+            document_id: "bbbbbbbb-2222-4222-8222-222222222222",
+          }),
+        ]}
       />,
     );
 
-    expect(screen.getByText(/2 sources from 1 document$/)).toBeInTheDocument();
+    expect(screen.getByText(/2 sources from 2 documents$/)).toBeInTheDocument();
   });
 
   it("hides the excerpt until it is asked for", async () => {
     const user = userEvent.setup();
     const citation = citationFor();
     render(<CitationList citations={[citation]} />);
+    await open(user);
 
     expect(screen.queryByText(citation.excerpt)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /show excerpt/i }));
@@ -302,8 +348,10 @@ describe("CitationList", () => {
     expect(screen.getByText(citation.excerpt)).toBeInTheDocument();
   });
 
-  it("links to the case, the one destination the reader is certainly entitled to open", () => {
+  it("links to the case, the one destination the reader is certainly entitled to open", async () => {
+    const user = userEvent.setup();
     render(<CitationList citations={[citationFor()]} />);
+    await open(user);
 
     expect(screen.getByRole("link", { name: /open case/i })).toHaveAttribute(
       "href",
@@ -323,7 +371,8 @@ describe("CitationList", () => {
 // --------------------------------------------------------------------------- //
 
 describe("ChatMessage", () => {
-  it("shows the answer and its sources", () => {
+  it("shows the answer, and its sources once asked for", async () => {
+    const user = userEvent.setup();
     renderWithQuery(
       <ChatMessage message={messageFor()} conversationId="66666666-6666-4666-8666-666666666666" />,
     );
@@ -331,17 +380,21 @@ describe("ChatMessage", () => {
     expect(
       screen.getByText(/Le loyer mensuel est payable d'avance le premier jour/),
     ).toBeInTheDocument();
-    expect(screen.getByText("bail-commercial.pdf")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /show sources/i }));
+    expect(screen.getAllByText("bail-commercial.pdf").length).toBeGreaterThan(0);
   });
 
-  it("says plainly when no supporting document was found", () => {
+  it("says plainly when retrieval found nothing at all", () => {
     // A reader must never mistake "I found nothing" for an answer that happens
-    // to be short.
+    // to be short. `retrieved_count: 0` is the corpus case, and the only one
+    // where telling the reader to check indexing is sound advice.
     renderWithQuery(
       <ChatMessage
         message={messageFor({
           grounded: false,
           insufficient_evidence: true,
+          retrieved_count: 0,
           citations: [],
           citation_count: 0,
           document_count: 0,
@@ -352,6 +405,32 @@ describe("ChatMessage", () => {
     );
 
     expect(screen.getByText(/No supporting document was found/)).toBeInTheDocument();
+  });
+
+  it("distinguishes passages found but judged insufficient from nothing found", () => {
+    // The two outcomes share `insufficient_evidence: true` and must not share a
+    // sentence. Passages *were* retrieved here, so the documents are indexed and
+    // searchable — advising the reader to check indexing would send them to
+    // debug a problem they do not have, beside a passage count that contradicts
+    // it. This is the case a counting question ("how many articles?") produces:
+    // retrieval works, but no single passage states the answer.
+    renderWithQuery(
+      <ChatMessage
+        message={messageFor({
+          grounded: false,
+          insufficient_evidence: true,
+          retrieved_count: 8,
+          citations: [],
+          citation_count: 0,
+          document_count: 0,
+          content: "Je n'ai trouvé aucun document justificatif.",
+        })}
+        conversationId="66666666-6666-4666-8666-666666666666"
+      />,
+    );
+
+    expect(screen.getByText(/none of the passages found answer this question/)).toBeInTheDocument();
+    expect(screen.queryByText(/No supporting document was found/)).not.toBeInTheDocument();
   });
 
   it("warns that a truncated answer stops early", () => {

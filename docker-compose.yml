@@ -94,6 +94,34 @@ services:
       timeout: 5s
       retries: 5
 
+  # Mailpit — a local SMTP sink, for development only.
+  #
+  # It accepts every message and delivers none of them: mail is captured and read
+  # in the web inbox on 8025 instead of leaving the machine. That is what makes it
+  # safe here, because `users.email` holds real addresses — testing against a real
+  # relay would send real mail to real people on every case assignment.
+  #
+  # 1025 is the port `SMTP_PORT` already defaults to, so a host-run
+  # `uvicorn` needs no `.env` change; the containerised API gets `SMTP_HOST:
+  # mailpit` below.
+  #
+  # No volume: captured mail is throwaway test data, and a fresh inbox on restart
+  # is the more useful default. Add `MP_DATABASE` if you ever need it to persist.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: legal-mailpit
+    restart: unless-stopped
+
+    ports:
+      - "1025:1025"   # SMTP — what the API sends to
+      - "8025:8025"   # web inbox — what you read
+
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # The FastAPI backend.
   #
   # **Behind a profile, deliberately.** `docker compose up -d` has meant "bring
@@ -127,6 +155,11 @@ services:
       REDIS_HOST: redis
       MINIO_ENDPOINT: minio:9000
       QDRANT_HOST: qdrant
+      # Mailpit is deliberately absent from `depends_on`: a missing relay is
+      # already handled — the send fails, retries with backoff, and never
+      # interrupts the operation that produced the notification — so blocking API
+      # startup on a development mail sink would buy nothing.
+      SMTP_HOST: mailpit
       # The API is addressed through the published port from the host, so the
       # browser's origin is still localhost:3000.
       CORS_ORIGINS: http://localhost:3000

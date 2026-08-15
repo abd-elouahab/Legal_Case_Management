@@ -5358,6 +5358,80 @@ blocking its validation):
 
 ## Session Notes
 
+- **RAG answers what a passage *states*; it cannot count or aggregate.** *"How
+  many articles are in the document?"* is unanswerable by construction — no chunk
+  of the file says how many articles it has, so the top-K passages genuinely do
+  not support an answer and the model correctly emits the refusal sentinel. *"What
+  is the religion of the State?"* is stated verbatim in Article 3 and answers with
+  a citation. Whole-document work (counts, exhaustive lists, summaries) is the
+  **report agent's** job, not the assistant's. Worth saying to users directly: a
+  refusal on a counting question is the platform working, not a corpus problem.
+- **Two different outcomes reach `insufficient_evidence: true`, and they had one
+  message.** Retrieval finding nothing (`retrieved_count: 0`) is a corpus problem
+  where "check that the documents have been indexed" is sound advice. Retrieval
+  finding passages the model then judged insufficient is a *question* problem —
+  the file is indexed and searchable, and that same advice sends the reader to
+  debug something that is not wrong, beside a "8 passages" count that contradicts
+  it. `chat-message.tsx` now branches on `retrievedCount`; the API had always
+  reported it.
+- **The citation panel is collapsed by default** (`citation-list.tsx`). Eight
+  full-width cards under a three-sentence answer — five labelled "Not cited", each
+  with a cosine score — made the evidence outweigh the answer and read as a debug
+  panel; "55% match" was also being misread as confidence in the *answer* rather
+  than as embedding distance, where 55% is a strong score. Now three levels: a
+  one-line summary naming the document, then the cited sources, then the retrieved
+  passages that were not cited (with their scores, which is the one place the
+  score explains why the row exists). **Nothing is removed or renumbered** — the
+  spec's *"display citations without modifying them"* still holds, the count is
+  stated while collapsed, and everything is two clicks away.
+
+- **Email goes nowhere without a relay, and `SMTP_HOST=localhost` is not one.**
+  The dev default points at the MailHog/Mailpit port (1025); with nothing
+  listening, every send fails `connection_failed`, retries to
+  `EMAIL_MAX_ATTEMPTS=5` with backoff, and ends terminal
+  (`next_attempt_at: NULL`). Nothing is transmitted — not delayed, not in spam.
+  **Mailpit is now a `docker-compose.yml` service** (`legal-mailpit`, SMTP 1025,
+  web inbox <http://localhost:8025>), so `docker compose up -d` brings it up with
+  the rest. It is deliberately *not* in the API's `depends_on`: a missing relay is
+  already a handled condition, so blocking startup on a dev mail sink buys
+  nothing. Verified end to end — `SmtpEmailProvider.send` returned
+  `accepted=True` and Mailpit captured the message.
+- **`EMAIL_FROM_ADDRESS=notifications@legal.local` cannot reach a real mailbox.**
+  `.local` is reserved for mDNS (RFC 6762). Real delivery needs both a real relay
+  *and* a real sending domain; with Gmail SMTP the From address must equal the
+  authenticated account, and the password must be a Google **App Password** (2FA
+  required), not the account password.
+- **Only seven notification rules ever become email** (`core/email.py`
+  `EMAIL_RULES`): `case.assigned`, `hearing.scheduled`, `hearing.updated`,
+  `report.generated`, `user.password_reset`, `user.activated`, and the
+  maintenance announcement. Document uploads, OCR completion, and comments
+  deliberately never do — so testing the channel means triggering one of those
+  seven, most easily a case assignment. The per-user `email` preference defaults
+  to `true`, so no opt-in step is needed.
+
+- **`OCR_TIMEOUT_SECONDS` must be sized against `OCR_MAX_PAGES`, and originally
+  was not.** The timeout is a **whole-run deadline** shared across every page
+  (`TesseractOcrEngine._remaining`), not a per-page limit — per-page would let a
+  100-page document run for hours. Shipped values were `OCR_MAX_PAGES=100` and
+  `OCR_TIMEOUT_SECONDS=180`, which contradict each other: measured throughput on
+  the dev machine is **~4.2 s/page at 300 DPI with `eng+fra+ara`**, so 100 pages
+  needs ~420 s and *every document past ~42 pages failed with `error_code:
+  timeout`*, deterministically. Raised to **600** in `.env` and `.env.example`.
+  Measured alternatives, if the budget ever has to come down instead: 300 DPI
+  with `eng` alone is 2.61 s/page, 200 DPI with all three is 3.15 s/page, 200 DPI
+  with `eng` is 1.95 s/page. Lowering DPI or dropping `ara` was rejected — small
+  print in scanned filings needs 300, and Arabic is not optional here.
+- **`.env` changes need a real API restart.** `uvicorn --reload` watches Python
+  files, not `.env`, so a settings edit is invisible until the process is stopped
+  and started again.
+- **Tesseract on this machine lives at `D:\Apps\TesseractOCR\`** (no hyphen) and
+  is *not* on `PATH`; `TESSERACT_CMD` in `.env` is what makes it resolve. All 161
+  language packs are installed, `ara`/`fra`/`eng` included. Poppler comes from
+  MiKTeX (`D:\Apps\MiKTeX\miktex\bin\x64`), which *is* on `PATH`, so
+  `POPPLER_PATH` stays blank. Note that a bare `python -c "import pytesseract"`
+  check reports `TesseractNotFoundError` because it never loads settings — probe
+  through `get_ocr_engine().is_available()` instead, or the diagnosis is wrong.
+
 - **A local `.env` leaks into `tests/unit/test_config.py` and
   `tests/unit/test_email_provider.py`.** Three tests assert the *shipped
   defaults* — `EMAIL_ENABLED` is false, an SMTP provider with no host is

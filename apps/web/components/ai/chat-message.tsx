@@ -80,7 +80,20 @@ export function ChatMessage({
             {message.insufficientEvidence ? (
               <p className="flex items-start gap-2 rounded-md border border-[var(--state-warning)]/30 bg-[var(--state-warning)]/5 px-3 py-2 text-xs text-muted-foreground">
                 <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>{t("insufficientEvidence")}</span>
+                {/* Two different outcomes reach this banner, and telling a reader
+                    the wrong one sends them to debug a problem they do not have.
+                    Retrieval finding nothing is a *corpus* problem — the document
+                    may genuinely not be indexed. Retrieval finding passages the
+                    model then judged insufficient is a *question* problem: the
+                    file is indexed and searchable, and saying "check that the
+                    documents have been indexed" beside a "8 passages" count is
+                    both wrong and self-contradicting. `retrievedCount` is what
+                    separates them, and the API has always reported it. */}
+                <span>
+                  {(message.retrievedCount ?? 0) > 0
+                    ? t("insufficientEvidenceRetrieved")
+                    : t("insufficientEvidence")}
+                </span>
               </p>
             ) : null}
 

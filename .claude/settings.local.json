@@ -330,7 +330,20 @@
       "Bash(python \"C:/Users/ADMINI~1/AppData/Local/Temp/claude/d--Legal-Case-Management-Platform/9119861d-e132-4f6f-b1fd-e0c9f3fa6784/scratchpad/build_catalogues.py\")",
       "Bash(python \"C:/Users/ADMINI~1/AppData/Local/Temp/claude/d--Legal-Case-Management-Platform/9119861d-e132-4f6f-b1fd-e0c9f3fa6784/scratchpad/i18n_final.py\")",
       "Bash(python \"C:/Users/ADMINI~1/AppData/Local/Temp/claude/d--Legal-Case-Management-Platform/9119861d-e132-4f6f-b1fd-e0c9f3fa6784/scratchpad/update_tracker.py\")",
-      "Bash(python \"C:/Users/ADMINI~1/AppData/Local/Temp/claude/d--Legal-Case-Management-Platform/9119861d-e132-4f6f-b1fd-e0c9f3fa6784/scratchpad/update_standards.py\")"
+      "Bash(python \"C:/Users/ADMINI~1/AppData/Local/Temp/claude/d--Legal-Case-Management-Platform/9119861d-e132-4f6f-b1fd-e0c9f3fa6784/scratchpad/update_standards.py\")",
+      "PowerShell($paths = @\\(\"C:\\\\Program Files\\\\Tesseract-OCR\\\\tesseract.exe\",\"C:\\\\Program Files \\(x86\\)\\\\Tesseract-OCR\\\\tesseract.exe\",\"D:\\\\Apps\\\\Tesseract-OCR\\\\tesseract.exe\"\\); foreach \\($p in $paths\\) { if \\(Test-Path $p\\) { \"FOUND: $p\" } else { \"missing: $p\" } }; \"--- winget available? ---\"; if \\(Get-Command winget -ErrorAction SilentlyContinue\\) { \"winget: yes\" } else { \"winget: no\" }; \"--- choco? ---\"; if \\(Get-Command choco -ErrorAction SilentlyContinue\\) { \"choco: yes\" } else { \"choco: no\" })",
+      "Bash(echo \"--- exit: $? \\(empty = no such setting\\) ---\")",
+      "PowerShell(winget install --id UB-Mannheim.TesseractOCR --accept-package-agreements --accept-source-agreements --disable-interactivity 2>&1)",
+      "PowerShell($roots = @\\(\"C:\\\\Program Files\",\"C:\\\\Program Files \\(x86\\)\",\"D:\\\\Apps\",\"$env:LOCALAPPDATA\",\"$env:USERPROFILE\\\\AppData\\\\Local\\\\Programs\"\\); foreach \\($r in $roots\\) { if \\(Test-Path $r\\) { Get-ChildItem -Path $r -Filter \"tesseract.exe\" -Recurse -ErrorAction SilentlyContinue -Depth 4 | Select-Object -ExpandProperty FullName } })",
+      "PowerShell(& \"D:\\\\Apps\\\\TesseractOCR\\\\tesseract.exe\" --version)",
+      "PowerShell(& \"D:\\\\Apps\\\\TesseractOCR\\\\tesseract.exe\" --list-langs)",
+      "PowerShell($c = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue; if \\($c\\) { $p = Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue; \"API listening on :8000 — PID $\\($c.OwningProcess\\) \\($\\($p.ProcessName\\)\\), started $\\($p.StartTime\\)\" } else { \"Nothing listening on :8000 — API is not running\" })",
+      "Bash(curl -s -m 3 http://localhost:6333/collections)",
+      "Bash(powershell -NoProfile -Command 'Get-NetTCPConnection -LocalPort 1025 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; \"PID $\\($_.OwningProcess\\) - $\\($p.ProcessName\\) - $\\($p.Path\\)\" }')",
+      "Bash(curl -s -m 5 http://localhost:8025/api/v1/messages?limit=5)",
+      "Bash(curl -s -m 5 http://localhost:8025/api/v1/info)",
+      "Bash(docker rm *)",
+      "Bash(curl -s -m 5 \"http://localhost:8025/api/v1/messages?limit=3\")"
     ]
   }
 }
