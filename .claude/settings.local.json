@@ -343,7 +343,12 @@
       "Bash(curl -s -m 5 http://localhost:8025/api/v1/messages?limit=5)",
       "Bash(curl -s -m 5 http://localhost:8025/api/v1/info)",
       "Bash(docker rm *)",
-      "Bash(curl -s -m 5 \"http://localhost:8025/api/v1/messages?limit=3\")"
+      "Bash(curl -s -m 5 \"http://localhost:8025/api/v1/messages?limit=3\")",
+      "Bash(grep -n \"^  [a-z].*:$\" docker-compose.yml)",
+      "Bash(timeout 180 .venv/Scripts/python.exe -m pytest --collect-only -q)",
+      "Bash(timeout 240 .venv/Scripts/python.exe -m pytest --collect-only -q)",
+      "Bash(timeout 240 .venv/Scripts/python.exe -m pytest --collect-only)",
+      "Read(//d//**)"
     ]
   }
 }
